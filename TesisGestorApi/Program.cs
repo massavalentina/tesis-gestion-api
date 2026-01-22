@@ -7,7 +7,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// CORS (abierto por ahora, simple)
+// CORS 
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -20,7 +20,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Swagger (en cualquier entorno, para pruebas)
+// Swagger 
 app.UseSwagger();
 app.UseSwaggerUI();
 

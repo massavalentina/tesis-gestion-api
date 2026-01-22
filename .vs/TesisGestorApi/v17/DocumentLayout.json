@@ -7,6 +7,14 @@
       "RelativeMoniker": "D:0:0:{9C24D868-2996-4B7D-81EB-18D95DA9B80D}|TesisGestorApi\\TesisGestorApi.csproj|solutionrelative:tesisgestorapi\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
+      "AbsoluteMoniker": "D:0:0:{9C24D868-2996-4B7D-81EB-18D95DA9B80D}|TesisGestorApi\\TesisGestorApi.csproj|c:\\users\\valec\\onedrive\\escritorio\\tesis-gestor-api\\tesisgestorapi\\tesisgestorapi\\dockerfile||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{9C24D868-2996-4B7D-81EB-18D95DA9B80D}|TesisGestorApi\\TesisGestorApi.csproj|solutionrelative:tesisgestorapi\\dockerfile||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9C24D868-2996-4B7D-81EB-18D95DA9B80D}|TesisGestorApi\\TesisGestorApi.csproj|c:\\users\\valec\\onedrive\\escritorio\\tesis-gestor-api\\tesisgestorapi\\tesisgestorapi\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{9C24D868-2996-4B7D-81EB-18D95DA9B80D}|TesisGestorApi\\TesisGestorApi.csproj|solutionrelative:tesisgestorapi\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{9C24D868-2996-4B7D-81EB-18D95DA9B80D}|TesisGestorApi\\TesisGestorApi.csproj|c:\\users\\valec\\onedrive\\escritorio\\tesis-gestor-api\\tesisgestorapi\\tesisgestorapi\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
       "RelativeMoniker": "D:0:0:{9C24D868-2996-4B7D-81EB-18D95DA9B80D}|TesisGestorApi\\TesisGestorApi.csproj|solutionrelative:tesisgestorapi\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
     }
@@ -18,8 +26,34 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 6,
+          "SelectedChildIndex": 8,
           "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "Dockerfile",
+              "DocumentMoniker": "C:\\Users\\valec\\OneDrive\\Escritorio\\tesis-gestor-api\\TesisGestorApi\\TesisGestorApi\\Dockerfile",
+              "RelativeDocumentMoniker": "TesisGestorApi\\Dockerfile",
+              "ToolTip": "C:\\Users\\valec\\OneDrive\\Escritorio\\tesis-gestor-api\\TesisGestorApi\\TesisGestorApi\\Dockerfile",
+              "RelativeToolTip": "TesisGestorApi\\Dockerfile",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAA4AAAAAAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2026-01-21T17:26:50.564Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "C:\\Users\\valec\\OneDrive\\Escritorio\\tesis-gestor-api\\TesisGestorApi\\TesisGestorApi\\appsettings.json",
+              "RelativeDocumentMoniker": "TesisGestorApi\\appsettings.json",
+              "ToolTip": "C:\\Users\\valec\\OneDrive\\Escritorio\\tesis-gestor-api\\TesisGestorApi\\TesisGestorApi\\appsettings.json",
+              "RelativeToolTip": "TesisGestorApi\\appsettings.json",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAoAAAApAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-01-21T14:23:28.749Z",
+              "EditorCaption": ""
+            },
             {
               "$type": "Bookmark",
               "Name": "ST:130:0:{1fc202d4-d401-403c-9834-5b218574bb67}"
@@ -42,15 +76,16 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 3,
               "Title": "appsettings.Development.json",
               "DocumentMoniker": "C:\\Users\\valec\\OneDrive\\Escritorio\\tesis-gestor-api\\TesisGestorApi\\TesisGestorApi\\appsettings.Development.json",
               "RelativeDocumentMoniker": "TesisGestorApi\\appsettings.Development.json",
               "ToolTip": "C:\\Users\\valec\\OneDrive\\Escritorio\\tesis-gestor-api\\TesisGestorApi\\TesisGestorApi\\appsettings.Development.json",
               "RelativeToolTip": "TesisGestorApi\\appsettings.Development.json",
-              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAcAAAArAAAA",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAkAAAAAAAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2026-01-21T00:38:58.557Z"
+              "WhenOpened": "2026-01-21T00:38:58.557Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
@@ -60,7 +95,7 @@
               "RelativeDocumentMoniker": "TesisGestorApi\\Program.cs",
               "ToolTip": "C:\\Users\\valec\\OneDrive\\Escritorio\\tesis-gestor-api\\TesisGestorApi\\TesisGestorApi\\Program.cs",
               "RelativeToolTip": "TesisGestorApi\\Program.cs",
-              "ViewState": "AQIAACEAAAAAAAAAAAAAACQAAAAAAAAA",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAABEAAAAHAAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-01-21T00:35:15.644Z",
               "EditorCaption": ""

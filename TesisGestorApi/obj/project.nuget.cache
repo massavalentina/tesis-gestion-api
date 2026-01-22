@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "bPy7mspWtZk=",
+  "dgSpecHash": "yU+J6qYpz0NO3472m9LRIUzIOxjGbAAMOwYBI0Yf10O2thTb9TkqAD6hYVM4U+dHNk0mvoX3OH8b1o89Z6EAYg==",
   "success": true,
   "projectFilePath": "C:\\Users\\valec\\OneDrive\\Escritorio\\tesis-gestor-api\\TesisGestorApi\\TesisGestorApi\\TesisGestorApi.csproj",
   "expectedPackageFiles": [
@@ -49,11 +49,7 @@
     "C:\\Users\\valec\\.nuget\\packages\\system.text.encoding.codepages\\6.0.0\\system.text.encoding.codepages.6.0.0.nupkg.sha512",
     "C:\\Users\\valec\\.nuget\\packages\\system.text.encodings.web\\8.0.0\\system.text.encodings.web.8.0.0.nupkg.sha512",
     "C:\\Users\\valec\\.nuget\\packages\\system.text.json\\8.0.0\\system.text.json.8.0.0.nupkg.sha512",
-    "C:\\Users\\valec\\.nuget\\packages\\system.threading.channels\\6.0.0\\system.threading.channels.6.0.0.nupkg.sha512",
-    "C:\\Users\\valec\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.23\\microsoft.netcore.app.ref.8.0.23.nupkg.sha512",
-    "C:\\Users\\valec\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.23\\microsoft.windowsdesktop.app.ref.8.0.23.nupkg.sha512",
-    "C:\\Users\\valec\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.23\\microsoft.aspnetcore.app.ref.8.0.23.nupkg.sha512",
-    "C:\\Users\\valec\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.23\\microsoft.netcore.app.host.win-x64.8.0.23.nupkg.sha512"
+    "C:\\Users\\valec\\.nuget\\packages\\system.threading.channels\\6.0.0\\system.threading.channels.6.0.0.nupkg.sha512"
   ],
   "logs": []
 }

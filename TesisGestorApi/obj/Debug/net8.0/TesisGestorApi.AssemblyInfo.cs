@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TesisGestorApi")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b6a172b3f7f8ea9ab7fcb5641cea3aeb4df97e14")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8cbb5aac15761b331b877df302a783e88c716be7")]
 [assembly: System.Reflection.AssemblyProductAttribute("TesisGestorApi")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TesisGestorApi")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

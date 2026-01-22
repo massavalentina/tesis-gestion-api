@@ -1,1 +1,11 @@
-{"Version":1,"Hash":"HojAVa1uu1Gef3/DONbfoNvNspYOtrSPmsDgkiXDpFI=","Source":"TesisGestorApi","BasePath":"/","Mode":"Root","ManifestType":"Build","ReferencedProjectsConfiguration":[],"DiscoveryPatterns":[],"Assets":[],"Endpoints":[]}
+{
+  "Version": 1,
+  "Hash": "dUHgiT9TNflGZZ47EDGKv8Zq7MbpeyAbKHHw/0R4KjI=",
+  "Source": "TesisGestorApi",
+  "BasePath": "_content/TesisGestorApi",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}
