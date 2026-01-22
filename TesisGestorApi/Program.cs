@@ -5,7 +5,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-var allowedOrigins = builder.Configuration.GetValue<string>("allowedOrigins")!.Split(",");
+var allowedOrigins = builder.Configuration.GetValue<string>("AllowedOrigins")!.Split(",");
 
 builder.Services.AddCors(options =>
 {
