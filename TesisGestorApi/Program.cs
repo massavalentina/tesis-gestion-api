@@ -11,7 +11,6 @@ builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 
-
 // Controllers
 builder.Services.AddControllers();
 
@@ -30,7 +29,14 @@ builder.Services.AddCors(options =>
     });
 });
 
+
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
+}
 
 // Swagger 
 app.UseSwagger();
