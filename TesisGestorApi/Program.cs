@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
+using TesisGestorApi.Services;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
 
 //Services
-
+builder.Services.AddScoped<AttendanceService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
