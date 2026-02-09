@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
+using TesisGestorApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 
 
 // Controllers

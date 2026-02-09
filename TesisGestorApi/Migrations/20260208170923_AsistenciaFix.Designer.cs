@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260208170923_AsistenciaFix")]
+    partial class AsistenciaFix
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -368,11 +371,11 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("CursoIdCurso")
                         .HasColumnType("uuid");
 
-                    b.Property<TimeSpan>("HorarioEntrada")
-                        .HasColumnType("interval");
+                    b.Property<DateTime>("HorarioEntrada")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<TimeSpan>("HorarioSalida")
-                        .HasColumnType("interval");
+                    b.Property<DateTime>("HorarioSalida")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("IdCurso")
                         .HasColumnType("uuid");

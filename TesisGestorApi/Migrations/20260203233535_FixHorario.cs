@@ -11,21 +11,15 @@ namespace TesisGestorApi.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AlterColumn<TimeSpan>(
-                name: "HorarioSalida",
-                table: "Horarios",
-                type: "interval",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "timestamp with time zone");
+            migrationBuilder.Sql(
+                @"ALTER TABLE ""Horarios"" 
+          ALTER COLUMN ""HorarioEntrada"" TYPE interval 
+          USING ""HorarioEntrada""::time::interval;");
 
-            migrationBuilder.AlterColumn<TimeSpan>(
-                name: "HorarioEntrada",
-                table: "Horarios",
-                type: "interval",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "timestamp with time zone");
+            migrationBuilder.Sql(
+                @"ALTER TABLE ""Horarios"" 
+          ALTER COLUMN ""HorarioSalida"" TYPE interval 
+          USING ""HorarioSalida""::time::interval;");
         }
 
         /// <inheritdoc />
