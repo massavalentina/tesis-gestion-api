@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
+using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);

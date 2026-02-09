@@ -5,7 +5,7 @@ namespace RepoDB.Entities
     public class TipoAsistencia
     {
         [Key]
-        public Guid IdTipoAsistencia { get; set; }
+        public Guid IdTipo { get; set; }
 
         [Required]
         [MaxLength(10)]

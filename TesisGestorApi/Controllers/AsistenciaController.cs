@@ -4,7 +4,7 @@ using RepoDB.Entities;
 using System.Runtime.InteropServices.Marshalling;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
-using TesisGestorApi.Entities;
+using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
 
 

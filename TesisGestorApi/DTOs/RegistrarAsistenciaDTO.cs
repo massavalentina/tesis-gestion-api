@@ -1,4 +1,4 @@
-﻿namespace TesisGestorApi.Entities
+﻿namespace TesisGestorApi.DTOs
 {
     public class RegistrarAsistenciaDto
     {
