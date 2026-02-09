@@ -43,80 +43,89 @@ namespace TesisGestorApi.Data
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        base.OnModelCreating(modelBuilder);
+        {
+            base.OnModelCreating(modelBuilder);
 
-        // ============================
-        // Usuario - Rol (N a N)
-        // ============================
-        modelBuilder.Entity<UsuarioRol>()
-            .HasKey(ur => new { ur.IdUsuario, ur.IdRol });
+            // ============================
+            // Usuario - Rol (N a N)
+            // ============================
+            modelBuilder.Entity<UsuarioRol>()
+                .HasKey(ur => new { ur.IdUsuario, ur.IdRol });
 
-        modelBuilder.Entity<UsuarioRol>()
-            .HasOne(ur => ur.Usuario)
-            .WithMany(u => u.UsuarioRoles)
-            .HasForeignKey(ur => ur.IdUsuario)
-            .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<UsuarioRol>()
+                .HasOne(ur => ur.Usuario)
+                .WithMany(u => u.UsuarioRoles)
+                .HasForeignKey(ur => ur.IdUsuario)
+                .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<UsuarioRol>()
-            .HasOne(ur => ur.Rol)
-            .WithMany(r => r.UsuarioRoles)
-            .HasForeignKey(ur => ur.IdRol)
-            .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<UsuarioRol>()
+                .HasOne(ur => ur.Rol)
+                .WithMany(r => r.UsuarioRoles)
+                .HasForeignKey(ur => ur.IdRol)
+                .OnDelete(DeleteBehavior.Cascade);
 
-        // ============================
-        // Usuario - Docente (1 a 1)
-        // Docente depende de Usuario
-        // ============================
-        modelBuilder.Entity<Docente>()
-            .HasOne(d => d.Usuario)
-            .WithOne(u => u.Docente)
-            .HasForeignKey<Docente>(d => d.IdUsuario)
-            .OnDelete(DeleteBehavior.Cascade);
+            // ============================
+            // Usuario - Docente (1 a 1)
+            // Docente depende de Usuario
+            // ============================
+            modelBuilder.Entity<Docente>()
+                .HasOne(d => d.Usuario)
+                .WithOne(u => u.Docente)
+                .HasForeignKey<Docente>(d => d.IdUsuario)
+                .OnDelete(DeleteBehavior.Cascade);
 
-        // ============================
-        // Usuario - Preceptor (1 a 1)
-        // Preceptor depende de Usuario
-        // ============================
-        modelBuilder.Entity<Preceptor>()
-            .HasOne(p => p.Usuario)
-            .WithOne(u => u.Preceptor)
-            .HasForeignKey<Preceptor>(p => p.IdUsuario)
-            .OnDelete(DeleteBehavior.Cascade);
+            // ============================
+            // Usuario - Preceptor (1 a 1)
+            // Preceptor depende de Usuario
+            // ============================
+            modelBuilder.Entity<Preceptor>()
+                .HasOne(p => p.Usuario)
+                .WithOne(u => u.Preceptor)
+                .HasForeignKey<Preceptor>(p => p.IdUsuario)
+                .OnDelete(DeleteBehavior.Cascade);
 
-        // ============================
-        // Asistencia - RetiroAnticipado (1 a 1)
-        // RetiroAnticipado depende de Asistencia
-        // ============================
-        modelBuilder.Entity<Asistencia>()
-            .HasOne(a => a.RetiroAnticipado)
-            .WithOne(r => r.Asistencia)
-            .HasForeignKey<RetiroAnticipado>(r => r.IdAsistencia)
-            .OnDelete(DeleteBehavior.Cascade);
+            // ============================
+            // Asistencia - RetiroAnticipado (1 a 1)
+            // RetiroAnticipado depende de Asistencia
+            // ============================
+            modelBuilder.Entity<Asistencia>()
+                .HasOne(a => a.RetiroAnticipado)
+                .WithOne(r => r.Asistencia)
+                .HasForeignKey<RetiroAnticipado>(r => r.IdAsistencia)
+                .OnDelete(DeleteBehavior.Cascade);
 
-        // ============================
-        // Tutor - Estudiante (N a N)
-        // Tabla intermedia: TutorEstudiante
-        // La clave primaria es compuesta
-        // ============================
+            // ============================
+            // Tutor - Estudiante (N a N)
+            // Tabla intermedia: TutorEstudiante
+            // La clave primaria es compuesta
+            // ============================
 
 
-        modelBuilder.Entity<TutorEstudiante>()
-            .HasKey(te => new { te.IdTutor, te.IdEstudiante });
+            modelBuilder.Entity<TutorEstudiante>()
+                .HasKey(te => new { te.IdTutor, te.IdEstudiante });
 
-        modelBuilder.Entity<TutorEstudiante>()
-            .HasOne(te => te.Tutor)
-            .WithMany(t => t.TutorEstudiantes)
-            .HasForeignKey(te => te.IdTutor);
+            modelBuilder.Entity<TutorEstudiante>()
+                .HasOne(te => te.Tutor)
+                .WithMany(t => t.TutorEstudiantes)
+                .HasForeignKey(te => te.IdTutor);
 
-        modelBuilder.Entity<TutorEstudiante>()
-            .HasOne(te => te.Estudiante)
-            .WithMany(e => e.TutorEstudiantes)
-            .HasForeignKey(te => te.IdEstudiante);
+            modelBuilder.Entity<TutorEstudiante>()
+                .HasOne(te => te.Estudiante)
+                .WithMany(e => e.TutorEstudiantes)
+                .HasForeignKey(te => te.IdEstudiante);
+
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<Horario>(entity =>
+            {
+                entity.Property(e => e.HorarioEntrada)
+                      .HasColumnType("interval");
+
+                entity.Property(e => e.HorarioSalida)
+                      .HasColumnType("interval");
+            });
+        }
 
 
     }
-
-
-}
 }

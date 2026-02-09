@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace TesisGestorApi.Migrations
 {
     /// <inheritdoc />
-    public partial class FirstMigration : Migration
+    public partial class DatabaseOK : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -83,14 +83,14 @@ namespace TesisGestorApi.Migrations
                 name: "TiposAsistencia",
                 columns: table => new
                 {
-                    IdTipo = table.Column<Guid>(type: "uuid", nullable: false),
+                    IdTipoAsistencia = table.Column<Guid>(type: "uuid", nullable: false),
                     Codigo = table.Column<string>(type: "text", nullable: false),
-                    ValorAsistenciaMañana = table.Column<decimal>(type: "numeric", nullable: true),
-                    ValorAsistenciaTarde = table.Column<decimal>(type: "numeric", nullable: true)
+                    Descripcion = table.Column<string>(type: "text", nullable: false),
+                    Valor = table.Column<decimal>(type: "numeric", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_TiposAsistencia", x => x.IdTipo);
+                    table.PrimaryKey("PK_TiposAsistencia", x => x.IdTipoAsistencia);
                 });
 
             migrationBuilder.CreateTable(
@@ -192,7 +192,7 @@ namespace TesisGestorApi.Migrations
                     FechaAsistencia = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     Turno = table.Column<int>(type: "integer", nullable: false),
                     IdTipoAsistencia = table.Column<Guid>(type: "uuid", nullable: false),
-                    TipoAsistenciaIdTipo = table.Column<Guid>(type: "uuid", nullable: false),
+                    TipoAsistenciaIdTipoAsistencia = table.Column<Guid>(type: "uuid", nullable: false),
                     IdEstudiante = table.Column<Guid>(type: "uuid", nullable: false),
                     EstudianteIdEstudiante = table.Column<Guid>(type: "uuid", nullable: false)
                 },
@@ -206,10 +206,10 @@ namespace TesisGestorApi.Migrations
                         principalColumn: "IdEstudiante",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_Asistencias_TiposAsistencia_TipoAsistenciaIdTipo",
-                        column: x => x.TipoAsistenciaIdTipo,
+                        name: "FK_Asistencias_TiposAsistencia_TipoAsistenciaIdTipoAsistencia",
+                        column: x => x.TipoAsistenciaIdTipoAsistencia,
                         principalTable: "TiposAsistencia",
-                        principalColumn: "IdTipo",
+                        principalColumn: "IdTipoAsistencia",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -316,8 +316,8 @@ namespace TesisGestorApi.Migrations
                 columns: table => new
                 {
                     IdHorario = table.Column<Guid>(type: "uuid", nullable: false),
-                    HorarioEntrada = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    HorarioSalida = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    HorarioEntrada = table.Column<TimeSpan>(type: "interval", nullable: false),
+                    HorarioSalida = table.Column<TimeSpan>(type: "interval", nullable: false),
                     IdCurso = table.Column<Guid>(type: "uuid", nullable: false),
                     CursoIdCurso = table.Column<Guid>(type: "uuid", nullable: false)
                 },
@@ -452,7 +452,7 @@ namespace TesisGestorApi.Migrations
                     IdCurricula = table.Column<Guid>(type: "uuid", nullable: false),
                     CurriculaIdCurricula = table.Column<Guid>(type: "uuid", nullable: false),
                     IdTipoAsistencia = table.Column<Guid>(type: "uuid", nullable: false),
-                    TipoAsistenciaIdTipo = table.Column<Guid>(type: "uuid", nullable: false)
+                    TipoAsistenciaIdTipoAsistencia = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -470,10 +470,10 @@ namespace TesisGestorApi.Migrations
                         principalColumn: "IdEstudiante",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_AsistenciasPorEspacio_TiposAsistencia_TipoAsistenciaIdTipo",
-                        column: x => x.TipoAsistenciaIdTipo,
+                        name: "FK_AsistenciasPorEspacio_TiposAsistencia_TipoAsistenciaIdTipoA~",
+                        column: x => x.TipoAsistenciaIdTipoAsistencia,
                         principalTable: "TiposAsistencia",
-                        principalColumn: "IdTipo",
+                        principalColumn: "IdTipoAsistencia",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -483,9 +483,9 @@ namespace TesisGestorApi.Migrations
                 column: "EstudianteIdEstudiante");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Asistencias_TipoAsistenciaIdTipo",
+                name: "IX_Asistencias_TipoAsistenciaIdTipoAsistencia",
                 table: "Asistencias",
-                column: "TipoAsistenciaIdTipo");
+                column: "TipoAsistenciaIdTipoAsistencia");
 
             migrationBuilder.CreateIndex(
                 name: "IX_AsistenciasPorEspacio_CurriculaIdCurricula",
@@ -498,9 +498,9 @@ namespace TesisGestorApi.Migrations
                 column: "EstudianteIdEstudiante");
 
             migrationBuilder.CreateIndex(
-                name: "IX_AsistenciasPorEspacio_TipoAsistenciaIdTipo",
+                name: "IX_AsistenciasPorEspacio_TipoAsistenciaIdTipoAsistencia",
                 table: "AsistenciasPorEspacio",
-                column: "TipoAsistenciaIdTipo");
+                column: "TipoAsistenciaIdTipoAsistencia");
 
             migrationBuilder.CreateIndex(
                 name: "IX_CredencialesQR_EstudianteIdEstudiante",

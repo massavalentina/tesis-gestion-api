@@ -12,8 +12,8 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260122212202_FixFirstMigration")]
-    partial class FixFirstMigration
+    [Migration("20260209151054_DatabaseOK")]
+    partial class DatabaseOK
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -57,7 +57,7 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdTipoAsistencia")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("TipoAsistenciaIdTipo")
+                    b.Property<Guid>("TipoAsistenciaIdTipoAsistencia")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Turno")
@@ -67,7 +67,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasIndex("EstudianteIdEstudiante");
 
-                    b.HasIndex("TipoAsistenciaIdTipo");
+                    b.HasIndex("TipoAsistenciaIdTipoAsistencia");
 
                     b.ToTable("Asistencias");
                 });
@@ -96,7 +96,7 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdTipoAsistencia")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("TipoAsistenciaIdTipo")
+                    b.Property<Guid>("TipoAsistenciaIdTipoAsistencia")
                         .HasColumnType("uuid");
 
                     b.HasKey("IdAsistenciaEspacio");
@@ -105,7 +105,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasIndex("EstudianteIdEstudiante");
 
-                    b.HasIndex("TipoAsistenciaIdTipo");
+                    b.HasIndex("TipoAsistenciaIdTipoAsistencia");
 
                     b.ToTable("AsistenciasPorEspacio");
                 });
@@ -372,11 +372,11 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("CursoIdCurso")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("HorarioEntrada")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<TimeSpan>("HorarioEntrada")
+                        .HasColumnType("interval");
 
-                    b.Property<DateTime>("HorarioSalida")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<TimeSpan>("HorarioSalida")
+                        .HasColumnType("interval");
 
                     b.Property<Guid>("IdCurso")
                         .HasColumnType("uuid");
@@ -484,7 +484,7 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("RepoDB.Entities.TipoAsistencia", b =>
                 {
-                    b.Property<Guid>("IdTipo")
+                    b.Property<Guid>("IdTipoAsistencia")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
@@ -492,13 +492,14 @@ namespace TesisGestorApi.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<decimal?>("ValorAsistenciaMañana")
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Valor")
                         .HasColumnType("numeric");
 
-                    b.Property<decimal?>("ValorAsistenciaTarde")
-                        .HasColumnType("numeric");
-
-                    b.HasKey("IdTipo");
+                    b.HasKey("IdTipoAsistencia");
 
                     b.ToTable("TiposAsistencia");
                 });
@@ -615,7 +616,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoAsistencia")
                         .WithMany()
-                        .HasForeignKey("TipoAsistenciaIdTipo")
+                        .HasForeignKey("TipoAsistenciaIdTipoAsistencia")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -640,7 +641,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoAsistencia")
                         .WithMany()
-                        .HasForeignKey("TipoAsistenciaIdTipo")
+                        .HasForeignKey("TipoAsistenciaIdTipoAsistencia")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

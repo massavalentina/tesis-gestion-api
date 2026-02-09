@@ -54,7 +54,7 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdTipoAsistencia")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("TipoAsistenciaIdTipo")
+                    b.Property<Guid>("TipoAsistenciaIdTipoAsistencia")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Turno")
@@ -64,7 +64,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasIndex("EstudianteIdEstudiante");
 
-                    b.HasIndex("TipoAsistenciaIdTipo");
+                    b.HasIndex("TipoAsistenciaIdTipoAsistencia");
 
                     b.ToTable("Asistencias");
                 });
@@ -93,7 +93,7 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdTipoAsistencia")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("TipoAsistenciaIdTipo")
+                    b.Property<Guid>("TipoAsistenciaIdTipoAsistencia")
                         .HasColumnType("uuid");
 
                     b.HasKey("IdAsistenciaEspacio");
@@ -102,7 +102,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasIndex("EstudianteIdEstudiante");
 
-                    b.HasIndex("TipoAsistenciaIdTipo");
+                    b.HasIndex("TipoAsistenciaIdTipoAsistencia");
 
                     b.ToTable("AsistenciasPorEspacio");
                 });
@@ -481,7 +481,7 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("RepoDB.Entities.TipoAsistencia", b =>
                 {
-                    b.Property<Guid>("IdTipo")
+                    b.Property<Guid>("IdTipoAsistencia")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
@@ -489,13 +489,14 @@ namespace TesisGestorApi.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<decimal?>("ValorAsistenciaMañana")
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Valor")
                         .HasColumnType("numeric");
 
-                    b.Property<decimal?>("ValorAsistenciaTarde")
-                        .HasColumnType("numeric");
-
-                    b.HasKey("IdTipo");
+                    b.HasKey("IdTipoAsistencia");
 
                     b.ToTable("TiposAsistencia");
                 });
@@ -612,7 +613,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoAsistencia")
                         .WithMany()
-                        .HasForeignKey("TipoAsistenciaIdTipo")
+                        .HasForeignKey("TipoAsistenciaIdTipoAsistencia")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -637,7 +638,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoAsistencia")
                         .WithMany()
-                        .HasForeignKey("TipoAsistenciaIdTipo")
+                        .HasForeignKey("TipoAsistenciaIdTipoAsistencia")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

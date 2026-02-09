@@ -5,11 +5,15 @@ namespace RepoDB.Entities
     public class TipoAsistencia
     {
         [Key]
-        public Guid IdTipo { get; set; }
+        public Guid IdTipoAsistencia { get; set; }
 
-        public string Codigo { get; set; } = null!; //Presente, ausente, llegada tarde
+        [Required]
+        public string Codigo { get; set; } = null!;
 
-        public decimal? ValorAsistenciaMañana { get; set; }  // 1, 0.5, 0.25
-        public decimal? ValorAsistenciaTarde { get; set; }   // 1, 0.5, 0.25
+        [Required]
+        public string Descripcion { get; set; } = null!;
+
+        public decimal Valor { get; set; }   // 0, 0.25, 0.5, 1
     }
 }
+
