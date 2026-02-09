@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260208200452_FinalFix")]
+    partial class FinalFix
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -92,7 +95,7 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdTipoAsistencia")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("TipoAsistenciaIdTipoAsistencia")
+                    b.Property<Guid>("TipoAsistenciaIdTipo")
                         .HasColumnType("uuid");
 
                     b.HasKey("IdAsistenciaEspacio");
@@ -101,7 +104,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasIndex("EstudianteIdEstudiante");
 
-                    b.HasIndex("TipoAsistenciaIdTipoAsistencia");
+                    b.HasIndex("TipoAsistenciaIdTipo");
 
                     b.ToTable("AsistenciasPorEspacio");
                 });
@@ -482,7 +485,7 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("RepoDB.Entities.TipoAsistencia", b =>
                 {
-                    b.Property<Guid>("IdTipoAsistencia")
+                    b.Property<Guid>("IdTipo")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
@@ -644,7 +647,7 @@ namespace TesisGestorApi.Migrations
 
                     b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoAsistencia")
                         .WithMany()
-                        .HasForeignKey("TipoAsistenciaIdTipoAsistencia")
+                        .HasForeignKey("TipoAsistenciaIdTipo")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
