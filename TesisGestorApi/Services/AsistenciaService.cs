@@ -4,12 +4,8 @@ using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Interfaces;
 
-
 namespace TesisGestorApi.Services
 {
-    /// <summary>
-    /// Clase que implementa la interfaz del servicio de asistencia para poder implementar los métodos abstractos y tener la lógica de negocio del cálculo de asistencias, tanto individual como para lotes. 
-    /// </summary>
     public class AsistenciaService : IAsistenciaService
     {
         private readonly ApplicationDbContext _context;
@@ -21,8 +17,21 @@ namespace TesisGestorApi.Services
             _logger = logger;
         }
 
+        // ✅ Helper: convierte cualquier fecha a "fecha UTC" (00:00:00Z)
+        private static DateTime ToUtcDate(DateTime value)
+        {
+            // value.Date deja Kind=Unspecified => lo marcamos como UTC
+            return DateTime.SpecifyKind(value.Date, DateTimeKind.Utc);
+        }
+
         public async Task<int> RegistrarLoteAsync(List<RegistrarAsistenciaDto> lista)
         {
+            // ✅ Normalizar fechas del request a UTC para que Npgsql no explote
+            foreach (var x in lista)
+            {
+                x.Fecha = ToUtcDate(x.Fecha);
+            }
+
             // Carga de tipos en memoria
             var idsTipos = lista.Select(x => x.TipoAsistenciaId).Distinct().ToList();
             var tiposDict = await _context.TiposAsistencia
@@ -31,18 +40,17 @@ namespace TesisGestorApi.Services
 
             // Carga de asistencias existentes
             var idsEstudiantes = lista.Select(x => x.EstudianteId).Distinct().ToList();
-            var fechas = lista.Select(x => x.Fecha.Date).Distinct().ToList();
+            var fechas = lista.Select(x => x.Fecha).Distinct().ToList(); // ✅ ya viene en UTC
 
             var asistenciasExistentes = await _context.Asistencias
                 .Include(a => a.TipoManiana)
                 .Include(a => a.TipoTarde)
                 .Where(a => idsEstudiantes.Contains(a.EstudianteId) &&
-                            fechas.Contains(a.Fecha))
+                            fechas.Contains(a.Fecha)) // ✅ comparar directo (Fecha guardada como UTC 00:00)
                 .ToListAsync();
 
             int cont = 0;
 
-            // Procesamiento
             foreach (var dto in lista)
             {
                 if (!tiposDict.TryGetValue(dto.TipoAsistenciaId, out var tipoEntidad))
@@ -51,8 +59,10 @@ namespace TesisGestorApi.Services
                     continue;
                 }
 
+                var fechaDto = dto.Fecha; // ✅ ya está normalizada
+
                 var asistencia = asistenciasExistentes
-                    .FirstOrDefault(a => a.EstudianteId == dto.EstudianteId && a.Fecha.Date == dto.Fecha.Date);
+                    .FirstOrDefault(a => a.EstudianteId == dto.EstudianteId && a.Fecha == fechaDto);
 
                 if (asistencia == null)
                 {
@@ -60,14 +70,14 @@ namespace TesisGestorApi.Services
                     {
                         Id = Guid.NewGuid(),
                         EstudianteId = dto.EstudianteId,
-                        Fecha = dto.Fecha.Date,
+                        Fecha = fechaDto, // ✅ UTC 00:00
                         ValorTotalInasistencia = 0
                     };
                     _context.Asistencias.Add(asistencia);
                     asistenciasExistentes.Add(asistencia);
                 }
 
-                var turno = dto.Turno?.Trim().ToUpper();
+                var turno = dto.Turno?.Trim().ToUpperInvariant();
 
                 if (turno == "MANANA")
                 {
@@ -80,7 +90,6 @@ namespace TesisGestorApi.Services
                     asistencia.TipoTarde = tipoEntidad;
                 }
 
-                // Lógica de la entidad de dominio
                 asistencia.CalcularAsistencia();
                 cont++;
             }
@@ -91,17 +100,23 @@ namespace TesisGestorApi.Services
 
         public async Task<AsistenciaResponseDto> RegistrarAsistenciaIndividualAsync(RegistrarAsistenciaDto dto)
         {
-            // Se reutiliza la lógica del método de procesamiento por lote
+            // ✅ Normalizar fecha también acá (por si llaman directo)
+            dto.Fecha = ToUtcDate(dto.Fecha);
+
             var lista = new List<RegistrarAsistenciaDto> { dto };
             var procesados = await RegistrarLoteAsync(lista);
 
             if (procesados == 0)
                 throw new Exception("No se pudo procesar el registro (Tipo inválido).");
 
-            // Se recupera el dato del insert único
             var entidad = await _context.Asistencias
                 .AsNoTracking()
-                .FirstOrDefaultAsync(a => a.EstudianteId == dto.EstudianteId && a.Fecha == dto.Fecha.Date);
+                .FirstOrDefaultAsync(a =>
+                    a.EstudianteId == dto.EstudianteId &&
+                    a.Fecha == dto.Fecha);
+
+            if (entidad == null)
+                throw new Exception("No se encontró la asistencia luego de registrar.");
 
             return new AsistenciaResponseDto
             {
