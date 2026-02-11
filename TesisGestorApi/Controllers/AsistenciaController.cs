@@ -24,37 +24,22 @@ public class AsistenciaController : ControllerBase
         _asistenciaService = asistenciaService;
     }
 
-    [HttpGet] // Peticiones Get All
+    [HttpGet]
     public async Task<ActionResult<IEnumerable<AsistenciaGetDTO>>> GetAsistencias(
-        [FromQuery] DateTime? fecha,
-        [FromQuery] Guid? estudianteId)
+     [FromQuery] DateOnly? fecha, 
+     [FromQuery] Guid? estudianteId)
     {
-        var query = _context.Asistencias
-            .Include(a => a.Estudiante)
-            .Include(a => a.TipoManiana)
-            .Include(a => a.TipoTarde)
-            .AsNoTracking()
-            .AsQueryable();
-
-        if (fecha.HasValue) { query = query.Where(a => a.Fecha.Date == fecha.Value.Date); } // Si viene fecha, la query suma fecha
-
-        if (estudianteId.HasValue) { query = query.Where(a => a.EstudianteId == estudianteId.Value); } // Si viene estudiante, la query filtra por estudiante también
-
-        var resultados = await query
-            .Select(a => new AsistenciaGetDTO
-            {
-                Id = a.Id,
-                Fecha = a.Fecha,
-                ValorTotal = a.ValorTotalInasistencia,
-                NombreCompleto = $"{a.Estudiante.Nombre} {a.Estudiante.Apellido}",
-                Documento = a.Estudiante.Documento,
-                CodigoManana = a.TipoManiana != null ? a.TipoManiana.Codigo : "-",
-                CodigoTarde = a.TipoTarde != null ? a.TipoTarde.Codigo : "-"
-            })
-            .OrderByDescending(a => a.Fecha) // Opcional: ordenar por fecha
-            .ToListAsync();
-
-        return Ok(resultados);
+        try
+        {
+            // Pasamos el DateOnly directamente al servicio
+            var resultados = await _asistenciaService.ObtenerAsistenciasAsync(fecha, estudianteId);
+            return Ok(resultados);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener asistencias");
+            return StatusCode(500, "Error interno al obtener los datos.");
+        }
     }
 
     [HttpPost] // Petición POST para Asistencia Individual

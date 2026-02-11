@@ -2,7 +2,7 @@
 using RepoDB.Entities;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
-using TesisGestorApi.Interfaces;
+using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Services
 {
@@ -16,14 +16,7 @@ namespace TesisGestorApi.Services
             _context = context;
             _logger = logger;
         }
-
-        // ✅ Helper: convierte cualquier fecha a "fecha UTC" (00:00:00Z)
-        private static DateTime ToUtcDate(DateTime value)
-        {
-            // value.Date deja Kind=Unspecified => lo marcamos como UTC
-            return DateTime.SpecifyKind(value.Date, DateTimeKind.Utc);
-        }
-
+        // Método de escritura masiva por lote
         public async Task<int> RegistrarLoteAsync(List<RegistrarAsistenciaDto> lista)
         {
             // ✅ Normalizar fechas del request a UTC para que Npgsql no explote
@@ -40,7 +33,7 @@ namespace TesisGestorApi.Services
 
             // Carga de asistencias existentes
             var idsEstudiantes = lista.Select(x => x.EstudianteId).Distinct().ToList();
-            var fechas = lista.Select(x => x.Fecha).Distinct().ToList(); // ✅ ya viene en UTC
+            var fechas = lista.Select(x => x.Fecha).Distinct().ToList();
 
             var asistenciasExistentes = await _context.Asistencias
                 .Include(a => a.TipoManiana)
@@ -59,8 +52,7 @@ namespace TesisGestorApi.Services
                     continue;
                 }
 
-                var fechaDto = dto.Fecha; // ✅ ya está normalizada
-
+                DateOnly fechaDto = dto.Fecha;
                 var asistencia = asistenciasExistentes
                     .FirstOrDefault(a => a.EstudianteId == dto.EstudianteId && a.Fecha == fechaDto);
 
@@ -70,24 +62,36 @@ namespace TesisGestorApi.Services
                     {
                         Id = Guid.NewGuid(),
                         EstudianteId = dto.EstudianteId,
-                        Fecha = fechaDto, // ✅ UTC 00:00
+                        Fecha = fechaDto,
                         ValorTotalInasistencia = 0
                     };
                     _context.Asistencias.Add(asistencia);
                     asistenciasExistentes.Add(asistencia);
                 }
+                string codigo = tipoEntidad.Codigo.ToUpper();
+                var turno = dto.Turno?.Trim().ToUpper();
 
-                var turno = dto.Turno?.Trim().ToUpperInvariant();
-
+                bool esHorarioSalida = codigo.StartsWith("RA"); // Retiros Anticipados, Express y Extendidos
+                bool esHorarioEntrada = codigo.StartsWith("LL") || codigo == "P"; 
                 if (turno == "MANANA")
                 {
                     asistencia.TipoManianaId = dto.TipoAsistenciaId;
                     asistencia.TipoManiana = tipoEntidad;
+                    if (dto.Hora.HasValue)
+                    {
+                        if (esHorarioEntrada) asistencia.HoraEntradaManana = dto.Hora.Value;
+                        else if (esHorarioSalida) asistencia.HoraSalidaManana = dto.Hora.Value;
+                    }
                 }
                 else if (turno == "TARDE")
                 {
                     asistencia.TipoTardeId = dto.TipoAsistenciaId;
                     asistencia.TipoTarde = tipoEntidad;
+                    if (dto.Hora.HasValue)
+                    {
+                        if (esHorarioSalida) asistencia.HoraSalidaTarde = dto.Hora;
+                        else if (esHorarioEntrada) asistencia.HoraEntradaTarde = dto.Hora;
+                    }
                 }
 
                 asistencia.CalcularAsistencia();
@@ -109,14 +113,14 @@ namespace TesisGestorApi.Services
             if (procesados == 0)
                 throw new Exception("No se pudo procesar el registro (Tipo inválido).");
 
+            DateOnly fechaDto = dto.Fecha;
+
+            // Se recupera el dato del insert único
             var entidad = await _context.Asistencias
                 .AsNoTracking()
-                .FirstOrDefaultAsync(a =>
-                    a.EstudianteId == dto.EstudianteId &&
-                    a.Fecha == dto.Fecha);
+                .FirstOrDefaultAsync(a => a.EstudianteId == dto.EstudianteId && a.Fecha == fechaDto);
 
-            if (entidad == null)
-                throw new Exception("No se encontró la asistencia luego de registrar.");
+            if (entidad == null) throw new Exception("Error al recuperar la asistencia guardada.");
 
             return new AsistenciaResponseDto
             {
@@ -124,6 +128,39 @@ namespace TesisGestorApi.Services
                 ValorTotal = entidad.ValorTotalInasistencia,
                 Mensaje = "Registrado correctamente."
             };
+        }
+        public async Task<IEnumerable<AsistenciaGetDTO>> ObtenerAsistenciasAsync(DateOnly? fecha, Guid? estudianteId)
+        {
+            var query = _context.Asistencias
+                .AsNoTracking()
+                .Include(a => a.Estudiante)
+                .Include(a => a.TipoManiana)
+                .Include(a => a.TipoTarde)
+                .AsQueryable();
+
+            if (fecha.HasValue)
+            {
+                query = query.Where(a => a.Fecha == fecha.Value);
+            }
+
+            if (estudianteId.HasValue)
+            {
+                query = query.Where(a => a.EstudianteId == estudianteId.Value);
+            }
+
+            return await query
+                .Select(a => new AsistenciaGetDTO
+                {
+                    Id = a.Id,
+                    Fecha = a.Fecha, 
+                    ValorTotal = a.ValorTotalInasistencia,
+                    NombreCompleto = $"{a.Estudiante.Nombre} {a.Estudiante.Apellido}",
+                    Documento = a.Estudiante.Documento,
+                    CodigoManana = a.TipoManiana != null ? a.TipoManiana.Codigo : "-",
+                    CodigoTarde = a.TipoTarde != null ? a.TipoTarde.Codigo : "-"
+                })
+                .OrderByDescending(a => a.Fecha)
+                .ToListAsync();
         }
     }
 }
