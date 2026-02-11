@@ -7,12 +7,16 @@ namespace RepoDB.Entities
     {
         [Key]
         public Guid Id { get; set; }
-        public DateTime Fecha { get; set; }
+        public DateOnly Fecha { get; set; }
         public Guid EstudianteId { get; set; }
         public Estudiante Estudiante { get; set; } = null!;
         public Guid? TipoManianaId { get; set; } // El tipo de asistencia para el turno mañana
         [ForeignKey("TipoManianaId")]
         public TipoAsistencia? TipoManiana { get; set; }
+        public TimeSpan? HoraEntradaManana { get; set; }
+        public TimeSpan? HoraSalidaManana { get; set; }
+        public TimeSpan? HoraEntradaTarde { get; set; }
+        public TimeSpan? HoraSalidaTarde { get; set; }
         public Guid? TipoTardeId { get; set; } // El tipo de asistencia para el turno tarde
         [ForeignKey("TipoTardeId")]
         public TipoAsistencia? TipoTarde { get; set; } 

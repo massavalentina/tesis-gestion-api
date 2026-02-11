@@ -1,4 +1,5 @@
-﻿using TesisGestorApi.Entities;
+﻿using TesisGestorApi.DTOs;
+using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Services
 {
@@ -11,6 +12,7 @@ namespace TesisGestorApi.Services
     {
         Task<int> RegistrarLoteAsync(List<RegistrarAsistenciaDto> listaDto);
         Task<AsistenciaResponseDto> RegistrarAsistenciaIndividualAsync(RegistrarAsistenciaDto dto);
+        Task<IEnumerable<AsistenciaGetDTO>> ObtenerAsistenciasAsync(DateOnly? fecha, Guid? estudianteId);
 
     }
 }
