@@ -19,7 +19,6 @@ public class AttendanceService
 
     public async Task<AttendanceScanResponse> ScanAsync(AttendanceScanRequest request)
     {
-        // 1️⃣ Buscar credencial por código QR
         var credencial = await _context.CredencialesQR
             .Include(c => c.Estudiante)
                 .ThenInclude(e => e.DetallesCursado)
@@ -35,18 +34,15 @@ public class AttendanceService
         if (credencial.FechaExpiracion < DateTime.UtcNow)
             throw new AttendanceException("QR_EXPIRED", "Este código QR se encuentra expirado");
 
-        // 2️⃣ Estudiante y cursado activo
         var estudiante = credencial.Estudiante;
 
         var cursadoActivo = estudiante.DetallesCursado.FirstOrDefault(dc => dc.Estado);
         if (cursadoActivo == null)
             throw new AttendanceException("STUDENT_INACTIVE", "Este código QR pertenece a un estudiante inactivo");
 
-        // 3️⃣ Parsear Turno
         if (!Enum.TryParse<Turno>(request.Turno, true, out var turno))
             throw new AttendanceException("INVALID_TURNO", "Turno inválido");
 
-        // 4️⃣ Validar no escaneado hoy + turno
         var today = DateTime.UtcNow.Date;
 
         var yaEscaneado = await _context.Asistencias.AnyAsync(a =>
@@ -63,7 +59,6 @@ public class AttendanceService
             );
         }
 
-        // 5️⃣ Obtener TipoAsistencia (mapear int → Guid)
         var tipoAsistencia = await _context.TiposAsistencia
         .FirstOrDefaultAsync(t => t.IdTipo == request.AttendanceTypeId);
 
@@ -73,11 +68,8 @@ public class AttendanceService
                 "Tipo de asistencia inválido"
         );
 
-
-        // 6️⃣ Hora del servidor
         var now = DateTime.UtcNow;
 
-        // 7️⃣ Crear asistencia
         var asistencia = new Asistencia
         {
             IdAsistencia = Guid.NewGuid(),
@@ -85,10 +77,10 @@ public class AttendanceService
             Turno = turno,
 
             IdEstudiante = estudiante.IdEstudiante,
-            Estudiante = estudiante, // 👈 CLAVE
+            Estudiante = estudiante, 
 
             IdTipoAsistencia = tipoAsistencia.IdTipo,
-            TipoAsistencia = tipoAsistencia // 👈 recomendado
+            TipoAsistencia = tipoAsistencia 
         };
 
 
@@ -114,9 +106,8 @@ public class AttendanceService
         };
     }
 
-    public async Task<AttendanceScanResponse> PreviewAsync(AttendancePreviewRequest request)
+public async Task<AttendanceScanResponse> PreviewAsync(AttendancePreviewRequest request)
 {
-    // 1️⃣ Buscar credencial por código QR
     var credencial = await _context.CredencialesQR
         .Include(c => c.Estudiante)
             .ThenInclude(e => e.DetallesCursado)
@@ -132,7 +123,6 @@ public class AttendanceService
     if (credencial.FechaExpiracion < DateTime.UtcNow)
         throw new AttendanceException("QR_EXPIRED", "Este código QR se encuentra expirado");
 
-    // 2️⃣ Estudiante y cursado activo
     var estudiante = credencial.Estudiante;
 
     var cursadoActivo = estudiante.DetallesCursado.FirstOrDefault(dc => dc.Estado);
@@ -142,7 +132,19 @@ public class AttendanceService
             "Este código QR pertenece a un estudiante inactivo"
         );
 
-    // 3️⃣ Response (NO guarda nada)
+    var today = DateTime.UtcNow.Date;
+
+    var yaEscaneadoHoy = await _context.Asistencias.AnyAsync(a =>
+        a.IdEstudiante == estudiante.IdEstudiante &&
+        a.FechaAsistencia.Date == today
+    );
+
+    if (yaEscaneadoHoy)
+        throw new AttendanceException(
+            "ALREADY_SCANNED",
+            $"El estudiante {estudiante.Nombre} {estudiante.Apellido} ya tiene asistencia cargada hoy"
+        );
+
     return new AttendanceScanResponse
     {
         Student = new StudentDto
@@ -155,14 +157,11 @@ public class AttendanceService
     };
 }
 
-
     public async Task ConfirmAsync(AttendanceConfirmRequest request)
     {
-        // 1️⃣ Validar turno
         if (!Enum.TryParse<Turno>(request.Turno, true, out var turno))
             throw new AttendanceException("INVALID_TURNO", "Turno inválido");
 
-        // 2️⃣ Obtener TipoAsistencia (ENTIDAD TRACKED)
         var tipoAsistencia = await _context.TiposAsistencia
             .FirstOrDefaultAsync(t => t.IdTipo == request.AttendanceTypeId);
 
@@ -172,14 +171,11 @@ public class AttendanceService
                 "Tipo de asistencia inválido"
             );
 
-        // 🔑 MUY IMPORTANTE
-        // Le decimos a EF: "este TipoAsistencia ya existe"
         _context.Attach(tipoAsistencia);
 
         var now = DateTime.UtcNow;
         var today = now.Date;
 
-        // 3️⃣ Traer estudiantes (ENTIDADES TRACKED)
         var estudiantes = await _context.Estudiantes
             .Where(e => request.StudentIds.Contains(e.IdEstudiante))
             .ToListAsync();
@@ -190,10 +186,8 @@ public class AttendanceService
                 "Uno o más estudiantes no existen"
             );
 
-        // 🔑 MUY IMPORTANTE
         _context.AttachRange(estudiantes);
 
-        // 4️⃣ Crear asistencias
         foreach (var estudiante in estudiantes)
         {
             var yaExiste = await _context.Asistencias.AnyAsync(a =>
@@ -214,17 +208,14 @@ public class AttendanceService
                 FechaAsistencia = now,
                 Turno = turno,
 
-                // 🔑 FK + navigation (POR LA SHADOW FK)
                 IdEstudiante = estudiante.IdEstudiante,
                 Estudiante = estudiante,
 
-                // 🔑 FK + navigation (POR LA SHADOW FK)
                 IdTipoAsistencia = tipoAsistencia.IdTipo,
                 TipoAsistencia = tipoAsistencia
             });
         }
 
-        // 5️⃣ Guardar todo
         await _context.SaveChangesAsync();
     }
 
@@ -236,7 +227,7 @@ public class AttendanceService
                 .Where(c => c.Estado)
                 .Select(c => new SelectOptionDto
                 {
-                    Id = c.IdCurso.ToString(), // 👈 Guid → string
+                    Id = c.IdCurso.ToString(), 
                     Label = $"{c.Anio.Numero}{c.Division.Nombre}"
                 })
                 .ToListAsync();
@@ -247,7 +238,7 @@ public class AttendanceService
             return Enum.GetValues<Turno>()
                 .Select(t => new SelectOptionDto
                 {
-            Id = ((int)t).ToString(),         // 👈 "Mañana", "Tarde"
+            Id = ((int)t).ToString(),         
                     Label = t.ToString()
                 })
                 .ToList();
@@ -258,7 +249,7 @@ public class AttendanceService
             return await _context.TiposAsistencia
                 .Select(t => new SelectOptionDto
                 {
-            Id = t.IdTipo.ToString(),   // 👈 Guid → string
+            Id = t.IdTipo.ToString(),   
                     Label = t.Codigo
                 })
                 .ToListAsync();
