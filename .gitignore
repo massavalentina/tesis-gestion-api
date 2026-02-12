@@ -121,3 +121,4 @@ dist/
 # appsettings.Development.json
 # appsettings.Local.json
 
+TesisGestorApi/appsettings.Development.json

@@ -88,11 +88,11 @@ namespace TesisGestorApi.Data
         // Asistencia - RetiroAnticipado (1 a 1)
         // RetiroAnticipado depende de Asistencia
         // ============================
-        modelBuilder.Entity<Asistencia>()
-            .HasOne(a => a.RetiroAnticipado)
-            .WithOne(r => r.Asistencia)
-            .HasForeignKey<RetiroAnticipado>(r => r.IdAsistencia)
-            .OnDelete(DeleteBehavior.Cascade);
+        //modelBuilder.Entity<Asistencia>()
+        //    .HasOne(a => a.RetiroAnticipado)
+        //    .WithOne(r => r.Asistencia)
+        //    .HasForeignKey<RetiroAnticipado>(r => r.IdAsistencia)
+        //    .OnDelete(DeleteBehavior.Cascade);
 
         // ============================
         // Tutor - Estudiante (N a N)

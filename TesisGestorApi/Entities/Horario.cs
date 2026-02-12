@@ -7,8 +7,8 @@ namespace RepoDB.Entities
         [Key]
         public Guid IdHorario { get; set; }
 
-        public DateTime HorarioEntrada { get; set; }
-        public DateTime HorarioSalida { get; set; }
+        public TimeSpan HorarioEntrada { get; set; }
+        public TimeSpan HorarioSalida { get; set; }
 
         public Guid IdCurso { get; set; }
         public Curso Curso { get; set; } = null!;

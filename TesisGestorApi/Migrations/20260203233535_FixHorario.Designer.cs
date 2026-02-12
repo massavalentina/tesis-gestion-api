@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260203233535_FixHorario")]
+    partial class FixHorario
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -38,44 +41,33 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("RepoDB.Entities.Asistencia", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<Guid>("IdAsistencia")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("EstudianteId")
+                    b.Property<Guid>("EstudianteIdEstudiante")
                         .HasColumnType("uuid");
 
-                    b.Property<DateOnly>("Fecha")
-                        .HasColumnType("date");
+                    b.Property<DateTime>("FechaAsistencia")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<TimeSpan?>("HoraEntradaManana")
-                        .HasColumnType("interval");
-
-                    b.Property<TimeSpan?>("HoraEntradaTarde")
-                        .HasColumnType("interval");
-
-                    b.Property<TimeSpan?>("HoraSalidaManana")
-                        .HasColumnType("interval");
-
-                    b.Property<TimeSpan?>("HoraSalidaTarde")
-                        .HasColumnType("interval");
-
-                    b.Property<Guid?>("TipoManianaId")
+                    b.Property<Guid>("IdEstudiante")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("TipoTardeId")
+                    b.Property<Guid>("IdTipoAsistencia")
                         .HasColumnType("uuid");
 
-                    b.Property<decimal>("ValorTotalInasistencia")
-                        .HasColumnType("numeric");
+                    b.Property<Guid>("TipoAsistenciaIdTipo")
+                        .HasColumnType("uuid");
 
-                    b.HasKey("Id");
+                    b.Property<int>("Turno")
+                        .HasColumnType("integer");
 
-                    b.HasIndex("EstudianteId");
+                    b.HasKey("IdAsistencia");
 
-                    b.HasIndex("TipoManianaId");
+                    b.HasIndex("EstudianteIdEstudiante");
 
-                    b.HasIndex("TipoTardeId");
+                    b.HasIndex("TipoAsistenciaIdTipo");
 
                     b.ToTable("Asistencias");
                 });
@@ -439,9 +431,6 @@ namespace TesisGestorApi.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("AsistenciaId")
-                        .HasColumnType("uuid");
-
                     b.Property<bool>("ConReingreso")
                         .HasColumnType("boolean");
 
@@ -468,9 +457,10 @@ namespace TesisGestorApi.Migrations
 
                     b.HasKey("IdRetiro");
 
-                    b.HasIndex("AsistenciaId");
-
                     b.HasIndex("EstudianteIdEstudiante");
+
+                    b.HasIndex("IdAsistencia")
+                        .IsUnique();
 
                     b.HasIndex("TutorIdTutor");
 
@@ -500,14 +490,12 @@ namespace TesisGestorApi.Migrations
 
                     b.Property<string>("Codigo")
                         .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
-
-                    b.Property<string>("Descripcion")
-                        .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<decimal>("ValorBase")
+                    b.Property<decimal?>("ValorAsistenciaMañana")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("ValorAsistenciaTarde")
                         .HasColumnType("numeric");
 
                     b.HasKey("IdTipo");
@@ -621,23 +609,19 @@ namespace TesisGestorApi.Migrations
                 {
                     b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
                         .WithMany("Asistencias")
-                        .HasForeignKey("EstudianteId")
+                        .HasForeignKey("EstudianteIdEstudiante")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoManiana")
+                    b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoAsistencia")
                         .WithMany()
-                        .HasForeignKey("TipoManianaId");
-
-                    b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoTarde")
-                        .WithMany()
-                        .HasForeignKey("TipoTardeId");
+                        .HasForeignKey("TipoAsistenciaIdTipo")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Estudiante");
 
-                    b.Navigation("TipoManiana");
-
-                    b.Navigation("TipoTarde");
+                    b.Navigation("TipoAsistencia");
                 });
 
             modelBuilder.Entity("RepoDB.Entities.AsistenciaPorEspacio", b =>
@@ -794,15 +778,15 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("RepoDB.Entities.RetiroAnticipado", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Asistencia", "Asistencia")
-                        .WithMany()
-                        .HasForeignKey("AsistenciaId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
                         .WithMany("RetirosAnticipados")
                         .HasForeignKey("EstudianteIdEstudiante")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RepoDB.Entities.Asistencia", "Asistencia")
+                        .WithOne("RetiroAnticipado")
+                        .HasForeignKey("RepoDB.Entities.RetiroAnticipado", "IdAsistencia")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -860,6 +844,11 @@ namespace TesisGestorApi.Migrations
             modelBuilder.Entity("RepoDB.Entities.Anio", b =>
                 {
                     b.Navigation("Cursos");
+                });
+
+            modelBuilder.Entity("RepoDB.Entities.Asistencia", b =>
+                {
+                    b.Navigation("RetiroAnticipado");
                 });
 
             modelBuilder.Entity("RepoDB.Entities.Curricula", b =>

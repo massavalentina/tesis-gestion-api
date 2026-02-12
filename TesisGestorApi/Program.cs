@@ -11,6 +11,7 @@ builder.Services.AddScoped<AttendanceService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 
 
 // Controllers
