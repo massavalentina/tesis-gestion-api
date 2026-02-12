@@ -1,5 +1,5 @@
 ﻿using TesisGestorApi.DTOs;
-using TesisGestorApi.Entities;
+
 
 namespace TesisGestorApi.Interfaces
 {

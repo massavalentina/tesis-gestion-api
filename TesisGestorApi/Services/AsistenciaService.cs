@@ -2,7 +2,7 @@
 using RepoDB.Entities;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
-using TesisGestorApi.Entities;
+using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Services
 {
@@ -19,11 +19,6 @@ namespace TesisGestorApi.Services
         // Método de escritura masiva por lote
         public async Task<int> RegistrarLoteAsync(List<RegistrarAsistenciaDto> lista)
         {
-            // ✅ Normalizar fechas del request a UTC para que Npgsql no explote
-            foreach (var x in lista)
-            {
-                x.Fecha = ToUtcDate(x.Fecha);
-            }
 
             // Carga de tipos en memoria
             var idsTipos = lista.Select(x => x.TipoAsistenciaId).Distinct().ToList();
@@ -104,8 +99,7 @@ namespace TesisGestorApi.Services
 
         public async Task<AsistenciaResponseDto> RegistrarAsistenciaIndividualAsync(RegistrarAsistenciaDto dto)
         {
-            // ✅ Normalizar fecha también acá (por si llaman directo)
-            dto.Fecha = ToUtcDate(dto.Fecha);
+            
 
             var lista = new List<RegistrarAsistenciaDto> { dto };
             var procesados = await RegistrarLoteAsync(lista);

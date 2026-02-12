@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Interfaces;
@@ -40,6 +41,19 @@ public class AsistenciaRapidaController : ControllerBase
         return Ok(tipos);
     }
 
+    // ✅ GET /api/asistencia-rapida/servertime
+    // Para mostrar en el modal (hora/fecha exacta del servidor).
+    [HttpGet("servertime")]
+    public ActionResult GetServerTime()
+    {
+        var now = DateTime.Now; // hora del servidor
+        return Ok(new
+        {
+            fecha = DateOnly.FromDateTime(now).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            hora = now.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
+        });
+    }
+
     // POST /api/asistencia-rapida
     [HttpPost]
     public async Task<ActionResult<AsistenciaResponseDto>> RegistrarAsistenciaRapida(
@@ -57,19 +71,14 @@ public class AsistenciaRapidaController : ControllerBase
         }
     }
 
-
-
+    // GET /api/asistencia-rapida/buscar-estudiantes?texto=...
     [HttpGet("buscar-estudiantes")]
-    public async Task<ActionResult<IEnumerable <EstudianteBusquedaRapidaDto>>> BuscarEstudiantes([FromQuery] string texto)
+    public async Task<ActionResult<IEnumerable<EstudianteBusquedaRapidaDto>>> BuscarEstudiantes([FromQuery] string texto)
     {
         if (string.IsNullOrWhiteSpace(texto) || texto.Trim().Length < 3)
             return Ok(new List<EstudianteBusquedaRapidaDto>());
 
         texto = texto.Trim();
-
-        // ✅ RANGO "HOY" EN UTC (evita el error de Npgsql con timestamptz)
-        var inicio = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
-        var fin = inicio.AddDays(1);
 
         // Query base
         var estudiantesQuery = _context.Estudiantes.AsNoTracking().AsQueryable();
@@ -89,11 +98,14 @@ public class AsistenciaRapidaController : ControllerBase
             );
         }
 
-        // ✅ Para "RegistradoHoy": asistencias entre [inicio, fin)
+        // ✅ Hoy con DateOnly (no DateTime)
+        var hoy = DateOnly.FromDateTime(DateTime.Now);
+
+        // ✅ RegistradoHoy = existe asistencia hoy (día)
         var resultados = await (
             from e in estudiantesQuery
             join a in _context.Asistencias.AsNoTracking()
-                  .Where(x => x.Fecha >= inicio && x.Fecha < fin)
+                  .Where(x => x.Fecha == hoy)
                 on e.IdEstudiante equals a.EstudianteId into asistHoy
             from ah in asistHoy.DefaultIfEmpty()
             select new EstudianteBusquedaRapidaDto
@@ -112,7 +124,5 @@ public class AsistenciaRapidaController : ControllerBase
 
         return Ok(resultados);
     }
-
-
 }
 
