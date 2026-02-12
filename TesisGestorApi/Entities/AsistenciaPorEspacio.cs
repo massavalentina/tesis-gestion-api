@@ -7,19 +7,27 @@ namespace RepoDB.Entities
         [Key]
         public Guid IdAsistenciaEspacio { get; set; }
 
-        public DateTime FechaAsistencia { get; set; }
+        public DateOnly Fecha { get; set; }
 
         
         public Guid IdEstudiante { get; set; }  // A que estudiante pertenece
         public Estudiante Estudiante { get; set; } = null!;
 
         
-        public Guid IdCurricula { get; set; } // Espacio curricular + docente
-        public Curricula Curricula { get; set; } = null!; 
+        public Guid IdEC { get; set; } // Espacio curricular + docente
+        public EspacioCurricular EspacioCurricular { get; set; } = null!; 
 
-        
-        public Guid IdTipoAsistencia { get; set; } // Tipo de asistencia (Presente, Ausente, Tarde, etc.)
-        public TipoAsistencia TipoAsistencia { get; set; } = null!;
+        public Guid IdClaseDictada { get; set; } // Clase dictada ese día para ese espacio curricular
+        public ClaseDictada ClaseDictada { get; set; }
+        public bool Presente { get; set; }
+        public string Motivo { get; set; }
     }
 
 }
+
+
+//  Asistencia general con horario de ingreso definido
+// La Asistencia por Espacio tiene que estar linkeada al horario que tiene esa currícula
+// Entonces según el día, la asistencia general va a completar la asistencia a esa currícula del estudiante
+// Siempre cuando esté presente. En caso de retiro anticipado, la asistencia por espacio debe contemplar la posible ausencia de acuerdo al
+// horario de retiro. 
