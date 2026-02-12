@@ -17,134 +17,59 @@ public class AttendanceService
         _context = context;
     }
 
-    public async Task<AttendanceScanResponse> ScanAsync(AttendanceScanRequest request)
-    {
-        var credencial = await _context.CredencialesQR
-            .Include(c => c.Estudiante)
-                .ThenInclude(e => e.DetallesCursado)
-                    .ThenInclude(dc => dc.Curso)
-            .FirstOrDefaultAsync(c => c.Codigo == request.Qr);
-
-        if (credencial == null)
-            throw new AttendanceException("QR_INVALID", "Código no reconocido");
-
-        if (!credencial.Activo)
-            throw new AttendanceException("QR_INACTIVE", "Este código QR no se encuentra activo");
-
-        if (credencial.FechaExpiracion < DateTime.UtcNow)
-            throw new AttendanceException("QR_EXPIRED", "Este código QR se encuentra expirado");
-
-        var estudiante = credencial.Estudiante;
-
-        var cursadoActivo = estudiante.DetallesCursado.FirstOrDefault(dc => dc.Estado);
-        if (cursadoActivo == null)
-            throw new AttendanceException("STUDENT_INACTIVE", "Este código QR pertenece a un estudiante inactivo");
-
-        if (!Enum.TryParse<Turno>(request.Turno, true, out var turno))
-            throw new AttendanceException("INVALID_TURNO", "Turno inválido");
-
-        var today = DateTime.UtcNow.Date;
-
-        var yaEscaneado = await _context.Asistencias.AnyAsync(a =>
-            a.IdEstudiante == estudiante.IdEstudiante &&
-            a.Turno == turno &&
-            a.FechaAsistencia.Date == today
-        );
-
-        if (yaEscaneado)
-        {
-            throw new AttendanceException(
-                "ALREADY_SCANNED",
-                $"El código del estudiante {estudiante.Nombre} {estudiante.Apellido} ya fue escaneado hoy en el turno {turno}"
-            );
-        }
-
-        var tipoAsistencia = await _context.TiposAsistencia
-        .FirstOrDefaultAsync(t => t.IdTipo == request.AttendanceTypeId);
-
-        if (tipoAsistencia == null)
-            throw new AttendanceException(
-                "INVALID_ATTENDANCE_TYPE",
-                "Tipo de asistencia inválido"
-        );
-
-        var now = DateTime.UtcNow;
-
-        var asistencia = new Asistencia
-        {
-            IdAsistencia = Guid.NewGuid(),
-            FechaAsistencia = now,
-            Turno = turno,
-
-            IdEstudiante = estudiante.IdEstudiante,
-            Estudiante = estudiante, 
-
-            IdTipoAsistencia = tipoAsistencia.IdTipo,
-            TipoAsistencia = tipoAsistencia 
-        };
-
-
-        _context.Asistencias.Add(asistencia);
-        await _context.SaveChangesAsync();
-
-        // 8️⃣ Response
-        return new AttendanceScanResponse
-        {
-            Student = new StudentDto
-            {
-                Id = estudiante.IdEstudiante,
-                Name = estudiante.Nombre,
-                LastName = estudiante.Apellido,
-                Course = cursadoActivo.Curso.Codigo
-            },
-            Attendance = new AttendanceDto
-            {
-                Time = now.ToString("HH:mm:ss"),
-                AttendanceType = tipoAsistencia.Codigo,
-                Turno = turno.ToString()
-            }
-        };
-    }
-
 public async Task<AttendanceScanResponse> PreviewAsync(AttendancePreviewRequest request)
 {
+    // 1️⃣ Parsear QR (string → Guid)
+    if (!Guid.TryParse(request.Qr, out var qrGuid))
+        throw new AttendanceException("QR_INVALID", "Código QR inválido");
+
+    // 2️⃣ Buscar credencial
     var credencial = await _context.CredencialesQR
         .Include(c => c.Estudiante)
             .ThenInclude(e => e.DetallesCursado)
                 .ThenInclude(dc => dc.Curso)
-        .FirstOrDefaultAsync(c => c.Codigo == request.Qr);
+        .FirstOrDefaultAsync(c => c.Codigo == qrGuid);
 
     if (credencial == null)
         throw new AttendanceException("QR_INVALID", "Código no reconocido");
 
     if (!credencial.Activo)
-        throw new AttendanceException("QR_INACTIVE", "Este código QR no se encuentra activo");
+        throw new AttendanceException("QR_INACTIVE", "QR inactivo");
 
     if (credencial.FechaExpiracion < DateTime.UtcNow)
-        throw new AttendanceException("QR_EXPIRED", "Este código QR se encuentra expirado");
+        throw new AttendanceException("QR_EXPIRED", "QR expirado");
 
+    // 3️⃣ Estudiante activo
     var estudiante = credencial.Estudiante;
 
     var cursadoActivo = estudiante.DetallesCursado.FirstOrDefault(dc => dc.Estado);
     if (cursadoActivo == null)
-        throw new AttendanceException(
-            "STUDENT_INACTIVE",
-            "Este código QR pertenece a un estudiante inactivo"
-        );
+        throw new AttendanceException("STUDENT_INACTIVE", "Estudiante inactivo");
 
-    var today = DateTime.UtcNow.Date;
+    // 4️⃣ Validar asistencia existente por día
+    var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
 
-    var yaEscaneadoHoy = await _context.Asistencias.AnyAsync(a =>
-        a.IdEstudiante == estudiante.IdEstudiante &&
-        a.FechaAsistencia.Date == today
+    var asistencia = await _context.Asistencias.FirstOrDefaultAsync(a =>
+        a.EstudianteId == estudiante.IdEstudiante &&
+        a.Fecha == hoy
     );
 
-    if (yaEscaneadoHoy)
-        throw new AttendanceException(
-            "ALREADY_SCANNED",
-            $"El estudiante {estudiante.Nombre} {estudiante.Apellido} ya tiene asistencia cargada hoy"
-        );
+    if (asistencia != null)
+    {
+        if (request.Turno == "Mañana" && asistencia.TipoManianaId != null)
+            throw new AttendanceException(
+                "ALREADY_SCANNED",
+                "Este alumno ya tiene asistencia cargada en el turno mañana"
+            );
 
+        if (request.Turno == "Tarde" && asistencia.TipoTardeId != null)
+            throw new AttendanceException(
+                "ALREADY_SCANNED",
+                "Este alumno ya tiene asistencia cargada en el turno tarde"
+            );
+    }
+
+    // 5️⃣ Preview OK
     return new AttendanceScanResponse
     {
         Student = new StudentDto
@@ -157,67 +82,52 @@ public async Task<AttendanceScanResponse> PreviewAsync(AttendancePreviewRequest 
     };
 }
 
+
+
+
     public async Task ConfirmAsync(AttendanceConfirmRequest request)
+{
+    var tipo = await _context.TiposAsistencia
+        .FirstOrDefaultAsync(t => t.IdTipo == request.AttendanceTypeId);
+
+    if (tipo == null)
+        throw new AttendanceException("INVALID_ATTENDANCE_TYPE", "Tipo inválido");
+
+    var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    foreach (var estudianteId in request.StudentIds)
     {
-        if (!Enum.TryParse<Turno>(request.Turno, true, out var turno))
-            throw new AttendanceException("INVALID_TURNO", "Turno inválido");
-
-        var tipoAsistencia = await _context.TiposAsistencia
-            .FirstOrDefaultAsync(t => t.IdTipo == request.AttendanceTypeId);
-
-        if (tipoAsistencia == null)
-            throw new AttendanceException(
-                "INVALID_ATTENDANCE_TYPE",
-                "Tipo de asistencia inválido"
+        var asistencia = await _context.Asistencias
+            .Include(a => a.TipoManiana)
+            .Include(a => a.TipoTarde)
+            .FirstOrDefaultAsync(a =>
+                a.EstudianteId == estudianteId &&
+                a.Fecha == hoy
             );
 
-        _context.Attach(tipoAsistencia);
-
-        var now = DateTime.UtcNow;
-        var today = now.Date;
-
-        var estudiantes = await _context.Estudiantes
-            .Where(e => request.StudentIds.Contains(e.IdEstudiante))
-            .ToListAsync();
-
-        if (estudiantes.Count != request.StudentIds.Count)
-            throw new AttendanceException(
-                "STUDENT_NOT_FOUND",
-                "Uno o más estudiantes no existen"
-            );
-
-        _context.AttachRange(estudiantes);
-
-        foreach (var estudiante in estudiantes)
+        if (asistencia == null)
         {
-            var yaExiste = await _context.Asistencias.AnyAsync(a =>
-                a.IdEstudiante == estudiante.IdEstudiante &&
-                a.Turno == turno &&
-                a.FechaAsistencia.Date == today
-            );
-
-            if (yaExiste)
-                throw new AttendanceException(
-                    "ALREADY_SCANNED",
-                    $"El estudiante {estudiante.Nombre} {estudiante.Apellido} ya tiene asistencia cargada hoy"
-                );
-
-            _context.Asistencias.Add(new Asistencia
+            asistencia = new Asistencia
             {
-                IdAsistencia = Guid.NewGuid(),
-                FechaAsistencia = now,
-                Turno = turno,
+                Id = Guid.NewGuid(),
+                EstudianteId = estudianteId,
+                Fecha = hoy
+            };
 
-                IdEstudiante = estudiante.IdEstudiante,
-                Estudiante = estudiante,
-
-                IdTipoAsistencia = tipoAsistencia.IdTipo,
-                TipoAsistencia = tipoAsistencia
-            });
+            _context.Asistencias.Add(asistencia);
         }
 
-        await _context.SaveChangesAsync();
+        if (request.Turno == "Mañana")
+            asistencia.TipoManianaId = tipo.IdTipo;
+        else
+            asistencia.TipoTardeId = tipo.IdTipo;
+
+        asistencia.CalcularAsistencia();
     }
+
+    await _context.SaveChangesAsync();
+}
+
 
     public async Task<List<SelectOptionDto>> GetCursosAsync()
         {

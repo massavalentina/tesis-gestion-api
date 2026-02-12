@@ -14,24 +14,6 @@ public class AttendanceController : ControllerBase
         _attendanceService = attendanceService;
     }
 
-    [HttpPost("scan")]
-    public async Task<IActionResult> ScanAttendance([FromBody] AttendanceScanRequest request)
-    {
-        try
-        {
-            var result = await _attendanceService.ScanAsync(request);
-            return Ok(result);
-        }
-        catch (AttendanceException ex)
-        {
-            return Conflict(new
-            {
-                code = ex.Code,
-                message = ex.Message
-            });
-        }
-    }
-
     [HttpPost("preview")]
     public async Task<IActionResult> PreviewAttendance([FromBody] AttendancePreviewRequest request)
     {
