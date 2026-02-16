@@ -17,8 +17,8 @@ namespace RepoDB.Entities
         public Usuario Usuario { get; set; }
 
         
-        public ICollection<Curricula> Curriculas { get; set; }
-            = new List<Curricula>();
+        public ICollection<EspacioCurricular> EspaciosCurriculares { get; set; }
+            = new List<EspacioCurricular>();
     }
 
 }
