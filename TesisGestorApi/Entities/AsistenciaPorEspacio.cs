@@ -13,10 +13,6 @@ namespace RepoDB.Entities
         public Guid IdEstudiante { get; set; }  // A que estudiante pertenece
         public Estudiante Estudiante { get; set; } = null!;
 
-        
-        public Guid IdEC { get; set; } // Espacio curricular + docente
-        public EspacioCurricular EspacioCurricular { get; set; } = null!; 
-
         public Guid IdClaseDictada { get; set; } // Clase dictada ese día para ese espacio curricular
         public ClaseDictada ClaseDictada { get; set; }
         public bool Presente { get; set; }

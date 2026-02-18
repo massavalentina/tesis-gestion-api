@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace TesisGestorApi.Migrations
 {
     /// <inheritdoc />
-    public partial class FirstMigration : Migration
+    public partial class FixAsistenciaRedundancy : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -24,6 +24,22 @@ namespace TesisGestorApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Curriculas",
+                columns: table => new
+                {
+                    IdCurricula = table.Column<Guid>(type: "uuid", nullable: false),
+                    Nombre = table.Column<string>(type: "text", nullable: false),
+                    Descripcion = table.Column<string>(type: "text", nullable: false),
+                    Codigo = table.Column<string>(type: "text", nullable: false),
+                    Estado = table.Column<string>(type: "text", nullable: false),
+                    EsContraturno = table.Column<bool>(type: "boolean", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Curriculas", x => x.IdCurricula);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Divisiones",
                 columns: table => new
                 {
@@ -33,22 +49,6 @@ namespace TesisGestorApi.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Divisiones", x => x.IdDivision);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "EspaciosCurriculares",
-                columns: table => new
-                {
-                    IdEC = table.Column<Guid>(type: "uuid", nullable: false),
-                    Nombre = table.Column<string>(type: "text", nullable: false),
-                    Descripcion = table.Column<string>(type: "text", nullable: false),
-                    Codigo = table.Column<string>(type: "text", nullable: false),
-                    Estado = table.Column<string>(type: "text", nullable: false),
-                    EsContraturno = table.Column<bool>(type: "boolean", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_EspaciosCurriculares", x => x.IdEC);
                 });
 
             migrationBuilder.CreateTable(
@@ -84,9 +84,9 @@ namespace TesisGestorApi.Migrations
                 columns: table => new
                 {
                     IdTipo = table.Column<Guid>(type: "uuid", nullable: false),
-                    Codigo = table.Column<string>(type: "text", nullable: false),
-                    ValorAsistenciaMañana = table.Column<decimal>(type: "numeric", nullable: true),
-                    ValorAsistenciaTarde = table.Column<decimal>(type: "numeric", nullable: true)
+                    Codigo = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
+                    Descripcion = table.Column<string>(type: "text", nullable: false),
+                    ValorBase = table.Column<decimal>(type: "numeric", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -138,25 +138,23 @@ namespace TesisGestorApi.Migrations
                     Estado = table.Column<bool>(type: "boolean", nullable: false),
                     AñoLectivo = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     IdAnio = table.Column<Guid>(type: "uuid", nullable: false),
-                    AnioIdAnio = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdDivision = table.Column<Guid>(type: "uuid", nullable: false),
-                    DivisionIdDivision = table.Column<Guid>(type: "uuid", nullable: false)
+                    IdDivision = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Cursos", x => x.IdCurso);
                     table.ForeignKey(
-                        name: "FK_Cursos_Anios_AnioIdAnio",
-                        column: x => x.AnioIdAnio,
+                        name: "FK_Cursos_Anios_IdAnio",
+                        column: x => x.IdAnio,
                         principalTable: "Anios",
                         principalColumn: "IdAnio",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_Cursos_Divisiones_DivisionIdDivision",
-                        column: x => x.DivisionIdDivision,
+                        name: "FK_Cursos_Divisiones_IdDivision",
+                        column: x => x.IdDivision,
                         principalTable: "Divisiones",
                         principalColumn: "IdDivision",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -188,29 +186,42 @@ namespace TesisGestorApi.Migrations
                 name: "Asistencias",
                 columns: table => new
                 {
-                    IdAsistencia = table.Column<Guid>(type: "uuid", nullable: false),
-                    FechaAsistencia = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    Turno = table.Column<int>(type: "integer", nullable: false),
-                    IdTipoAsistencia = table.Column<Guid>(type: "uuid", nullable: false),
-                    TipoAsistenciaIdTipo = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdEstudiante = table.Column<Guid>(type: "uuid", nullable: false),
-                    EstudianteIdEstudiante = table.Column<Guid>(type: "uuid", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Fecha = table.Column<DateOnly>(type: "date", nullable: false),
+                    EstudianteId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TipoManianaId = table.Column<Guid>(type: "uuid", nullable: true),
+                    HoraEntradaManana = table.Column<TimeSpan>(type: "interval", nullable: true),
+                    HoraSalidaManana = table.Column<TimeSpan>(type: "interval", nullable: true),
+                    HoraEntradaTarde = table.Column<TimeSpan>(type: "interval", nullable: true),
+                    HoraSalidaTarde = table.Column<TimeSpan>(type: "interval", nullable: true),
+                    TipoTardeId = table.Column<Guid>(type: "uuid", nullable: true),
+                    ValorTotalInasistencia = table.Column<decimal>(type: "numeric", nullable: false),
+                    EstudianteIdEstudiante = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Asistencias", x => x.IdAsistencia);
+                    table.PrimaryKey("PK_Asistencias", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_Asistencias_Estudiantes_EstudianteIdEstudiante",
-                        column: x => x.EstudianteIdEstudiante,
+                        name: "FK_Asistencias_Estudiantes_EstudianteId",
+                        column: x => x.EstudianteId,
                         principalTable: "Estudiantes",
                         principalColumn: "IdEstudiante",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_Asistencias_TiposAsistencia_TipoAsistenciaIdTipo",
-                        column: x => x.TipoAsistenciaIdTipo,
+                        name: "FK_Asistencias_Estudiantes_EstudianteIdEstudiante",
+                        column: x => x.EstudianteIdEstudiante,
+                        principalTable: "Estudiantes",
+                        principalColumn: "IdEstudiante");
+                    table.ForeignKey(
+                        name: "FK_Asistencias_TiposAsistencia_TipoManianaId",
+                        column: x => x.TipoManianaId,
                         principalTable: "TiposAsistencia",
-                        principalColumn: "IdTipo",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "IdTipo");
+                    table.ForeignKey(
+                        name: "FK_Asistencias_TiposAsistencia_TipoTardeId",
+                        column: x => x.TipoTardeId,
+                        principalTable: "TiposAsistencia",
+                        principalColumn: "IdTipo");
                 });
 
             migrationBuilder.CreateTable(
@@ -290,45 +301,22 @@ namespace TesisGestorApi.Migrations
                     IdCursado = table.Column<Guid>(type: "uuid", nullable: false),
                     Estado = table.Column<bool>(type: "boolean", nullable: false),
                     IdEstudiante = table.Column<Guid>(type: "uuid", nullable: false),
-                    EstudianteIdEstudiante = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdCurso = table.Column<Guid>(type: "uuid", nullable: false),
-                    CursoIdCurso = table.Column<Guid>(type: "uuid", nullable: false)
+                    IdCurso = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_DetallesCursado", x => x.IdCursado);
                     table.ForeignKey(
-                        name: "FK_DetallesCursado_Cursos_CursoIdCurso",
-                        column: x => x.CursoIdCurso,
+                        name: "FK_DetallesCursado_Cursos_IdCurso",
+                        column: x => x.IdCurso,
                         principalTable: "Cursos",
                         principalColumn: "IdCurso",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_DetallesCursado_Estudiantes_EstudianteIdEstudiante",
-                        column: x => x.EstudianteIdEstudiante,
+                        name: "FK_DetallesCursado_Estudiantes_IdEstudiante",
+                        column: x => x.IdEstudiante,
                         principalTable: "Estudiantes",
                         principalColumn: "IdEstudiante",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Horarios",
-                columns: table => new
-                {
-                    IdHorario = table.Column<Guid>(type: "uuid", nullable: false),
-                    HorarioEntrada = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    HorarioSalida = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    IdCurso = table.Column<Guid>(type: "uuid", nullable: false),
-                    CursoIdCurso = table.Column<Guid>(type: "uuid", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Horarios", x => x.IdHorario);
-                    table.ForeignKey(
-                        name: "FK_Horarios_Cursos_CursoIdCurso",
-                        column: x => x.CursoIdCurso,
-                        principalTable: "Cursos",
-                        principalColumn: "IdCurso",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -382,7 +370,7 @@ namespace TesisGestorApi.Migrations
                         name: "FK_RetirosAnticipados_Asistencias_IdAsistencia",
                         column: x => x.IdAsistencia,
                         principalTable: "Asistencias",
-                        principalColumn: "IdAsistencia",
+                        principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_RetirosAnticipados_Estudiantes_EstudianteIdEstudiante",
@@ -399,45 +387,83 @@ namespace TesisGestorApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Curriculas",
+                name: "EspaciosCurriculares",
                 columns: table => new
                 {
-                    IdCurricula = table.Column<Guid>(type: "uuid", nullable: false),
+                    IdEC = table.Column<Guid>(type: "uuid", nullable: false),
                     IdCurso = table.Column<Guid>(type: "uuid", nullable: false),
-                    CursoIdCurso = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdHorario = table.Column<Guid>(type: "uuid", nullable: false),
-                    HorarioIdHorario = table.Column<Guid>(type: "uuid", nullable: false),
                     IdDocente = table.Column<Guid>(type: "uuid", nullable: false),
-                    DocenteIdDocente = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdEspacioCurricular = table.Column<Guid>(type: "uuid", nullable: false),
-                    EspacioCurricularIdEC = table.Column<Guid>(type: "uuid", nullable: false)
+                    IdCurricula = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Curriculas", x => x.IdCurricula);
+                    table.PrimaryKey("PK_EspaciosCurriculares", x => x.IdEC);
                     table.ForeignKey(
-                        name: "FK_Curriculas_Cursos_CursoIdCurso",
-                        column: x => x.CursoIdCurso,
+                        name: "FK_EspaciosCurriculares_Curriculas_IdCurricula",
+                        column: x => x.IdCurricula,
+                        principalTable: "Curriculas",
+                        principalColumn: "IdCurricula",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_EspaciosCurriculares_Cursos_IdCurso",
+                        column: x => x.IdCurso,
                         principalTable: "Cursos",
                         principalColumn: "IdCurso",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_Curriculas_Docentes_DocenteIdDocente",
-                        column: x => x.DocenteIdDocente,
+                        name: "FK_EspaciosCurriculares_Docentes_IdDocente",
+                        column: x => x.IdDocente,
                         principalTable: "Docentes",
                         principalColumn: "IdDocente",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ClasesDictadas",
+                columns: table => new
+                {
+                    IdClaseDictada = table.Column<Guid>(type: "uuid", nullable: false),
+                    Fecha = table.Column<DateOnly>(type: "date", nullable: false),
+                    Tema = table.Column<string>(type: "text", nullable: true),
+                    Dictada = table.Column<bool>(type: "boolean", nullable: false),
+                    IdEC = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ClasesDictadas", x => x.IdClaseDictada);
                     table.ForeignKey(
-                        name: "FK_Curriculas_EspaciosCurriculares_EspacioCurricularIdEC",
-                        column: x => x.EspacioCurricularIdEC,
+                        name: "FK_ClasesDictadas_EspaciosCurriculares_IdEC",
+                        column: x => x.IdEC,
                         principalTable: "EspaciosCurriculares",
                         principalColumn: "IdEC",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Horarios",
+                columns: table => new
+                {
+                    IdHorario = table.Column<Guid>(type: "uuid", nullable: false),
+                    DíaSemana = table.Column<int>(type: "integer", nullable: false),
+                    HorarioEntrada = table.Column<TimeSpan>(type: "interval", nullable: false),
+                    HorarioSalida = table.Column<TimeSpan>(type: "interval", nullable: false),
+                    IdCurso = table.Column<Guid>(type: "uuid", nullable: false),
+                    IdEC = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Horarios", x => x.IdHorario);
                     table.ForeignKey(
-                        name: "FK_Curriculas_Horarios_HorarioIdHorario",
-                        column: x => x.HorarioIdHorario,
-                        principalTable: "Horarios",
-                        principalColumn: "IdHorario",
+                        name: "FK_Horarios_Cursos_IdCurso",
+                        column: x => x.IdCurso,
+                        principalTable: "Cursos",
+                        principalColumn: "IdCurso",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Horarios_EspaciosCurriculares_IdEC",
+                        column: x => x.IdEC,
+                        principalTable: "EspaciosCurriculares",
+                        principalColumn: "IdEC",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -446,36 +472,34 @@ namespace TesisGestorApi.Migrations
                 columns: table => new
                 {
                     IdAsistenciaEspacio = table.Column<Guid>(type: "uuid", nullable: false),
-                    FechaAsistencia = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    Fecha = table.Column<DateOnly>(type: "date", nullable: false),
                     IdEstudiante = table.Column<Guid>(type: "uuid", nullable: false),
-                    EstudianteIdEstudiante = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdCurricula = table.Column<Guid>(type: "uuid", nullable: false),
-                    CurriculaIdCurricula = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdTipoAsistencia = table.Column<Guid>(type: "uuid", nullable: false),
-                    TipoAsistenciaIdTipo = table.Column<Guid>(type: "uuid", nullable: false)
+                    IdClaseDictada = table.Column<Guid>(type: "uuid", nullable: false),
+                    Presente = table.Column<bool>(type: "boolean", nullable: false),
+                    Motivo = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_AsistenciasPorEspacio", x => x.IdAsistenciaEspacio);
                     table.ForeignKey(
-                        name: "FK_AsistenciasPorEspacio_Curriculas_CurriculaIdCurricula",
-                        column: x => x.CurriculaIdCurricula,
-                        principalTable: "Curriculas",
-                        principalColumn: "IdCurricula",
+                        name: "FK_AsistenciasPorEspacio_ClasesDictadas_IdClaseDictada",
+                        column: x => x.IdClaseDictada,
+                        principalTable: "ClasesDictadas",
+                        principalColumn: "IdClaseDictada",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_AsistenciasPorEspacio_Estudiantes_EstudianteIdEstudiante",
-                        column: x => x.EstudianteIdEstudiante,
+                        name: "FK_AsistenciasPorEspacio_Estudiantes_IdEstudiante",
+                        column: x => x.IdEstudiante,
                         principalTable: "Estudiantes",
                         principalColumn: "IdEstudiante",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_AsistenciasPorEspacio_TiposAsistencia_TipoAsistenciaIdTipo",
-                        column: x => x.TipoAsistenciaIdTipo,
-                        principalTable: "TiposAsistencia",
-                        principalColumn: "IdTipo",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Asistencias_EstudianteId_Fecha",
+                table: "Asistencias",
+                columns: new[] { "EstudianteId", "Fecha" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Asistencias_EstudianteIdEstudiante",
@@ -483,24 +507,30 @@ namespace TesisGestorApi.Migrations
                 column: "EstudianteIdEstudiante");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Asistencias_TipoAsistenciaIdTipo",
+                name: "IX_Asistencias_TipoManianaId",
                 table: "Asistencias",
-                column: "TipoAsistenciaIdTipo");
+                column: "TipoManianaId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_AsistenciasPorEspacio_CurriculaIdCurricula",
-                table: "AsistenciasPorEspacio",
-                column: "CurriculaIdCurricula");
+                name: "IX_Asistencias_TipoTardeId",
+                table: "Asistencias",
+                column: "TipoTardeId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_AsistenciasPorEspacio_EstudianteIdEstudiante",
+                name: "IX_AsistenciasPorEspacio_IdClaseDictada_IdEstudiante",
                 table: "AsistenciasPorEspacio",
-                column: "EstudianteIdEstudiante");
+                columns: new[] { "IdClaseDictada", "IdEstudiante" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_AsistenciasPorEspacio_TipoAsistenciaIdTipo",
+                name: "IX_AsistenciasPorEspacio_IdEstudiante",
                 table: "AsistenciasPorEspacio",
-                column: "TipoAsistenciaIdTipo");
+                column: "IdEstudiante");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ClasesDictadas_IdEC_Fecha",
+                table: "ClasesDictadas",
+                columns: new[] { "IdEC", "Fecha" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_CredencialesQR_EstudianteIdEstudiante",
@@ -508,44 +538,24 @@ namespace TesisGestorApi.Migrations
                 column: "EstudianteIdEstudiante");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Curriculas_CursoIdCurso",
-                table: "Curriculas",
-                column: "CursoIdCurso");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Curriculas_DocenteIdDocente",
-                table: "Curriculas",
-                column: "DocenteIdDocente");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Curriculas_EspacioCurricularIdEC",
-                table: "Curriculas",
-                column: "EspacioCurricularIdEC");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Curriculas_HorarioIdHorario",
-                table: "Curriculas",
-                column: "HorarioIdHorario");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Cursos_AnioIdAnio",
+                name: "IX_Cursos_IdAnio",
                 table: "Cursos",
-                column: "AnioIdAnio");
+                column: "IdAnio");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Cursos_DivisionIdDivision",
+                name: "IX_Cursos_IdDivision",
                 table: "Cursos",
-                column: "DivisionIdDivision");
+                column: "IdDivision");
 
             migrationBuilder.CreateIndex(
-                name: "IX_DetallesCursado_CursoIdCurso",
+                name: "IX_DetallesCursado_IdCurso",
                 table: "DetallesCursado",
-                column: "CursoIdCurso");
+                column: "IdCurso");
 
             migrationBuilder.CreateIndex(
-                name: "IX_DetallesCursado_EstudianteIdEstudiante",
+                name: "IX_DetallesCursado_IdEstudiante",
                 table: "DetallesCursado",
-                column: "EstudianteIdEstudiante");
+                column: "IdEstudiante");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Docentes_IdUsuario",
@@ -554,9 +564,29 @@ namespace TesisGestorApi.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_Horarios_CursoIdCurso",
+                name: "IX_EspaciosCurriculares_IdCurricula",
+                table: "EspaciosCurriculares",
+                column: "IdCurricula");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EspaciosCurriculares_IdCurso",
+                table: "EspaciosCurriculares",
+                column: "IdCurso");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EspaciosCurriculares_IdDocente",
+                table: "EspaciosCurriculares",
+                column: "IdDocente");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Horarios_IdCurso",
                 table: "Horarios",
-                column: "CursoIdCurso");
+                column: "IdCurso");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Horarios_IdEC",
+                table: "Horarios",
+                column: "IdEC");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Preceptores_CursoIdCurso",
@@ -609,6 +639,9 @@ namespace TesisGestorApi.Migrations
                 name: "DetallesCursado");
 
             migrationBuilder.DropTable(
+                name: "Horarios");
+
+            migrationBuilder.DropTable(
                 name: "Preceptores");
 
             migrationBuilder.DropTable(
@@ -621,7 +654,7 @@ namespace TesisGestorApi.Migrations
                 name: "UsuariosRoles");
 
             migrationBuilder.DropTable(
-                name: "Curriculas");
+                name: "ClasesDictadas");
 
             migrationBuilder.DropTable(
                 name: "Asistencias");
@@ -633,13 +666,7 @@ namespace TesisGestorApi.Migrations
                 name: "Roles");
 
             migrationBuilder.DropTable(
-                name: "Docentes");
-
-            migrationBuilder.DropTable(
                 name: "EspaciosCurriculares");
-
-            migrationBuilder.DropTable(
-                name: "Horarios");
 
             migrationBuilder.DropTable(
                 name: "Estudiantes");
@@ -648,16 +675,22 @@ namespace TesisGestorApi.Migrations
                 name: "TiposAsistencia");
 
             migrationBuilder.DropTable(
-                name: "Usuarios");
+                name: "Curriculas");
 
             migrationBuilder.DropTable(
                 name: "Cursos");
+
+            migrationBuilder.DropTable(
+                name: "Docentes");
 
             migrationBuilder.DropTable(
                 name: "Anios");
 
             migrationBuilder.DropTable(
                 name: "Divisiones");
+
+            migrationBuilder.DropTable(
+                name: "Usuarios");
         }
     }
 }

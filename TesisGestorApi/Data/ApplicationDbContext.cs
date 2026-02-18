@@ -46,7 +46,7 @@ namespace TesisGestorApi.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Seguridad y usuarios
+            /// Seguridad y usuarios
 
             modelBuilder.Entity<UsuarioRol>()
                 .HasKey(ur => new { ur.IdUsuario, ur.IdRol });
@@ -55,13 +55,13 @@ namespace TesisGestorApi.Data
                 .HasOne(ur => ur.Usuario)
                 .WithMany(u => u.UsuarioRoles)
                 .HasForeignKey(ur => ur.IdUsuario)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Cascade); // Composición. Si borro el Usuario, borro sus roles asociados.
 
             modelBuilder.Entity<UsuarioRol>()
                 .HasOne(ur => ur.Rol)
                 .WithMany(r => r.UsuarioRoles)
                 .HasForeignKey(ur => ur.IdRol)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Cascade); // Composición. Si borro el Rol se borran las asociaciones con los usuarios.
 
             // Usuario <-> Docente
             modelBuilder.Entity<Docente>()
@@ -75,9 +75,9 @@ namespace TesisGestorApi.Data
                 .HasOne(p => p.Usuario)
                 .WithOne(u => u.Preceptor)
                 .HasForeignKey<Preceptor>(p => p.IdUsuario)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Cascade); // Composición. Si borro el usuario, borro el preceptor asociado.
 
-            // Estudiantes y Tutores
+            /// Estudiantes y Tutores
             // N:M Tutor <-> Estudiante
             modelBuilder.Entity<TutorEstudiante>()
                 .HasKey(te => new { te.IdTutor, te.IdEstudiante });
@@ -92,7 +92,40 @@ namespace TesisGestorApi.Data
                 .WithMany(e => e.TutorEstudiantes)
                 .HasForeignKey(te => te.IdEstudiante);
 
-            // Estructura Académica
+            /// Estructura Académica
+            
+            // Cursos Concretos - 1ero A 2026
+            modelBuilder.Entity<Curso>(entity =>
+            {
+                // Anio 1:N Cursos
+                entity.HasOne(c => c.Anio)
+                      .WithMany(a => a.Cursos)
+                      .HasForeignKey(c => c.IdAnio) 
+                      .OnDelete(DeleteBehavior.Restrict); // No se puede borrar el año si hay cursos asociados a este.
+
+                // División 1:N Cursos
+                entity.HasOne(c => c.Division)
+                      .WithMany(d => d.Cursos)
+                      .HasForeignKey(c => c.IdDivision)
+                      .OnDelete(DeleteBehavior.Restrict); // No se puede borrar la división si hay cursos asociados a esta. 
+            });
+
+            // Detalles de Cursado - Inscripciones concretas
+            modelBuilder.Entity<DetalleCursado>(entity =>
+            {
+                // Estudiante 1:N Detalles de Cursado
+                entity.HasOne(d => d.Estudiante)
+                      .WithMany(e => e.DetallesCursado)
+                      .HasForeignKey(d => d.IdEstudiante)
+                      .OnDelete(DeleteBehavior.Cascade); // Si se borra el Estudiante, se borran sus detalles de cursado.
+
+                // Curso 1:N Detalles de Cursado
+                entity.HasOne(d => d.Curso)
+                      .WithMany(c => c.DetallesCursado)
+                      .HasForeignKey(d => d.IdCurso)    
+                      .OnDelete(DeleteBehavior.Cascade); // Si se borra el Curso, se borran los detalles asociados a este Curso. 
+            });
+
             // Espacio Curricular concreto - Matemática 1ero A
             modelBuilder.Entity<EspacioCurricular>(entity =>
             {
@@ -106,32 +139,32 @@ namespace TesisGestorApi.Data
                 entity.HasOne(e => e.Curricula)
                       .WithMany(c => c.EspaciosCurriculares)
                       .HasForeignKey(e => e.IdCurricula)
-                      .OnDelete(DeleteBehavior.Restrict); // Composición. Si borro la currícula se borra el espacio
+                      .OnDelete(DeleteBehavior.Restrict); // Agregación. No se puede borrar la Currícula si hay Espacios asociados a esta.
 
                 // Docente 1:N Espacios Curriculares
                 entity.HasOne(e => e.Docente)
                       .WithMany(d => d.EspaciosCurriculares) 
                       .HasForeignKey(e => e.IdDocente)
-                      .OnDelete(DeleteBehavior.Restrict);
+                      .OnDelete(DeleteBehavior.Restrict); // Agregación. No se puede borrar el docente si hay espacios asociados a este.
             });
 
             // Horario Semanal
             modelBuilder.Entity<Horario>(entity =>
             {
-                // Horario 1:1 Espacio Curricular
+                // Espacio Curricular 1:1 Horario
                 entity.HasOne(h => h.EspacioCurricular)
                       .WithMany(ec => ec.Horarios)
                       .HasForeignKey(h => h.IdEC)
-                      .OnDelete(DeleteBehavior.Cascade);
+                      .OnDelete(DeleteBehavior.Cascade); // Si se borra el espacio curricular, el horario se borra también.
 
-                // Horario 1:1 Curso
+                // Curso 1:1 Horario
                 entity.HasOne(h => h.Curso)
                       .WithMany(c => c.Horarios)
                       .HasForeignKey(h => h.IdCurso)
-                      .OnDelete(DeleteBehavior.Restrict);
+                      .OnDelete(DeleteBehavior.Restrict); // No se puede borrar el curso si hay horarios asociados a este.
             });
 
-            // Asistencia
+            /// Asistencia
 
             // Clase Dictada
             modelBuilder.Entity<ClaseDictada>(entity =>
@@ -140,7 +173,7 @@ namespace TesisGestorApi.Data
                 entity.HasOne(c => c.EspacioCurricular)
                       .WithMany(ec => ec.ClasesDictadas)
                       .HasForeignKey(c => c.IdEC)
-                      .OnDelete(DeleteBehavior.Cascade);
+                      .OnDelete(DeleteBehavior.Cascade); // Si se borra el espacio curricular, se borran las clases dictadas asociadas a este.
                 entity.HasIndex(c => new { c.IdEC, c.Fecha });
             });
 
@@ -157,7 +190,7 @@ namespace TesisGestorApi.Data
                 entity.HasOne(ae => ae.Estudiante)
                       .WithMany(e => e.AsistenciasPorEspacio) 
                       .HasForeignKey(ae => ae.IdEstudiante)
-                      .OnDelete(DeleteBehavior.Restrict); // Composición. Si borro al estudiante, se borran las asistencias de este
+                      .OnDelete(DeleteBehavior.Restrict); // Agregación. No se puede borrar al usuario si tiene asistencias.
 
                 // Integridad: Un alumno solo tiene 1 registro por clase dictada
                 entity.HasIndex(ae => new { ae.IdClaseDictada, ae.IdEstudiante }).IsUnique();
@@ -170,18 +203,18 @@ namespace TesisGestorApi.Data
                 entity.HasOne(a => a.Estudiante)
                       .WithMany() 
                       .HasForeignKey(a => a.EstudianteId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                      .OnDelete(DeleteBehavior.Cascade); // Si borras al alumno, borras sus asistencias diarias
 
                 // Integridad: Un alumno solo tiene un registro por día
                 entity.HasIndex(a => new { a.EstudianteId, a.Fecha }).IsUnique();
             });
 
-            // Retiro Anticipado 1:1 
+            // Asistencias 1:1 Retiro Anticipado 
             modelBuilder.Entity<RetiroAnticipado>()
                 .HasOne(r => r.Asistencia)
                 .WithOne() 
                 .HasForeignKey<RetiroAnticipado>(r => r.IdAsistencia)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Cascade); // Si borro la asistencia, se borra el retiro
         }
     }
 }

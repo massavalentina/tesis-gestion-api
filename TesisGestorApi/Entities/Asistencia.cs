@@ -22,52 +22,65 @@ namespace RepoDB.Entities
         public TipoAsistencia? TipoTarde { get; set; } 
         public decimal ValorTotalInasistencia { get; set; } // Valor total por cálculo de asistencia a partir de los tipos de asistencia de los turnos
 
-        /// Recalcula el valor total basándose en los estados actuales de Mañana y Tarde.
-        public void CalcularAsistencia()
+        /// Recalcula el valor total basándose en los estados actuales de Mañana y Tarde,
+        /// así como el tiempo de asistencia total en ambos turnos
+        public void CalcularAsistencia(
+            double minTotalesM, double minPerdidaIngresoM, double minPerdidaSalidaM,
+            double minTotalesT, double minPerdidaIngresoT, double minPerdidaSalidaT)
         {
-            decimal total = 0m;
+            decimal valorM = 0m;
+            decimal valorT = 0m;
 
-            // Turno Mañana
+            // --- TURNO MAÑANA ---
             if (TipoManiana != null)
             {
-                switch (TipoManiana.Codigo)
+                // 1. Valor por LLEGADA (Según código manual del preceptor)
+                decimal valorLlegada = TipoManiana.Codigo.ToUpper() switch
                 {
-                    case "A": // Ausente Mañana = Inasistencia Completa 
-                        ValorTotalInasistencia = 1.0m;
-                        return; 
-                    case "LLT":
-                        total += 0.25m; // Llegada Tarde = 1/4 falta
-                        break;
-                    case "LLTE":
-                        total += 0.5m; // Llegada Tarde Extendida = 1/2 falta
-                        break;
-                    case "LLTC":
-                        total += 1.0m; // Llegada Tarde Completa = 1 falta
-                        break;
-                    case "RA": 
-                        total += 0.5m; // Retiro Anticipado  = 1/2 falta
-                        break;
-                    case "RAE": 
-                        ValorTotalInasistencia = 1.0m; // Retiro Anticipado Extendido = 1 falta
-                        break;
+                    "LLT" => 0.25m,
+                    "LLTE" => 0.50m,
+                    "LLTC" => 1.00m,
+                    "A" => 1.00m, // Si puso Ausente manual, ya es 1.0
+                    "RAE" => 1.00m, // RAE manual pisa todo
+                    _ => 0.00m
+                };
 
-                    default: // Presente (P) - Ausente No Computado (ANC) - Retiro Anticipado Express (RE)
-                        total += 0.0m;
-                        break;
+                // 2. Valor por RETIRO (Automático según tiempo perdido AL FINAL)
+                decimal valorRetiro = 0m;
+
+                // Solo calculamos retiro si NO es un código de inasistencia total manual
+                if (minTotalesM > 0 && valorLlegada < 1.0m)
+                {
+                    double porcPerdidaSalida = (minPerdidaSalidaM / minTotalesM) * 100.0;
+
+                    if (porcPerdidaSalida > 50) valorRetiro = 1.0m; // RAE Automático
+                    else if (porcPerdidaSalida > 10) valorRetiro = 0.5m; // RA Automático
+                                                                         // Si es <= 10% se considera RE (Express) y no suma
                 }
+
+                // 3. Suma inteligente
+                valorM = Math.Min(1.0m, valorLlegada + valorRetiro);
             }
 
-            // Turno Tarde
+            // --- TURNO TARDE ---
             if (TipoTarde != null)
             {
-                if (TipoTarde.Codigo.ToUpper() == "A") // Ausente Tarde
+                if (TipoTarde.Codigo.ToUpper() == "A")
                 {
-                    total += 0.5m;
+                    valorT = 0.5m;
+                }
+                else if (minTotalesT > 0)
+                {
+                    // En la tarde, miramos la pérdida global (ingreso + salida) o solo salida
+                    // según tu regla. Generalmente Retiro Tarde = Media Falta.
+                    double porcPerdidaSalida = (minPerdidaSalidaT / minTotalesT) * 100.0;
+
+                    if (porcPerdidaSalida > 10) valorT = 0.5m;
                 }
             }
 
-            // 3. ASIGNACIÓN FINAL (Tope de 1)
-            ValorTotalInasistencia = total > 1.5m ? 1.5m : total;
+            // --- TOTAL FINAL ---
+            ValorTotalInasistencia = Math.Min(1.5m, valorM + valorT);
         }
     }
 
