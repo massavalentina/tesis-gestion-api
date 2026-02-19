@@ -117,16 +117,10 @@ namespace TesisGestorApi.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("EspacioCurricularIdEC")
-                        .HasColumnType("uuid");
-
                     b.Property<DateOnly>("Fecha")
                         .HasColumnType("date");
 
                     b.Property<Guid>("IdClaseDictada")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("IdEC")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("IdEstudiante")
@@ -140,8 +134,6 @@ namespace TesisGestorApi.Migrations
                         .HasColumnType("boolean");
 
                     b.HasKey("IdAsistenciaEspacio");
-
-                    b.HasIndex("EspacioCurricularIdEC");
 
                     b.HasIndex("IdEstudiante");
 
@@ -224,18 +216,12 @@ namespace TesisGestorApi.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("AnioIdAnio")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime>("AñoLectivo")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Codigo")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<Guid>("DivisionIdDivision")
-                        .HasColumnType("uuid");
 
                     b.Property<bool>("Estado")
                         .HasColumnType("boolean");
@@ -248,9 +234,9 @@ namespace TesisGestorApi.Migrations
 
                     b.HasKey("IdCurso");
 
-                    b.HasIndex("AnioIdAnio");
+                    b.HasIndex("IdAnio");
 
-                    b.HasIndex("DivisionIdDivision");
+                    b.HasIndex("IdDivision");
 
                     b.ToTable("Cursos");
                 });
@@ -261,14 +247,8 @@ namespace TesisGestorApi.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("CursoIdCurso")
-                        .HasColumnType("uuid");
-
                     b.Property<bool>("Estado")
                         .HasColumnType("boolean");
-
-                    b.Property<Guid>("EstudianteIdEstudiante")
-                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IdCurso")
                         .HasColumnType("uuid");
@@ -278,9 +258,9 @@ namespace TesisGestorApi.Migrations
 
                     b.HasKey("IdCursado");
 
-                    b.HasIndex("CursoIdCurso");
+                    b.HasIndex("IdCurso");
 
-                    b.HasIndex("EstudianteIdEstudiante");
+                    b.HasIndex("IdEstudiante");
 
                     b.ToTable("DetallesCursado");
                 });
@@ -676,12 +656,6 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("RepoDB.Entities.AsistenciaPorEspacio", b =>
                 {
-                    b.HasOne("RepoDB.Entities.EspacioCurricular", "EspacioCurricular")
-                        .WithMany()
-                        .HasForeignKey("EspacioCurricularIdEC")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("ClaseDictada", "ClaseDictada")
                         .WithMany("Asistencias")
                         .HasForeignKey("IdClaseDictada")
@@ -695,8 +669,6 @@ namespace TesisGestorApi.Migrations
                         .IsRequired();
 
                     b.Navigation("ClaseDictada");
-
-                    b.Navigation("EspacioCurricular");
 
                     b.Navigation("Estudiante");
                 });
@@ -716,14 +688,14 @@ namespace TesisGestorApi.Migrations
                 {
                     b.HasOne("RepoDB.Entities.Anio", "Anio")
                         .WithMany("Cursos")
-                        .HasForeignKey("AnioIdAnio")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("IdAnio")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("RepoDB.Entities.Division", "Division")
                         .WithMany("Cursos")
-                        .HasForeignKey("DivisionIdDivision")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("IdDivision")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Anio");
@@ -735,13 +707,13 @@ namespace TesisGestorApi.Migrations
                 {
                     b.HasOne("RepoDB.Entities.Curso", "Curso")
                         .WithMany("DetallesCursado")
-                        .HasForeignKey("CursoIdCurso")
+                        .HasForeignKey("IdCurso")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
                         .WithMany("DetallesCursado")
-                        .HasForeignKey("EstudianteIdEstudiante")
+                        .HasForeignKey("IdEstudiante")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
