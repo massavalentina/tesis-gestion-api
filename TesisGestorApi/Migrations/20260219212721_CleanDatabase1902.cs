@@ -6,11 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace TesisGestorApi.Migrations
 {
     /// <inheritdoc />
-<<<<<<<< HEAD:TesisGestorApi/Migrations/20260209223626_CleanMigration.cs
-    public partial class CleanMigration : Migration
-========
-    public partial class FixAsistenciaRedundancy : Migration
->>>>>>>> AST-01-HU-002:TesisGestorApi/Migrations/20260216160343_FixAsistenciaRedundancy.cs
+    public partial class CleanDatabase1902 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -191,13 +187,6 @@ namespace TesisGestorApi.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-<<<<<<<< HEAD:TesisGestorApi/Migrations/20260209223626_CleanMigration.cs
-                    Fecha = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    EstudianteId = table.Column<Guid>(type: "uuid", nullable: false),
-                    TipoManianaId = table.Column<Guid>(type: "uuid", nullable: true),
-                    TipoTardeId = table.Column<Guid>(type: "uuid", nullable: true),
-                    ValorTotalInasistencia = table.Column<decimal>(type: "numeric", nullable: false)
-========
                     Fecha = table.Column<DateOnly>(type: "date", nullable: false),
                     EstudianteId = table.Column<Guid>(type: "uuid", nullable: false),
                     TipoManianaId = table.Column<Guid>(type: "uuid", nullable: true),
@@ -208,7 +197,6 @@ namespace TesisGestorApi.Migrations
                     TipoTardeId = table.Column<Guid>(type: "uuid", nullable: true),
                     ValorTotalInasistencia = table.Column<decimal>(type: "numeric", nullable: false),
                     EstudianteIdEstudiante = table.Column<Guid>(type: "uuid", nullable: true)
->>>>>>>> AST-01-HU-002:TesisGestorApi/Migrations/20260216160343_FixAsistenciaRedundancy.cs
                 },
                 constraints: table =>
                 {
@@ -220,14 +208,11 @@ namespace TesisGestorApi.Migrations
                         principalColumn: "IdEstudiante",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-<<<<<<<< HEAD:TesisGestorApi/Migrations/20260209223626_CleanMigration.cs
-========
                         name: "FK_Asistencias_Estudiantes_EstudianteIdEstudiante",
                         column: x => x.EstudianteIdEstudiante,
                         principalTable: "Estudiantes",
                         principalColumn: "IdEstudiante");
                     table.ForeignKey(
->>>>>>>> AST-01-HU-002:TesisGestorApi/Migrations/20260216160343_FixAsistenciaRedundancy.cs
                         name: "FK_Asistencias_TiposAsistencia_TipoManianaId",
                         column: x => x.TipoManianaId,
                         principalTable: "TiposAsistencia",
@@ -336,30 +321,6 @@ namespace TesisGestorApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
-<<<<<<<< HEAD:TesisGestorApi/Migrations/20260209223626_CleanMigration.cs
-                name: "Horarios",
-                columns: table => new
-                {
-                    IdHorario = table.Column<Guid>(type: "uuid", nullable: false),
-                    HorarioEntrada = table.Column<TimeSpan>(type: "interval", nullable: false),
-                    HorarioSalida = table.Column<TimeSpan>(type: "interval", nullable: false),
-                    IdCurso = table.Column<Guid>(type: "uuid", nullable: false),
-                    CursoIdCurso = table.Column<Guid>(type: "uuid", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Horarios", x => x.IdHorario);
-                    table.ForeignKey(
-                        name: "FK_Horarios_Cursos_CursoIdCurso",
-                        column: x => x.CursoIdCurso,
-                        principalTable: "Cursos",
-                        principalColumn: "IdCurso",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-========
->>>>>>>> AST-01-HU-002:TesisGestorApi/Migrations/20260216160343_FixAsistenciaRedundancy.cs
                 name: "Preceptores",
                 columns: table => new
                 {
@@ -400,15 +361,14 @@ namespace TesisGestorApi.Migrations
                     EstudianteIdEstudiante = table.Column<Guid>(type: "uuid", nullable: false),
                     IdTutor = table.Column<Guid>(type: "uuid", nullable: false),
                     TutorIdTutor = table.Column<Guid>(type: "uuid", nullable: false),
-                    IdAsistencia = table.Column<Guid>(type: "uuid", nullable: false),
-                    AsistenciaId = table.Column<Guid>(type: "uuid", nullable: false)
+                    IdAsistencia = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_RetirosAnticipados", x => x.IdRetiro);
                     table.ForeignKey(
-                        name: "FK_RetirosAnticipados_Asistencias_AsistenciaId",
-                        column: x => x.AsistenciaId,
+                        name: "FK_RetirosAnticipados_Asistencias_IdAsistencia",
+                        column: x => x.IdAsistencia,
                         principalTable: "Asistencias",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -536,9 +496,6 @@ namespace TesisGestorApi.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-<<<<<<<< HEAD:TesisGestorApi/Migrations/20260209223626_CleanMigration.cs
-                name: "IX_Asistencias_EstudianteId",
-========
                 name: "IX_Asistencias_EstudianteId_Fecha",
                 table: "Asistencias",
                 columns: new[] { "EstudianteId", "Fecha" },
@@ -546,22 +503,13 @@ namespace TesisGestorApi.Migrations
 
             migrationBuilder.CreateIndex(
                 name: "IX_Asistencias_EstudianteIdEstudiante",
->>>>>>>> AST-01-HU-002:TesisGestorApi/Migrations/20260216160343_FixAsistenciaRedundancy.cs
                 table: "Asistencias",
-                column: "EstudianteId");
+                column: "EstudianteIdEstudiante");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Asistencias_TipoManianaId",
                 table: "Asistencias",
                 column: "TipoManianaId");
-<<<<<<<< HEAD:TesisGestorApi/Migrations/20260209223626_CleanMigration.cs
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Asistencias_TipoTardeId",
-                table: "Asistencias",
-                column: "TipoTardeId");
-========
->>>>>>>> AST-01-HU-002:TesisGestorApi/Migrations/20260216160343_FixAsistenciaRedundancy.cs
 
             migrationBuilder.CreateIndex(
                 name: "IX_Asistencias_TipoTardeId",
@@ -652,14 +600,15 @@ namespace TesisGestorApi.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_RetirosAnticipados_AsistenciaId",
-                table: "RetirosAnticipados",
-                column: "AsistenciaId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_RetirosAnticipados_EstudianteIdEstudiante",
                 table: "RetirosAnticipados",
                 column: "EstudianteIdEstudiante");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RetirosAnticipados_IdAsistencia",
+                table: "RetirosAnticipados",
+                column: "IdAsistencia",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_RetirosAnticipados_TutorIdTutor",

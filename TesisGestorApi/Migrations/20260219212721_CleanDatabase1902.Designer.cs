@@ -12,13 +12,8 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-<<<<<<<< HEAD:TesisGestorApi/Migrations/20260209223626_CleanMigration.Designer.cs
-    [Migration("20260209223626_CleanMigration")]
-    partial class CleanMigration
-========
-    [Migration("20260216160343_FixAsistenciaRedundancy")]
-    partial class FixAsistenciaRedundancy
->>>>>>>> AST-01-HU-002:TesisGestorApi/Migrations/20260216160343_FixAsistenciaRedundancy.Designer.cs
+    [Migration("20260219212721_CleanDatabase1902")]
+    partial class CleanDatabase1902
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
