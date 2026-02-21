@@ -14,6 +14,11 @@ builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
 builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 
 
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<IQrEmailService, QrEmailService>();
+
+builder.Services.AddSingleton<QrEmailProgressStore>();
+
 // Controllers
 builder.Services.AddControllers();
 
