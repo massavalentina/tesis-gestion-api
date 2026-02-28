@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RepoDB.Entities;
 using System.Runtime.InteropServices.Marshalling;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
-using TesisGestorApi.Entities;
+using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
 
 
@@ -26,7 +26,7 @@ public class AsistenciaController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<AsistenciaGetDTO>>> GetAsistencias(
-     [FromQuery] DateOnly? fecha, 
+     [FromQuery] DateOnly? fecha,
      [FromQuery] Guid? estudianteId)
     {
         try
@@ -73,6 +73,24 @@ public class AsistenciaController : ControllerBase
         {
             _logger.LogError(ex, "Error al registrar lote de asistencias.");
             return StatusCode(500, "Ocurrió un error interno al procesar el lote de asistencias.");
+        }
+    }
+
+
+    [HttpPost("clase/estado")] // Se gestiona el estado de la clase (dictada o no)
+    public async Task<IActionResult> ActualizarEstadoClase([FromBody] ClaseDictadaDTO dto)
+    {
+        try
+        {
+            await _asistenciaService.ActualizarEstadoClaseAsync(dto);
+
+            string estado = dto.Dictada ? "Dictada" : "No Dictada";
+            return Ok(new { Mensaje = $"La clase se marcó como '{estado}' correctamente y se recalcularon las asistencias." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al actualizar estado de la clase.");
+            return StatusCode(500, ex.Message);
         }
     }
 }

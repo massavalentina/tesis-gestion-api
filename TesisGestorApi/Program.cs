@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
+using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
 
 
@@ -13,6 +14,11 @@ builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 
+
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<IQrEmailService, QrEmailService>();
+
+builder.Services.AddSingleton<QrEmailProgressStore>();
 
 // Controllers
 builder.Services.AddControllers();
