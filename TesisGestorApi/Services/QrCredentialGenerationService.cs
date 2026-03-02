@@ -89,6 +89,105 @@ namespace TesisGestorApi.Services
             };
         }
 
+        public async Task<QrCredentialRegenerationResponseDto> RegenerateStudentCredentialAsync(Guid estudianteId, CancellationToken ct = default)
+        {
+            var estudiante = await _db.Estudiantes
+                .AsNoTracking()
+                .Where(e => e.IdEstudiante == estudianteId)
+                .Select(e => new { e.IdEstudiante, e.Nombre, e.Apellido })
+                .FirstOrDefaultAsync(ct);
+
+            if (estudiante is null)
+                throw new InvalidOperationException("No existe el estudiante seleccionado.");
+
+            var cursoActivo = await _db.DetallesCursado
+                .AsNoTracking()
+                .Where(dc => dc.IdEstudiante == estudianteId && dc.Estado)
+                .Join(
+                    _db.Cursos.AsNoTracking().Where(c => c.Estado),
+                    detalle => detalle.IdCurso,
+                    curso => curso.IdCurso,
+                    (detalle, curso) => new { curso.IdCurso, curso.AñoLectivo })
+                .FirstOrDefaultAsync(ct);
+
+            if (cursoActivo is null)
+                throw new InvalidOperationException("El estudiante no tiene un curso activo asociado.");
+
+            var credencialesActivas = await _db.CredencialesQR
+                .Where(c => c.IdEstudiante == estudianteId && c.Activo)
+                .ToListAsync(ct);
+
+            foreach (var credencialActiva in credencialesActivas)
+            {
+                credencialActiva.Activo = false;
+            }
+
+            var ahora = DateTime.UtcNow;
+            var nuevaCredencial = new CredencialQR
+            {
+                IdQR = Guid.NewGuid(),
+                Codigo = Guid.NewGuid(),
+                AñoLectivo = cursoActivo.AñoLectivo,
+                Activo = true,
+                Enviado = false,
+                FechaGeneracion = ahora,
+                FechaExpiracion = BuildExpirationDate(cursoActivo.AñoLectivo.Year),
+                IdEstudiante = estudianteId
+            };
+
+            _db.CredencialesQR.Add(nuevaCredencial);
+            _db.Entry(nuevaCredencial).Property("EstudianteIdEstudiante").CurrentValue = estudianteId;
+            await _db.SaveChangesAsync(ct);
+
+            return new QrCredentialRegenerationResponseDto
+            {
+                IdEstudiante = estudianteId,
+                IdQr = nuevaCredencial.IdQR,
+                CodigoQr = nuevaCredencial.Codigo,
+                CredencialesDesactivadas = credencialesActivas.Count,
+                Mensaje = credencialesActivas.Count > 0
+                    ? "Se regeneró el QR y se desactivó la credencial anterior."
+                    : "Se generó un nuevo QR para el estudiante."
+            };
+        }
+
+        public async Task<QrCredentialStudentStatusDto> GetStudentCredentialStatusAsync(Guid estudianteId, CancellationToken ct = default)
+        {
+            var existeEstudiante = await _db.Estudiantes
+                .AsNoTracking()
+                .AnyAsync(e => e.IdEstudiante == estudianteId, ct);
+
+            if (!existeEstudiante)
+                throw new InvalidOperationException("No existe el estudiante seleccionado.");
+
+            var credenciales = await _db.CredencialesQR
+                .AsNoTracking()
+                .Where(c => c.IdEstudiante == estudianteId)
+                .OrderBy(c => c.FechaGeneracion)
+                .ToListAsync(ct);
+
+            if (credenciales.Count == 0)
+            {
+                return new QrCredentialStudentStatusDto
+                {
+                    IdEstudiante = estudianteId,
+                    Estado = "NO_GENERADO",
+                    VersionQr = 0,
+                    FechaGeneracion = null
+                };
+            }
+
+            var ultimaCredencial = credenciales[^1];
+
+            return new QrCredentialStudentStatusDto
+            {
+                IdEstudiante = estudianteId,
+                Estado = ultimaCredencial.Activo ? "ACTIVO" : "INACTIVO",
+                VersionQr = credenciales.Count,
+                FechaGeneracion = ultimaCredencial.FechaGeneracion
+            };
+        }
+
         public async Task<QrCredentialGenerationProgressDto> StartGenerationJobAsync(QrCredentialGenerationRequestDto req, CancellationToken ct = default)
         {
             var alcance = NormalizeScope(req.Alcance);
@@ -135,6 +234,19 @@ namespace TesisGestorApi.Services
 
                     foreach (var estudianteId in candidatos)
                     {
+                        await WaitIfPausedAsync(job.JobId);
+
+                        if (TryHandleCancellation(job.JobId, out var cancelMessage))
+                        {
+                            _progress.Update(job.JobId, p =>
+                            {
+                                p.Estado = "CANCELLED";
+                                p.Fin = DateTime.UtcNow;
+                                p.UltimoMensaje = cancelMessage;
+                            });
+                            return;
+                        }
+
                         var estudiante = estudiantesMap[estudianteId];
                         var nombreCompleto = $"{estudiante.Apellido}, {estudiante.Nombre}";
 
@@ -177,6 +289,8 @@ namespace TesisGestorApi.Services
                             db.CredencialesQR.Add(nuevaCredencial);
                             db.Entry(nuevaCredencial).Property("EstudianteIdEstudiante").CurrentValue = estudianteId;
                             await db.SaveChangesAsync(CancellationToken.None);
+                            _progress.RecordGenerated(job.JobId, nuevaCredencial.IdQR);
+                            _progress.RecordDeactivated(job.JobId, credencialesActivas.Select(c => c.IdQR));
 
                             _progress.Update(job.JobId, p =>
                             {
@@ -201,12 +315,26 @@ namespace TesisGestorApi.Services
                         }
                     }
 
-                    _progress.Update(job.JobId, p =>
+                    while (true)
                     {
-                        p.Estado = "COMPLETED";
-                        p.Fin = DateTime.UtcNow;
-                        p.UltimoMensaje = "Proceso finalizado.";
-                    });
+                        await WaitIfPausedAsync(job.JobId);
+
+                        if (TryHandleCancellation(job.JobId, out var cancelMessageFinal))
+                        {
+                            _progress.Update(job.JobId, p =>
+                            {
+                                p.Estado = "CANCELLED";
+                                p.Fin = DateTime.UtcNow;
+                                p.UltimoMensaje = cancelMessageFinal;
+                            });
+                            return;
+                        }
+
+                        if (_progress.TryMarkCompleted(job.JobId, out _))
+                        {
+                            return;
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -220,6 +348,54 @@ namespace TesisGestorApi.Services
             });
 
             return job;
+        }
+
+        public async Task<QrCredentialGenerationProgressDto> PauseGenerationJobAsync(Guid jobId, CancellationToken ct = default)
+        {
+            if (!_progress.TryGetState(jobId, out var state))
+                throw new InvalidOperationException("No se encontró el proceso de generación indicado.");
+
+            lock (state.SyncRoot)
+            {
+                if (state.Progress.Estado is "COMPLETED" or "FAILED" or "CANCELLED")
+                    return CloneProgress(state.Progress);
+            }
+
+            _progress.RequestPause(jobId, out var progress);
+            await Task.CompletedTask;
+            return progress;
+        }
+
+        public async Task<QrCredentialGenerationProgressDto> ResumeGenerationJobAsync(Guid jobId, CancellationToken ct = default)
+        {
+            if (!_progress.TryGetState(jobId, out var state))
+                throw new InvalidOperationException("No se encontró el proceso de generación indicado.");
+
+            lock (state.SyncRoot)
+            {
+                if (state.Progress.Estado is "COMPLETED" or "FAILED" or "CANCELLED")
+                    return CloneProgress(state.Progress);
+            }
+
+            _progress.Resume(jobId, out var progress);
+            await Task.CompletedTask;
+            return progress;
+        }
+
+        public async Task<QrCredentialGenerationProgressDto> CancelGenerationJobAsync(Guid jobId, bool mantenerGenerados, CancellationToken ct = default)
+        {
+            if (!_progress.TryGetState(jobId, out var state))
+                throw new InvalidOperationException("No se encontró el proceso de generación indicado.");
+
+            lock (state.SyncRoot)
+            {
+                if (state.Progress.Estado is "COMPLETED" or "FAILED" or "CANCELLED")
+                    return CloneProgress(state.Progress);
+            }
+
+            _progress.RequestCancellation(jobId, mantenerGenerados, out var progress);
+            await Task.CompletedTask;
+            return progress;
         }
 
         private static string NormalizeScope(string? scope)
@@ -266,6 +442,122 @@ namespace TesisGestorApi.Services
             return alumnosActivos
                 .Where(id => !alumnosConQrSet.Contains(id))
                 .ToList();
+        }
+
+        private bool TryHandleCancellation(Guid jobId, out string message)
+        {
+            message = string.Empty;
+
+            if (!_progress.TryGetState(jobId, out var state))
+                return false;
+
+            bool cancelRequested;
+            bool keepGenerated;
+
+            lock (state.SyncRoot)
+            {
+                cancelRequested = state.CancellationRequested;
+                keepGenerated = state.KeepGeneratedOnCancellation;
+            }
+
+            if (!cancelRequested)
+                return false;
+
+            if (!keepGenerated)
+            {
+                RevertGeneratedCredentials(jobId).GetAwaiter().GetResult();
+                message = $"Proceso cancelado. Se revirtieron los cambios y no se conservaron los {state.Progress.Generados} QR(s) generados.";
+                return true;
+            }
+
+            message = $"Proceso cancelado. Se conservaron {state.Progress.Generados} QR(s) generados de un total previsto de {state.Progress.Total}.";
+            return true;
+        }
+
+        private async Task WaitIfPausedAsync(Guid jobId)
+        {
+            if (!_progress.TryGetState(jobId, out var state))
+                return;
+
+            Task<bool>? waitTask = null;
+
+            lock (state.SyncRoot)
+            {
+                if (state.PauseRequested && state.Progress.Estado == "PAUSING")
+                {
+                    _progress.Pause(jobId, out _);
+                }
+
+                if (state.Progress.Estado == "PAUSED")
+                {
+                    waitTask = state.PauseReleaseSource?.Task;
+                }
+            }
+
+            if (waitTask is not null)
+            {
+                await waitTask;
+            }
+        }
+
+        private async Task RevertGeneratedCredentials(Guid jobId)
+        {
+            if (!_progress.TryGetState(jobId, out var state))
+                return;
+
+            List<Guid> generatedIds;
+            List<Guid> deactivatedIds;
+
+            lock (state.SyncRoot)
+            {
+                generatedIds = state.GeneratedCredentialIds.ToList();
+                deactivatedIds = state.DeactivatedCredentialIds.ToList();
+            }
+
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            if (generatedIds.Count > 0)
+            {
+                var generated = await db.CredencialesQR
+                    .Where(c => generatedIds.Contains(c.IdQR))
+                    .ToListAsync(CancellationToken.None);
+
+                db.CredencialesQR.RemoveRange(generated);
+            }
+
+            if (deactivatedIds.Count > 0)
+            {
+                var deactivated = await db.CredencialesQR
+                    .Where(c => deactivatedIds.Contains(c.IdQR))
+                    .ToListAsync(CancellationToken.None);
+
+                foreach (var credential in deactivated)
+                {
+                    credential.Activo = true;
+                }
+            }
+
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+
+        private static QrCredentialGenerationProgressDto CloneProgress(QrCredentialGenerationProgressDto progress)
+        {
+            return new QrCredentialGenerationProgressDto
+            {
+                JobId = progress.JobId,
+                Estado = progress.Estado,
+                Total = progress.Total,
+                Procesados = progress.Procesados,
+                Generados = progress.Generados,
+                Desactivados = progress.Desactivados,
+                Omitidos = progress.Omitidos,
+                Errores = progress.Errores,
+                UltimoEstudiante = progress.UltimoEstudiante,
+                UltimoMensaje = progress.UltimoMensaje,
+                Inicio = progress.Inicio,
+                Fin = progress.Fin
+            };
         }
     }
 }
