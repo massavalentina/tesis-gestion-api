@@ -12,7 +12,7 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260217221352_FixTutores")]
+    [Migration("20260219213000_FixTutores")]
     partial class FixTutores
     {
         /// <inheritdoc />

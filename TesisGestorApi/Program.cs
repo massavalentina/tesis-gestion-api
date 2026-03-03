@@ -3,12 +3,11 @@ using TesisGestorApi.Data;
 using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
 
+
 var builder = WebApplication.CreateBuilder(args);
 
 
 //Services
-
-
 builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
@@ -16,8 +15,10 @@ builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IQrEmailService, QrEmailService>();
+builder.Services.AddScoped<IQrCredentialGenerationService, QrCredentialGenerationService>();
 
 builder.Services.AddSingleton<QrEmailProgressStore>();
+builder.Services.AddSingleton<QrCredentialGenerationProgressStore>();
 
 // Controllers
 builder.Services.AddControllers();

@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.DTOs;
+using TesisGestorApi.Dtos;
 
 
 
@@ -25,6 +26,16 @@ namespace TesisGestorApi.Interfaces
 
         // Regenera las asistencias de una clase específica en base al estado de Dictado (true o false) y recalcula en base a la data de asistencias. 
         Task RegenerarAsistenciasParaClase(ClaseDictada clase);
+
+        Task<PrevisualizarAsistenciaResponse> PrevisualizarAsync(PrevisualizarAsistenciaRequest request);
+
+        Task ConfirmarAsync(ConfirmarAsistenciaRequest request);
+
+        Task<List<OpcionSeleccionDto>> ObtenerCursosAsync();
+
+        List<OpcionSeleccionDto> ObtenerTurnos();
+
+        Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync();
 
     }
 }

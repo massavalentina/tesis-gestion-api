@@ -2,6 +2,8 @@
 using RepoDB.Entities;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
+using TesisGestorApi.Dtos;
+using TesisGestorApi.Exceptions;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Services
@@ -436,6 +438,148 @@ namespace TesisGestorApi.Services
                 CodigoManana = a.TipoManiana != null ? a.TipoManiana.Codigo : "-",
                 CodigoTarde = a.TipoTarde != null ? a.TipoTarde.Codigo : "-"
             }).OrderByDescending(a => a.Fecha).ToListAsync();
+        }
+
+        public async Task<PrevisualizarAsistenciaResponse> PrevisualizarAsync(PrevisualizarAsistenciaRequest request)
+        {
+            if (!Guid.TryParse(request.CodigoQr, out var qrGuid))
+                throw new AsistenciaException("QR_INVALID", "Código QR inválido");
+
+            if (request.IdCurso == Guid.Empty)
+                throw new AsistenciaException("COURSE_INVALID", "Curso inválido");
+
+            var credencial = await _context.CredencialesQR
+                .Include(c => c.Estudiante)
+                    .ThenInclude(e => e.DetallesCursado)
+                        .ThenInclude(dc => dc.Curso)
+                .FirstOrDefaultAsync(c => c.Codigo == qrGuid);
+
+            if (credencial == null)
+                throw new AsistenciaException("QR_INVALID", "Código no reconocido");
+
+            if (!credencial.Activo)
+                throw new AsistenciaException("QR_INACTIVE", "QR inactivo");
+
+            if (credencial.FechaExpiracion < DateTime.UtcNow)
+                throw new AsistenciaException("QR_EXPIRED", "QR expirado");
+
+            var estudiante = credencial.Estudiante;
+            var cursadoActivo = estudiante.DetallesCursado.FirstOrDefault(dc => dc.Estado);
+
+            if (cursadoActivo == null)
+                throw new AsistenciaException("STUDENT_INACTIVE", "Estudiante inactivo");
+
+            if (cursadoActivo.IdCurso != request.IdCurso)
+                throw new AsistenciaException("STUDENT_NOT_IN_COURSE", "El estudiante no pertenece al curso seleccionado");
+
+            var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+            var asistencia = await _context.Asistencias.FirstOrDefaultAsync(a =>
+                a.EstudianteId == estudiante.IdEstudiante &&
+                a.Fecha == hoy);
+
+            if (asistencia != null)
+            {
+                if (request.Turno == "Mañana" && asistencia.TipoManianaId != null)
+                    throw new AsistenciaException("ALREADY_SCANNED", "Este alumno ya tiene asistencia cargada en el turno mañana");
+
+                if (request.Turno == "Tarde" && asistencia.TipoTardeId != null)
+                    throw new AsistenciaException("ALREADY_SCANNED", "Este alumno ya tiene asistencia cargada en el turno tarde");
+            }
+
+            return new PrevisualizarAsistenciaResponse
+            {
+                Estudiante = new EstudianteAsistenciaDto
+                {
+                    Id = estudiante.IdEstudiante,
+                    Nombre = estudiante.Nombre,
+                    Apellido = estudiante.Apellido,
+                    Curso = cursadoActivo.Curso.Codigo
+                }
+            };
+        }
+
+        public async Task ConfirmarAsync(ConfirmarAsistenciaRequest request)
+        {
+            if (request.EstudianteIds == null || request.EstudianteIds.Count == 0)
+                throw new AsistenciaException("EMPTY_STUDENTS", "No se recibieron estudiantes.");
+
+            var tipoExiste = await _context.TiposAsistencia
+                .AsNoTracking()
+                .AnyAsync(t => t.IdTipo == request.TipoAsistenciaId);
+
+            if (!tipoExiste)
+                throw new AsistenciaException("INVALID_ATTENDANCE_TYPE", "Tipo inválido");
+
+            var nowLocal = DateTime.Now;
+            var hoy = DateOnly.FromDateTime(nowLocal);
+            var hora = request.Hora ?? nowLocal.TimeOfDay;
+            var turnoNormalizado = NormalizarTurno(request.Turno);
+
+            var lista = request.EstudianteIds
+                .Distinct()
+                .Select(id => new RegistrarAsistenciaDto
+                {
+                    EstudianteId = id,
+                    Fecha = hoy,
+                    Turno = turnoNormalizado,
+                    TipoAsistenciaId = request.TipoAsistenciaId,
+                    Hora = hora
+                })
+                .ToList();
+
+            await RegistrarLoteAsync(lista);
+        }
+
+        public async Task<List<OpcionSeleccionDto>> ObtenerCursosAsync()
+        {
+            return await _context.Cursos
+                .Include(c => c.Anio)
+                .Include(c => c.Division)
+                .Where(c => c.Estado)
+                .Select(c => new OpcionSeleccionDto
+                {
+                    Id = c.IdCurso.ToString(),
+                    Label = $"{c.Anio.Numero}{c.Division.Nombre}"
+                })
+                .ToListAsync();
+        }
+
+        public List<OpcionSeleccionDto> ObtenerTurnos()
+        {
+            return Enum.GetValues<Turno>()
+                .Select(t => new OpcionSeleccionDto
+                {
+                    Id = ((int)t).ToString(),
+                    Label = t.ToString()
+                })
+                .ToList();
+        }
+
+        public async Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync()
+        {
+            return await _context.TiposAsistencia
+                .Select(t => new OpcionSeleccionDto
+                {
+                    Id = t.IdTipo.ToString(),
+                    Label = t.Codigo
+                })
+                .ToListAsync();
+        }
+
+        private static string NormalizarTurno(string turno)
+        {
+            if (string.IsNullOrWhiteSpace(turno))
+                throw new AsistenciaException("INVALID_TURNO", "Turno inválido");
+
+            var t = turno.Trim().ToUpperInvariant();
+
+            if (t is "MAÑANA" or "MANANA" or "M" or "AM")
+                return "MANANA";
+
+            if (t is "TARDE" or "T" or "PM")
+                return "TARDE";
+
+            throw new AsistenciaException("INVALID_TURNO", $"Turno inválido: {turno}");
         }
     }
 }
