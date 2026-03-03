@@ -2,6 +2,8 @@
 using RepoDB.Entities;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
+using TesisGestorApi.Dtos;
+using TesisGestorApi.Exceptions;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Services
@@ -100,73 +102,61 @@ namespace TesisGestorApi.Services
                     asistenciasExistentes.Add(asistencia);
                 }
                 if (!asistenciasParaProcesar.Contains(asistencia)) asistenciasParaProcesar.Add(asistencia);
-
+                
+                TimeSpan horaEfectiva = dto.Hora ?? TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan();
                 string codigoOriginal = tipoEntidadOriginal.Codigo.ToUpper();
                 var turno = dto.Turno?.Trim().ToUpper();
                 bool esManana = turno == "MANANA";
 
-                // Lógica de cambio de código para los retiros - Vía frontend solo se carga RA
-
                 TipoAsistencia tipoFinal = tipoEntidadOriginal;
 
-                if (codigoOriginal == "RA" && dto.Hora.HasValue)
+                if (codigoOriginal == "RA")
                 {
                     var inscripcion = inscripciones.FirstOrDefault(i => i.IdEstudiante == dto.EstudianteId);
                     if (inscripcion != null)
                     {
-                        // Se filtran los Horarios del Curso para este día y turno
                         var horariosTurno = horarios
                             .Where(h => h.IdCurso == inscripcion.IdCurso &&
                                         h.DíaSemana == dto.Fecha.DayOfWeek &&
                                         (esManana ? h.HorarioEntrada.Hours < 13 : h.HorarioEntrada.Hours >= 13))
                             .ToList();
 
-                        // Se calcula el porcentaje de clases perdido en el retiro
-                        double porcPerdido = CalcularPorcentajePerdidoHelper(horariosTurno, dto.Hora.Value, clasesDictadasLocales, dto.Fecha);
+                        double porcPerdido = CalcularPorcentajePerdidoHelper(
+                            horariosTurno, horaEfectiva, clasesDictadasLocales, dto.Fecha);
 
-                        // Lógica de negocio para los retiros - De acuerdo al tiempo de porcentaje perdido, se coloca  RA, RE o RAE.
                         if (esManana)
                         {
                             if (porcPerdido > 50 && tiposPorCodigo.ContainsKey("RAE"))
-                                tipoFinal = tiposPorCodigo["RAE"]; // Si el porcentaje > 50%, el retiro es Extendido
+                                tipoFinal = tiposPorCodigo["RAE"];
                             else if (porcPerdido <= 10 && tiposPorCodigo.ContainsKey("RE"))
-                                tipoFinal = tiposPorCodigo["RE"];   // Si el porcentaje es <= 10% es Express
+                                tipoFinal = tiposPorCodigo["RE"];
                         }
-                        else // Tarde
+                        else
                         {
                             if (porcPerdido <= 10 && tiposPorCodigo.ContainsKey("RE"))
                                 tipoFinal = tiposPorCodigo["RE"];
-                            // En la tarde, solo hay RA. Si el tiempo es <= a 10%, es RE, que no computa insasistencia. 
                         }
                     }
                 }
 
-                // Se define si la asistencia marcada es para Ingreso o Salida, basandose en el tipo de asistencia final.
                 bool esHorarioSalida = tipoFinal.Codigo.StartsWith("RA") || tipoFinal.Codigo == "RE";
                 bool esHorarioEntrada = tipoFinal.Codigo.StartsWith("LL") || tipoFinal.Codigo == "P";
 
-                // Dependiendo si es para la mañana o la tarde, se asigna el tipo de asistencia y la hora correspondiente (Entrada o Salida)
                 if (esManana)
                 {
-                    asistencia.TipoManianaId = tipoFinal.IdTipo; 
+                    asistencia.TipoManianaId = tipoFinal.IdTipo;
                     asistencia.TipoManiana = tipoFinal;
 
-                    if (dto.Hora.HasValue)
-                    {
-                        if (esHorarioEntrada) asistencia.HoraEntradaManana = dto.Hora.Value;
-                        else if (esHorarioSalida) asistencia.HoraSalidaManana = dto.Hora.Value;
-                    }
+                    if (esHorarioEntrada) asistencia.HoraEntradaManana = horaEfectiva;
+                    else if (esHorarioSalida) asistencia.HoraSalidaManana = horaEfectiva;
                 }
-                else // Tarde
+                else
                 {
                     asistencia.TipoTardeId = tipoFinal.IdTipo;
                     asistencia.TipoTarde = tipoFinal;
 
-                    if (dto.Hora.HasValue)
-                    {
-                        if (esHorarioEntrada) asistencia.HoraEntradaTarde = dto.Hora.Value;
-                        else if (esHorarioSalida) asistencia.HoraSalidaTarde = dto.Hora.Value;
-                    }
+                    if (esHorarioEntrada) asistencia.HoraEntradaTarde = horaEfectiva;
+                    else if (esHorarioSalida) asistencia.HoraSalidaTarde = horaEfectiva;
                 }
 
                 cont++;
@@ -505,4 +495,147 @@ namespace TesisGestorApi.Services
     }
 
 
+}
+        public async Task<PrevisualizarAsistenciaResponse> PrevisualizarAsync(PrevisualizarAsistenciaRequest request)
+        {
+            if (!Guid.TryParse(request.CodigoQr, out var qrGuid))
+                throw new AsistenciaException("QR_INVALID", "Código QR inválido");
+
+            if (request.IdCurso == Guid.Empty)
+                throw new AsistenciaException("COURSE_INVALID", "Curso inválido");
+
+            var credencial = await _context.CredencialesQR
+                .Include(c => c.Estudiante)
+                    .ThenInclude(e => e.DetallesCursado)
+                        .ThenInclude(dc => dc.Curso)
+                .FirstOrDefaultAsync(c => c.Codigo == qrGuid);
+
+            if (credencial == null)
+                throw new AsistenciaException("QR_INVALID", "Código no reconocido");
+
+            if (!credencial.Activo)
+                throw new AsistenciaException("QR_INACTIVE", "QR inactivo");
+
+            if (credencial.FechaExpiracion < DateTime.UtcNow)
+                throw new AsistenciaException("QR_EXPIRED", "QR expirado");
+
+            var estudiante = credencial.Estudiante;
+            var cursadoActivo = estudiante.DetallesCursado.FirstOrDefault(dc => dc.Estado);
+
+            if (cursadoActivo == null)
+                throw new AsistenciaException("STUDENT_INACTIVE", "Estudiante inactivo");
+
+            if (cursadoActivo.IdCurso != request.IdCurso)
+                throw new AsistenciaException("STUDENT_NOT_IN_COURSE", "El estudiante no pertenece al curso seleccionado");
+
+            var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
+            var asistencia = await _context.Asistencias.FirstOrDefaultAsync(a =>
+                a.EstudianteId == estudiante.IdEstudiante &&
+                a.Fecha == hoy);
+
+            if (asistencia != null)
+            {
+                if (request.Turno == "Mañana" && asistencia.TipoManianaId != null)
+                    throw new AsistenciaException("ALREADY_SCANNED", "Este alumno ya tiene asistencia cargada en el turno mañana");
+
+                if (request.Turno == "Tarde" && asistencia.TipoTardeId != null)
+                    throw new AsistenciaException("ALREADY_SCANNED", "Este alumno ya tiene asistencia cargada en el turno tarde");
+            }
+
+            return new PrevisualizarAsistenciaResponse
+            {
+                Estudiante = new EstudianteAsistenciaDto
+                {
+                    Id = estudiante.IdEstudiante,
+                    Nombre = estudiante.Nombre,
+                    Apellido = estudiante.Apellido,
+                    Curso = cursadoActivo.Curso.Codigo
+                }
+            };
+        }
+
+        public async Task ConfirmarAsync(ConfirmarAsistenciaRequest request)
+        {
+            if (request.EstudianteIds == null || request.EstudianteIds.Count == 0)
+                throw new AsistenciaException("EMPTY_STUDENTS", "No se recibieron estudiantes.");
+
+            var tipoExiste = await _context.TiposAsistencia
+                .AsNoTracking()
+                .AnyAsync(t => t.IdTipo == request.TipoAsistenciaId);
+
+            if (!tipoExiste)
+                throw new AsistenciaException("INVALID_ATTENDANCE_TYPE", "Tipo inválido");
+
+            var nowLocal = DateTime.Now;
+            var hoy = DateOnly.FromDateTime(nowLocal);
+            var hora = request.Hora ?? nowLocal.TimeOfDay;
+            var turnoNormalizado = NormalizarTurno(request.Turno);
+
+            var lista = request.EstudianteIds
+                .Distinct()
+                .Select(id => new RegistrarAsistenciaDto
+                {
+                    EstudianteId = id,
+                    Fecha = hoy,
+                    Turno = turnoNormalizado,
+                    TipoAsistenciaId = request.TipoAsistenciaId,
+                    Hora = hora
+                })
+                .ToList();
+
+            await RegistrarLoteAsync(lista);
+        }
+
+        public async Task<List<OpcionSeleccionDto>> ObtenerCursosAsync()
+        {
+            return await _context.Cursos
+                .Include(c => c.Anio)
+                .Include(c => c.Division)
+                .Where(c => c.Estado)
+                .Select(c => new OpcionSeleccionDto
+                {
+                    Id = c.IdCurso.ToString(),
+                    Label = $"{c.Anio.Numero}{c.Division.Nombre}"
+                })
+                .ToListAsync();
+        }
+
+        public List<OpcionSeleccionDto> ObtenerTurnos()
+        {
+            return Enum.GetValues<Turno>()
+                .Select(t => new OpcionSeleccionDto
+                {
+                    Id = ((int)t).ToString(),
+                    Label = t.ToString()
+                })
+                .ToList();
+        }
+
+        public async Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync()
+        {
+            return await _context.TiposAsistencia
+                .Select(t => new OpcionSeleccionDto
+                {
+                    Id = t.IdTipo.ToString(),
+                    Label = t.Codigo
+                })
+                .ToListAsync();
+        }
+
+        private static string NormalizarTurno(string turno)
+        {
+            if (string.IsNullOrWhiteSpace(turno))
+                throw new AsistenciaException("INVALID_TURNO", "Turno inválido");
+
+            var t = turno.Trim().ToUpperInvariant();
+
+            if (t is "MAÑANA" or "MANANA" or "M" or "AM")
+                return "MANANA";
+
+            if (t is "TARDE" or "T" or "PM")
+                return "TARDE";
+
+            throw new AsistenciaException("INVALID_TURNO", $"Turno inválido: {turno}");
+        }
+    }
 }
