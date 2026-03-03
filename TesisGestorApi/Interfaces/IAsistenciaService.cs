@@ -26,5 +26,7 @@ namespace TesisGestorApi.Interfaces
         // Regenera las asistencias de una clase específica en base al estado de Dictado (true o false) y recalcula en base a la data de asistencias. 
         Task RegenerarAsistenciasParaClase(ClaseDictada clase);
 
+        Task<AsistenciaResponseDto> DeshacerAsistenciaRapidaAsync(DeshacerAsistenciaRapidaDto dto);
+
     }
 }

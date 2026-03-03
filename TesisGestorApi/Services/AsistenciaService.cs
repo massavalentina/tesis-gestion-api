@@ -449,5 +449,60 @@ namespace TesisGestorApi.Services
                 CodigoTarde = a.TipoTarde != null ? a.TipoTarde.Codigo : "-"
             }).OrderByDescending(a => a.Fecha).ToListAsync();
         }
+
+
+        public async Task<AsistenciaResponseDto> DeshacerAsistenciaRapidaAsync(DeshacerAsistenciaRapidaDto dto)
+        {
+            var turno = (dto.Turno ?? "MANANA").Trim().ToUpperInvariant();
+            bool esManana = turno == "MANANA";
+
+            var asistencia = await _context.Asistencias
+                .Include(a => a.TipoManiana)
+                .Include(a => a.TipoTarde)
+                .FirstOrDefaultAsync(a => a.EstudianteId == dto.EstudianteId && a.Fecha == dto.Fecha);
+
+            if (asistencia == null)
+            {
+                return new AsistenciaResponseDto
+                {
+                    Id = Guid.Empty,
+                    ValorTotal = 0,
+                    Mensaje = "No había registro para deshacer."
+                };
+            }
+
+            var tipoP = await _context.TiposAsistencia
+                .FirstOrDefaultAsync(t => t.Codigo.ToUpper() == "P");
+
+            if (tipoP == null)
+                throw new Exception("No existe el tipo 'P'.");
+
+            if (esManana)
+            {
+                asistencia.TipoManianaId = tipoP.IdTipo;
+                asistencia.TipoManiana = tipoP;
+                asistencia.HoraEntradaManana = null;
+                asistencia.HoraSalidaManana = null;
+            }
+            else
+            {
+                asistencia.TipoTardeId = tipoP.IdTipo;
+                asistencia.TipoTarde = tipoP;
+                asistencia.HoraEntradaTarde = null;
+                asistencia.HoraSalidaTarde = null;
+            }
+
+            await _context.SaveChangesAsync();
+            await ProcesarAsistenciaEspacios(new List<Asistencia> { asistencia });
+
+            return new AsistenciaResponseDto
+            {
+                Id = asistencia.Id,
+                ValorTotal = asistencia.ValorTotalInasistencia,
+                Mensaje = $"Se deshizo el registro del turno {turno} correctamente."
+            };
+        }
     }
+
+
 }
