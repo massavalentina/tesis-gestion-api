@@ -100,73 +100,61 @@ namespace TesisGestorApi.Services
                     asistenciasExistentes.Add(asistencia);
                 }
                 if (!asistenciasParaProcesar.Contains(asistencia)) asistenciasParaProcesar.Add(asistencia);
-
+                
+                TimeSpan horaEfectiva = dto.Hora ?? TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan();
                 string codigoOriginal = tipoEntidadOriginal.Codigo.ToUpper();
                 var turno = dto.Turno?.Trim().ToUpper();
                 bool esManana = turno == "MANANA";
 
-                // Lógica de cambio de código para los retiros - Vía frontend solo se carga RA
-
                 TipoAsistencia tipoFinal = tipoEntidadOriginal;
 
-                if (codigoOriginal == "RA" && dto.Hora.HasValue)
+                if (codigoOriginal == "RA")
                 {
                     var inscripcion = inscripciones.FirstOrDefault(i => i.IdEstudiante == dto.EstudianteId);
                     if (inscripcion != null)
                     {
-                        // Se filtran los Horarios del Curso para este día y turno
                         var horariosTurno = horarios
                             .Where(h => h.IdCurso == inscripcion.IdCurso &&
                                         h.DíaSemana == dto.Fecha.DayOfWeek &&
                                         (esManana ? h.HorarioEntrada.Hours < 13 : h.HorarioEntrada.Hours >= 13))
                             .ToList();
 
-                        // Se calcula el porcentaje de clases perdido en el retiro
-                        double porcPerdido = CalcularPorcentajePerdidoHelper(horariosTurno, dto.Hora.Value, clasesDictadasLocales, dto.Fecha);
+                        double porcPerdido = CalcularPorcentajePerdidoHelper(
+                            horariosTurno, horaEfectiva, clasesDictadasLocales, dto.Fecha);
 
-                        // Lógica de negocio para los retiros - De acuerdo al tiempo de porcentaje perdido, se coloca  RA, RE o RAE.
                         if (esManana)
                         {
                             if (porcPerdido > 50 && tiposPorCodigo.ContainsKey("RAE"))
-                                tipoFinal = tiposPorCodigo["RAE"]; // Si el porcentaje > 50%, el retiro es Extendido
+                                tipoFinal = tiposPorCodigo["RAE"];
                             else if (porcPerdido <= 10 && tiposPorCodigo.ContainsKey("RE"))
-                                tipoFinal = tiposPorCodigo["RE"];   // Si el porcentaje es <= 10% es Express
+                                tipoFinal = tiposPorCodigo["RE"];
                         }
-                        else // Tarde
+                        else
                         {
                             if (porcPerdido <= 10 && tiposPorCodigo.ContainsKey("RE"))
                                 tipoFinal = tiposPorCodigo["RE"];
-                            // En la tarde, solo hay RA. Si el tiempo es <= a 10%, es RE, que no computa insasistencia. 
                         }
                     }
                 }
 
-                // Se define si la asistencia marcada es para Ingreso o Salida, basandose en el tipo de asistencia final.
                 bool esHorarioSalida = tipoFinal.Codigo.StartsWith("RA") || tipoFinal.Codigo == "RE";
                 bool esHorarioEntrada = tipoFinal.Codigo.StartsWith("LL") || tipoFinal.Codigo == "P";
 
-                // Dependiendo si es para la mañana o la tarde, se asigna el tipo de asistencia y la hora correspondiente (Entrada o Salida)
                 if (esManana)
                 {
-                    asistencia.TipoManianaId = tipoFinal.IdTipo; 
+                    asistencia.TipoManianaId = tipoFinal.IdTipo;
                     asistencia.TipoManiana = tipoFinal;
 
-                    if (dto.Hora.HasValue)
-                    {
-                        if (esHorarioEntrada) asistencia.HoraEntradaManana = dto.Hora.Value;
-                        else if (esHorarioSalida) asistencia.HoraSalidaManana = dto.Hora.Value;
-                    }
+                    if (esHorarioEntrada) asistencia.HoraEntradaManana = horaEfectiva;
+                    else if (esHorarioSalida) asistencia.HoraSalidaManana = horaEfectiva;
                 }
-                else // Tarde
+                else
                 {
                     asistencia.TipoTardeId = tipoFinal.IdTipo;
                     asistencia.TipoTarde = tipoFinal;
 
-                    if (dto.Hora.HasValue)
-                    {
-                        if (esHorarioEntrada) asistencia.HoraEntradaTarde = dto.Hora.Value;
-                        else if (esHorarioSalida) asistencia.HoraSalidaTarde = dto.Hora.Value;
-                    }
+                    if (esHorarioEntrada) asistencia.HoraEntradaTarde = horaEfectiva;
+                    else if (esHorarioSalida) asistencia.HoraSalidaTarde = horaEfectiva;
                 }
 
                 cont++;
