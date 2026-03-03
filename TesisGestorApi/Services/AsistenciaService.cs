@@ -284,17 +284,49 @@ namespace TesisGestorApi.Services
 
         public Task<List<OpcionSeleccionDto>> ObtenerCursosAsync()
         {
-            throw new NotImplementedException();
+            var anioActual = DateTime.UtcNow.Year;
+
+            return _context.Cursos
+                .AsNoTracking()
+                .Where(c => c.Estado && c.AñoLectivo.Year == anioActual)
+                .OrderBy(c => c.Codigo)
+                .Select(c => new OpcionSeleccionDto
+                {
+                    Id = c.IdCurso.ToString(),
+                    Label = c.Codigo
+                })
+                .ToListAsync();
         }
 
         public List<OpcionSeleccionDto> ObtenerTurnos()
         {
-            throw new NotImplementedException();
+            return new List<OpcionSeleccionDto>
+            {
+                new()
+                {
+                    Id = "MANANA",
+                    Label = "MANANA"
+                },
+                new()
+                {
+                    Id = "TARDE",
+                    Label = "TARDE"
+                }
+            };
         }
 
         public Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync()
         {
-            throw new NotImplementedException();
+            return _context.TiposAsistencia
+                .AsNoTracking()
+                .Where(t => t.Codigo != "RE" && t.Codigo != "RAE")
+                .OrderBy(t => t.Codigo)
+                .Select(t => new OpcionSeleccionDto
+                {
+                    Id = t.IdTipo.ToString(),
+                    Label = t.Descripcion
+                })
+                .ToListAsync();
         }
     }
 }
