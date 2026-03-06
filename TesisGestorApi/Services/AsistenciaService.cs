@@ -69,6 +69,7 @@ namespace TesisGestorApi.Services
             // Asistencias Existentes (para ver cuáles hay que insertar o actualizar)
             var asistenciasExistentes = await _context.Asistencias
                 .Include(a => a.TipoManiana)
+                .Include(a => a.TipoLlegadaManiana)  // Necesario para preservar llegada al registrar retiro
                 .Include(a => a.TipoTarde)
                 .Where(a => idsEstudiantes.Contains(a.EstudianteId) && fechas.Contains(a.Fecha))
                 .ToListAsync();
@@ -139,24 +140,66 @@ namespace TesisGestorApi.Services
                     }
                 }
 
-                bool esHorarioSalida = tipoFinal.Codigo.StartsWith("RA") || tipoFinal.Codigo == "RE";
-                bool esHorarioEntrada = tipoFinal.Codigo.StartsWith("LL") || tipoFinal.Codigo == "P";
+                // Clasifica el tipo de asistencia para saber como actualizar Asistencia.
+                // Códigos de llegada: asignados manualmente por el preceptor al ingreso.
+                // Códigos de retiro: calculados automáticamente al registrar RA.
+                // Código SA (Sin Asistencia): limpia el turno, dejándolo como si nunca se hubiera registrado.
+                string codigoFinal = tipoFinal.Codigo.ToUpper();
+                bool esTipoLlegada = codigoFinal is "P" or "A" or "ANC" or "LLT" or "LLTE" or "LLTC";
+                bool esTipoRetiro  = codigoFinal is "RE" or "RA" or "RAE";
+                bool esSinAsistencia = codigoFinal == "SA";
+
+                if (esSinAsistencia)
+                {
+                    // SA actúa como comando de limpieza: deja el turno como "Sin definir".
+                    if (esManana)
+                    {
+                        asistencia.TipoManianaId        = null;
+                        asistencia.TipoManiana           = null;
+                        asistencia.TipoLlegadaManianaId = null;
+                        asistencia.TipoLlegadaManiana   = null;
+                        asistencia.HoraEntradaManana    = null;
+                        asistencia.HoraSalidaManana     = null;
+                    }
+                    else
+                    {
+                        asistencia.TipoTardeId      = null;
+                        asistencia.TipoTarde        = null;
+                        asistencia.HoraEntradaTarde = null;
+                        asistencia.HoraSalidaTarde  = null;
+                    }
+                    cont++;
+                    continue;
+                }
 
                 if (esManana)
                 {
+                    // TipoManiana siempre se actualiza al estado más reciente del turno.
+                    // Si hay un retiro, refleja el código de retiro.
                     asistencia.TipoManianaId = tipoFinal.IdTipo;
-                    asistencia.TipoManiana = tipoFinal;
+                    asistencia.TipoManiana   = tipoFinal;
 
-                    if (esHorarioEntrada) asistencia.HoraEntradaManana = horaEfectiva;
-                    else if (esHorarioSalida) asistencia.HoraSalidaManana = horaEfectiva;
+                    if (esTipoLlegada)
+                    {
+                        // Llegada: se guarda también en TipoLlegadaManiana para que Asistencia.CalcularAsistencia()
+                        // pueda sumar llegada + retiro si después se registra un retiro.
+                        asistencia.TipoLlegadaManianaId = tipoFinal.IdTipo;
+                        asistencia.TipoLlegadaManiana   = tipoFinal;
+                        asistencia.HoraEntradaManana    = horaEfectiva;
+                    }
+                    else if (esTipoRetiro)
+                    {
+                        // Retiro: solo se actualiza la hora de salida. TipoLlegadaManianaId NO se modifica.
+                        asistencia.HoraSalidaManana = horaEfectiva;
+                    }
                 }
                 else
                 {
                     asistencia.TipoTardeId = tipoFinal.IdTipo;
-                    asistencia.TipoTarde = tipoFinal;
+                    asistencia.TipoTarde   = tipoFinal;
 
-                    if (esHorarioEntrada) asistencia.HoraEntradaTarde = horaEfectiva;
-                    else if (esHorarioSalida) asistencia.HoraSalidaTarde = horaEfectiva;
+                    if (esTipoLlegada) asistencia.HoraEntradaTarde = horaEfectiva;
+                    else if (esTipoRetiro)  asistencia.HoraSalidaTarde  = horaEfectiva;
                 }
 
                 cont++;
@@ -164,7 +207,7 @@ namespace TesisGestorApi.Services
 
             await _context.SaveChangesAsync();
 
-            // Completa la lógica de horarios y de tipo de asistencia, se dispara el procesamiento de asistencia en Espacios Curriculares.
+            // Con la lógica de horarios y tipo de asistencia completa se dispara el procesamiento de asistencia en Espacios Curriculares.
             if (asistenciasParaProcesar.Any())
             {
                 await ProcesarAsistenciaEspacios(asistenciasParaProcesar);
@@ -175,6 +218,11 @@ namespace TesisGestorApi.Services
 
 
         // [ Helper Privado ] Cálculo de Porcentaje de Ausencia en Retiro Anticipado
+        // Devuelve el porcentaje de tiempo perdido por el estudiante respecto al total
+        // de minutos de clases DADAS en el turno. Solo se cuentan clases explícitamente
+        // marcadas como "no dictada" = false; si no hay registro, se asume dictada
+        // (porque este helper se llama en tiempo real, antes de que ProcesarAsistenciaEspacios
+        // cree los registros de ClaseDictada automáticamente).
         private double CalcularPorcentajePerdidoHelper(
             List<Horario> horariosTurno,
             TimeSpan horaRetiro,
@@ -186,7 +234,8 @@ namespace TesisGestorApi.Services
 
             foreach (var h in horariosTurno)
             {
-                // Se asume que la clase está dictada si no hay registros previos. 
+                // Si la clase está marcada como no dictada, no cuenta en el total de minutos de clase del turno.
+                // Si no hay registro (clase aún no procesada), se asume que sí se dictó.
                 bool seDicto = !clasesDictadasLocales.TryGetValue((h.IdEC, fecha), out var cd) || cd.Dictada;
                 if (!seDicto) continue;
 
@@ -253,12 +302,16 @@ namespace TesisGestorApi.Services
 
                     if (!clasesDictadasLocales.ContainsKey(key))
                     {
+                        // Si no existe la clase dictada, se crea con "Dictada = true" ya que si se está registrando asistencia para este EC
+                        // en esta fecha, la clase se asume dictada. Después se puede marcar como "no dictada" mediante otro método,
+                        // lo que borrará las asistencias por espacio.
                         var nuevaClase = new ClaseDictada { IdClaseDictada = Guid.NewGuid(), IdEC = idEC, Fecha = asistencia.Fecha, Dictada = true, Tema = "Generado Automáticamente" };
                         _context.ClasesDictadas.Add(nuevaClase);
                         clasesDictadasLocales[key] = nuevaClase;
                     }
 
                     var claseDictada = clasesDictadasLocales[key];
+                    // Si la clase fue marcada como no dictada, sus minutos no acumulan en minTotalesM/minTotalesT ni se crean AsistenciasPorEspacio.
                     if (!claseDictada.Dictada) continue;
 
                     double minTotalesMateria = 0;
@@ -291,27 +344,27 @@ namespace TesisGestorApi.Services
                         TimeSpan entradaAlumno = esManana ? (asistencia.HoraEntradaManana ?? horario.HorarioEntrada) : (asistencia.HoraEntradaTarde ?? horario.HorarioEntrada);
                         TimeSpan salidaAlumno = esManana ? (asistencia.HoraSalidaManana ?? horario.HorarioSalida) : (asistencia.HoraSalidaTarde ?? horario.HorarioSalida);
 
-                        // Llegadas Tarde
-                        if (entradaAlumno > horario.HorarioEntrada)
-                        {
-                            TimeSpan finPerdida = entradaAlumno < horario.HorarioSalida ? entradaAlumno : horario.HorarioSalida;
-                            double perdido = (finPerdida - horario.HorarioEntrada).TotalMinutes;
-                            if (perdido > 0)
+                            // Llegadas Tarde
+                            if (entradaAlumno > horario.HorarioEntrada)
                             {
-                                if (esManana) minPerdidaIngresoM += perdido; else minPerdidaIngresoT += perdido;
+                                TimeSpan finPerdida = entradaAlumno < horario.HorarioSalida ? entradaAlumno : horario.HorarioSalida;
+                                double perdido = (finPerdida - horario.HorarioEntrada).TotalMinutes;
+                                if (perdido > 0)
+                                {
+                                    if (esManana) minPerdidaIngresoM += perdido; else minPerdidaIngresoT += perdido;
+                                }
                             }
-                        }
 
-                        // Retiros Anticipados
-                        if (salidaAlumno < horario.HorarioSalida)
-                        {
-                            TimeSpan inicioPerdida = salidaAlumno > horario.HorarioEntrada ? salidaAlumno : horario.HorarioEntrada;
-                            double perdido = (horario.HorarioSalida - inicioPerdida).TotalMinutes;
-                            if (perdido > 0)
+                            // Retiros Anticipados
+                            if (salidaAlumno < horario.HorarioSalida)
                             {
-                                if (esManana) minPerdidaSalidaM += perdido; else minPerdidaSalidaT += perdido;
+                                TimeSpan inicioPerdida = salidaAlumno > horario.HorarioEntrada ? salidaAlumno : horario.HorarioEntrada;
+                                double perdido = (horario.HorarioSalida - inicioPerdida).TotalMinutes;
+                                if (perdido > 0)
+                                {
+                                    if (esManana) minPerdidaSalidaM += perdido; else minPerdidaSalidaT += perdido;
+                                }
                             }
-                        }
 
                         // Intersección entre tiempo de dictado y tiempo de asistencia
                         TimeSpan inicioEfectivo = horario.HorarioEntrada > entradaAlumno ? horario.HorarioEntrada : entradaAlumno;
@@ -408,7 +461,12 @@ namespace TesisGestorApi.Services
         {
             var idCurso = await _context.EspaciosCurriculares.Where(ec => ec.IdEC == clase.IdEC).Select(ec => ec.IdCurso).FirstOrDefaultAsync();
             var idsAlumnos = await _context.DetallesCursado.Where(dc => dc.IdCurso == idCurso && dc.Estado == true).Select(dc => dc.IdEstudiante).ToListAsync();
-            var asistenciasGenerales = await _context.Asistencias.Include(a => a.TipoManiana).Include(a => a.TipoTarde).Where(a => a.Fecha == clase.Fecha && idsAlumnos.Contains(a.EstudianteId)).ToListAsync();
+            var asistenciasGenerales = await _context.Asistencias
+                .Include(a => a.TipoManiana)
+                .Include(a => a.TipoLlegadaManiana)
+                .Include(a => a.TipoTarde)
+                .Where(a => a.Fecha == clase.Fecha && idsAlumnos.Contains(a.EstudianteId))
+                .ToListAsync();
 
             if (asistenciasGenerales.Any()) await ProcesarAsistenciaEspacios(asistenciasGenerales);
         }
@@ -424,18 +482,30 @@ namespace TesisGestorApi.Services
         // [ GET ALL ] Con filtros opcionales de Fecha y Estudiante.
         public async Task<IEnumerable<AsistenciaGetDTO>> ObtenerAsistenciasAsync(DateOnly? fecha, Guid? estudianteId)
         {
-            var query = _context.Asistencias.AsNoTracking().Include(a => a.Estudiante).Include(a => a.TipoManiana).Include(a => a.TipoTarde).AsQueryable();
-            if (fecha.HasValue) query = query.Where(a => a.Fecha == fecha.Value);
+            var query = _context.Asistencias
+                .AsNoTracking()
+                .Include(a => a.Estudiante)
+                .Include(a => a.TipoManiana)
+                .Include(a => a.TipoLlegadaManiana)
+                .Include(a => a.TipoTarde)
+                .AsQueryable();
+
+            if (fecha.HasValue)       query = query.Where(a => a.Fecha == fecha.Value);
             if (estudianteId.HasValue) query = query.Where(a => a.EstudianteId == estudianteId.Value);
 
             return await query.Select(a => new AsistenciaGetDTO
             {
-                Id = a.Id,
-                Fecha = a.Fecha,
-                ValorTotal = a.ValorTotalInasistencia,
+                Id             = a.Id,
+                Fecha          = a.Fecha,
+                ValorTotal     = a.ValorTotalInasistencia,
                 NombreCompleto = $"{a.Estudiante.Nombre} {a.Estudiante.Apellido}",
-                Documento = a.Estudiante.Documento,
-                CodigoManana = a.TipoManiana != null ? a.TipoManiana.Codigo : "-",
+                Documento      = a.Estudiante.Documento,
+
+                // TipoManiana mostrará Retiro en caso de haber habido uno.
+                CodigoManana = a.TipoManiana != null ? a.TipoManiana.Codigo: "-",
+
+                // TipoLlegadaManiana preserva el código de llegada.
+                CodigoLlegadaManana = a.TipoLlegadaManiana != null ? a.TipoLlegadaManiana.Codigo : null,
                 CodigoTarde = a.TipoTarde != null ? a.TipoTarde.Codigo : "-"
             }).OrderByDescending(a => a.Fecha).ToListAsync();
         }
