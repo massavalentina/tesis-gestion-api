@@ -1,6 +1,5 @@
 ﻿using RepoDB.Entities;
 using TesisGestorApi.DTOs;
-using TesisGestorApi.Dtos;
 
 namespace TesisGestorApi.Interfaces
 {
@@ -15,16 +14,6 @@ namespace TesisGestorApi.Interfaces
         Task ActualizarEstadoClaseAsync(ClaseDictadaDTO dto);
 
         Task RegenerarAsistenciasParaClase(ClaseDictada clase);
-
-        Task<PrevisualizarAsistenciaResponse> PrevisualizarAsync(PrevisualizarAsistenciaRequest request);
-
-        Task ConfirmarAsync(ConfirmarAsistenciaRequest request);
-
-        Task<List<OpcionSeleccionDto>> ObtenerCursosAsync();
-
-        List<OpcionSeleccionDto> ObtenerTurnos();
-
-        Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync();
 
         Task<AsistenciaResponseDto> DeshacerAsistenciaRapidaAsync(DeshacerAsistenciaRapidaDto dto);
     }
