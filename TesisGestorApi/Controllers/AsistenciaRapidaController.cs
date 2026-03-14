@@ -23,7 +23,6 @@ public class AsistenciaRapidaController : ControllerBase
         _logger = logger;
     }
 
-    // GET /api/asistencia-rapida/tipos
     [HttpGet("tipos")]
     public async Task<ActionResult<IEnumerable<TipoAsistenciaRapidaDTO>>> GetTipos()
     {
@@ -41,8 +40,6 @@ public class AsistenciaRapidaController : ControllerBase
         return Ok(tipos);
     }
 
-    // GET /api/asistencia-rapida/servertime
-    // Para mostrar en el modal (fecha/hora exacta del servidor) y mandarla luego al POST como "hora".
     [HttpGet("servertime")]
     public ActionResult GetServerTime()
     {
@@ -54,7 +51,6 @@ public class AsistenciaRapidaController : ControllerBase
         });
     }
 
-    // POST /api/asistencia-rapida
     [HttpPost]
     public async Task<ActionResult<AsistenciaResponseDto>> RegistrarAsistenciaRapida(
         [FromBody] RegistrarAsistenciaDto request)
@@ -66,12 +62,27 @@ public class AsistenciaRapidaController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error asistencia rápida. EstudianteId={EstudianteId}", request.EstudianteId);
+            _logger.LogError(ex, "Error asistencia rápida");
             return BadRequest(ex.Message);
         }
     }
 
-    // GET /api/asistencia-rapida/buscar-estudiantes?texto=...
+    [HttpPost("deshacer")]
+    public async Task<ActionResult<AsistenciaResponseDto>> Deshacer(
+        [FromBody] DeshacerAsistenciaRapidaDto dto)
+    {
+        try
+        {
+            var resultado = await _asistenciaService.DeshacerAsistenciaRapidaAsync(dto);
+            return Ok(resultado);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al deshacer asistencia");
+            return BadRequest(ex.Message);
+        }
+    }
+
     [HttpGet("buscar-estudiantes")]
     public async Task<ActionResult<IEnumerable<EstudianteBusquedaRapidaDto>>> BuscarEstudiantes([FromQuery] string texto)
     {
@@ -79,52 +90,40 @@ public class AsistenciaRapidaController : ControllerBase
             return Ok(new List<EstudianteBusquedaRapidaDto>());
 
         texto = texto.Trim();
-
-        // Query base
-        var estudiantesQuery = _context.Estudiantes
-            .AsNoTracking()
-            .AsQueryable();
-
-        // Si es numérico => Documento/DNI
-        bool esNumero = texto.All(char.IsDigit);
-
-        if (esNumero)
-        {
-            estudiantesQuery = estudiantesQuery.Where(e => e.Documento.Contains(texto));
-        }
-        else
-        {
-            estudiantesQuery = estudiantesQuery.Where(e =>
-                EF.Functions.ILike(e.Nombre, $"%{texto}%") ||
-                EF.Functions.ILike(e.Apellido, $"%{texto}%")
-            );
-        }
-
         var hoy = DateOnly.FromDateTime(DateTime.Now);
 
-        // ✅ Trae Curso = "1A - 2026" (left join por si no hay detalle cursado activo)
         var resultados = await (
-            from e in estudiantesQuery
+            from e in _context.Estudiantes.AsNoTracking()
 
-                // Detalle cursado activo (si existe)
+                // Detalle cursado activo
             join dc in _context.DetallesCursado
-                    .AsNoTracking()
-                    .Where(x => x.Estado)
+                .AsNoTracking()
+                .Where(x => x.Estado)
                 on e.IdEstudiante equals dc.IdEstudiante into dcJoin
             from dc in dcJoin.DefaultIfEmpty()
 
-                // Curso (si existe)
+                // Curso
             join c in _context.Cursos
-                    .AsNoTracking()
+                .AsNoTracking()
                 on dc.IdCurso equals c.IdCurso into cJoin
             from c in cJoin.DefaultIfEmpty()
 
-                // Asistencia del día (si existe)
+                // Asistencia del día
             join a in _context.Asistencias
-                    .AsNoTracking()
-                    .Where(x => x.Fecha == hoy)
+                .AsNoTracking()
+                .Where(x => x.Fecha == hoy)
                 on e.IdEstudiante equals a.EstudianteId into asistHoy
             from ah in asistHoy.DefaultIfEmpty()
+
+                // Tipo mañana
+            join tm in _context.TiposAsistencia
+                .AsNoTracking()
+                on ah.TipoManianaId equals tm.IdTipo into tmJoin
+            from tm in tmJoin.DefaultIfEmpty()
+
+            where EF.Functions.ILike(e.Nombre, $"%{texto}%")
+               || EF.Functions.ILike(e.Apellido, $"%{texto}%")
+               || e.Documento.Contains(texto)
 
             select new EstudianteBusquedaRapidaDto
             {
@@ -133,7 +132,12 @@ public class AsistenciaRapidaController : ControllerBase
                 Apellido = e.Apellido,
                 Documento = e.Documento,
                 Curso = c != null ? c.Codigo : "-",
-                RegistradoHoy = (ah != null)
+
+                RegistradoHoy = (tm != null) && (
+                    tm.Codigo.ToUpper() == "LLT" ||
+                    tm.Codigo.ToUpper() == "LLTE" ||
+                    tm.Codigo.ToUpper() == "LLTC"
+                )
             }
         )
         .OrderBy(x => x.Apellido)
