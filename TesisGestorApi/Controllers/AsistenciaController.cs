@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using RepoDB.Entities;
 using System.Runtime.InteropServices.Marshalling;
 using TesisGestorApi.Data;
+using TesisGestorApi.Dtos;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
@@ -22,6 +23,43 @@ public class AsistenciaController : ControllerBase
         _context = context; // Inyección de Dependencias
         _logger = logger;
         _asistenciaService = asistenciaService;
+    }
+
+    [HttpGet("cursos/{cursoId:guid}/turnos")]
+    public async Task<ActionResult> GetTurnosCurso(Guid cursoId, [FromQuery] DateOnly fecha)
+    {
+        try
+        {
+            var limite   = new TimeSpan(13, 20, 0);
+            var diaSemana = fecha.DayOfWeek;
+
+            var tieneTarde = await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .Where(ec => ec.IdCurso == cursoId)
+                .AnyAsync(ec => ec.Horarios.Any(h => h.DíaSemana == diaSemana && h.HorarioEntrada >= limite));
+
+            return Ok(new { tieneTarde });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al verificar turnos del curso {CursoId}.", cursoId);
+            return StatusCode(500, "Error interno al verificar los turnos.");
+        }
+    }
+
+    [HttpGet("cursos")]
+    public async Task<ActionResult<List<OpcionSeleccionDto>>> GetCursos()
+    {
+        try
+        {
+            var cursos = await _asistenciaService.ObtenerCursosAsync();
+            return Ok(cursos);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener cursos.");
+            return StatusCode(500, "Error interno al obtener los cursos.");
+        }
     }
 
     [HttpGet]
@@ -90,6 +128,37 @@ public class AsistenciaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al actualizar estado de la clase.");
+            return StatusCode(500, ex.Message);
+        }
+    }
+
+    [HttpGet("estudiante/{estudianteId:guid}/dia/{fecha}")]
+    public async Task<ActionResult<List<AsistenciaEspacioItemDto>>> GetEspaciosDia(
+        Guid estudianteId, DateOnly fecha)
+    {
+        try
+        {
+            var items = await _asistenciaService.ObtenerAsistenciaEspaciosDiaAsync(estudianteId, fecha);
+            return Ok(items);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener espacios del día para estudiante {EstudianteId}", estudianteId);
+            return StatusCode(500, "Error interno al obtener los datos.");
+        }
+    }
+
+    [HttpPut("espacio")]
+    public async Task<IActionResult> ActualizarEspacio([FromBody] ActualizarAsistenciaEspacioDto dto)
+    {
+        try
+        {
+            await _asistenciaService.ActualizarAsistenciaEspacioAsync(dto);
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al actualizar asistencia por espacio.");
             return StatusCode(500, ex.Message);
         }
     }

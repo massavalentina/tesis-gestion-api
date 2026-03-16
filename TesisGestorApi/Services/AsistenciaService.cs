@@ -1,7 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using RepoDB.Entities;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
+using TesisGestorApi.Dtos;
+using TesisGestorApi.Exceptions;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Services
@@ -17,21 +19,54 @@ namespace TesisGestorApi.Services
             _logger = logger;
         }
 
-        // =========================================
-        // REGISTRO LOTE
-        // =========================================
-
+        // [ POST ] Registro de Asistencia General por Lote
         public async Task<int> RegistrarLoteAsync(List<RegistrarAsistenciaDto> lista)
         {
+            // Preparación de Datos - Se traen los tipos de asistencia
+            var codigosEspeciales = new[] { "RA", "RAE", "RE", "LLT", "LLTE", "LLTC", "P", "A" };
             var idsTiposRequest = lista.Select(x => x.TipoAsistenciaId).Distinct().ToList();
 
+            // Se traen los tipos de asistencia que vienen en el request
             var tiposDict = await _context.TiposAsistencia
-                .Where(t => idsTiposRequest.Contains(t.IdTipo))
+                .Where(t => idsTiposRequest.Contains(t.IdTipo) || codigosEspeciales.Contains(t.Codigo))
                 .ToDictionaryAsync(t => t.IdTipo);
 
+            // Diccionario inverso para buscar por código ("RAE" -> Entidad)
+            var tiposPorCodigo = tiposDict.Values
+                .GroupBy(t => t.Codigo.ToUpper())
+                .ToDictionary(g => g.Key, g => g.First());
+
+            // Datos Generales de Estudiante y fechas para optimizar consultas posteriores
             var idsEstudiantes = lista.Select(x => x.EstudianteId).Distinct().ToList();
             var fechas = lista.Select(x => x.Fecha).Distinct().ToList();
+            var diasSemana = fechas.Select(f => f.DayOfWeek).Distinct().ToList();
 
+            // Inscripciones (Detalles de Cursado)
+            var inscripciones = await _context.DetallesCursado
+                .AsNoTracking()
+                .Where(dc => idsEstudiantes.Contains(dc.IdEstudiante) && dc.Estado)
+                .ToListAsync();
+
+            // Búsqueda de Cursos
+            var cursosIds = inscripciones.Select(i => i.IdCurso).Distinct().ToList();
+
+            // Búsqueda de Horarios relacionados a los cursos y el día de la semana
+            var horarios = await _context.Horarios
+                .AsNoTracking()
+                .Where(h => cursosIds.Contains(h.IdCurso) && diasSemana.Contains(h.DíaSemana))
+                .ToListAsync();
+
+            // Caché de clases dictadas
+            var clasesIdsEC = horarios.Select(h => h.IdEC).Distinct().ToList();
+            var clasesDictadasDb = await _context.ClasesDictadas
+                .AsNoTracking()
+                .Where(c => clasesIdsEC.Contains(c.IdEC) && fechas.Contains(c.Fecha))
+                .ToListAsync();
+
+            var clasesDictadasLocales = new Dictionary<(Guid, DateOnly), ClaseDictada>();
+            foreach (var c in clasesDictadasDb) clasesDictadasLocales[(c.IdEC, c.Fecha)] = c;
+
+            // Asistencias Existentes (para ver cuáles hay que insertar o actualizar)
             var asistenciasExistentes = await _context.Asistencias
                 .Include(a => a.TipoManiana)
                 .Include(a => a.TipoLlegadaManiana)  // Necesario para preservar llegada al registrar retiro
@@ -42,14 +77,16 @@ namespace TesisGestorApi.Services
             int cont = 0;
             var asistenciasParaProcesar = new List<Asistencia>();
 
+            // Procesamiento de cada DTO
             foreach (var dto in lista)
             {
-                if (!tiposDict.TryGetValue(dto.TipoAsistenciaId, out var tipoEntidad))
+                if (!tiposDict.TryGetValue(dto.TipoAsistenciaId, out var tipoEntidadOriginal))
                 {
                     _logger.LogWarning($"Tipo {dto.TipoAsistenciaId} no encontrado.");
                     continue;
                 }
 
+                // Buscar o Crear Asistencia
                 var asistencia = asistenciasExistentes
                     .FirstOrDefault(a => a.EstudianteId == dto.EstudianteId && a.Fecha == dto.Fecha);
 
@@ -62,12 +99,14 @@ namespace TesisGestorApi.Services
                         Fecha = dto.Fecha,
                         ValorTotalInasistencia = 0
                     };
-
                     _context.Asistencias.Add(asistencia);
                     asistenciasExistentes.Add(asistencia);
                 }
+                if (!asistenciasParaProcesar.Contains(asistencia)) asistenciasParaProcesar.Add(asistencia);
 
-                var turno = (dto.Turno ?? "MANANA").ToUpper();
+                TimeSpan horaEfectiva = dto.Hora ?? TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan();
+                string codigoOriginal = tipoEntidadOriginal.Codigo.ToUpper();
+                var turno = dto.Turno?.Trim().ToUpper();
                 bool esManana = turno == "MANANA";
 
                 TipoAsistencia tipoFinal = tipoEntidadOriginal;
@@ -80,7 +119,7 @@ namespace TesisGestorApi.Services
                         var horariosTurno = horarios
                             .Where(h => h.IdCurso == inscripcion.IdCurso &&
                                         h.DíaSemana == dto.Fecha.DayOfWeek &&
-                                        (esManana ? h.HorarioEntrada.Hours < 13 : h.HorarioEntrada.Hours >= 13))
+                                        (esManana ? h.HorarioEntrada < new TimeSpan(13, 20, 0) : h.HorarioEntrada >= new TimeSpan(13, 20, 0)))
                             .ToList();
 
                         double porcPerdido = CalcularPorcentajePerdidoHelper(
@@ -161,37 +200,26 @@ namespace TesisGestorApi.Services
 
                     if (esTipoLlegada) asistencia.HoraEntradaTarde = horaEfectiva;
                     else if (esTipoRetiro)  asistencia.HoraSalidaTarde  = horaEfectiva;
-                TimeSpan hora = dto.Hora ?? TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan();
-
-                if (esManana)
-                {
-                    asistencia.TipoManianaId = tipoEntidad.IdTipo;
-                    asistencia.TipoManiana = tipoEntidad;
-                    asistencia.HoraEntradaManana = hora;
-                }
-                else
-                {
-                    asistencia.TipoTardeId = tipoEntidad.IdTipo;
-                    asistencia.TipoTarde = tipoEntidad;
-                    asistencia.HoraEntradaTarde = hora;
                 }
 
-                asistenciasParaProcesar.Add(asistencia);
                 cont++;
             }
 
             await _context.SaveChangesAsync();
 
-            // Con la lógica de horarios y tipo de asistencia completa se dispara el procesamiento de asistencia en Espacios Curriculares.
+            // Se determina qué turnos estuvieron en este lote para procesar solo los ECs correspondientes.
+            var turnosEnLista = lista
+                .Select(d => d.Turno?.Trim().ToUpper() == "MANANA" ? "MANANA" : "TARDE")
+                .ToHashSet();
+
             if (asistenciasParaProcesar.Any())
-                await ProcesarAsistenciaEspacios(asistenciasParaProcesar);
+            {
+                await ProcesarAsistenciaEspacios(asistenciasParaProcesar, turnosEnLista);
+            }
 
             return cont;
         }
 
-        // =========================================
-        // REGISTRO INDIVIDUAL
-        // =========================================
 
         // [ Helper Privado ] Cálculo de Porcentaje de Ausencia en Retiro Anticipado
         // Devuelve el porcentaje de tiempo perdido por el estudiante respecto al total
@@ -204,15 +232,11 @@ namespace TesisGestorApi.Services
             TimeSpan horaRetiro,
             Dictionary<(Guid, DateOnly), ClaseDictada> clasesDictadasLocales,
             DateOnly fecha)
-        public async Task<AsistenciaResponseDto> RegistrarAsistenciaIndividualAsync(RegistrarAsistenciaDto dto)
         {
-            await RegistrarLoteAsync(new List<RegistrarAsistenciaDto> { dto });
+            double minutosTotales = 0;
+            double minutosPerdidos = 0;
 
-            var entidad = await _context.Asistencias
-                .AsNoTracking()
-                .FirstAsync(a => a.EstudianteId == dto.EstudianteId && a.Fecha == dto.Fecha);
-
-            return new AsistenciaResponseDto
+            foreach (var h in horariosTurno)
             {
                 // Si la clase está marcada como no dictada, no cuenta en el total de minutos de clase del turno.
                 // Si no hay registro (clase aún no procesada), se asume que sí se dictó.
@@ -233,45 +257,84 @@ namespace TesisGestorApi.Services
             }
 
             return minutosTotales == 0 ? 0 : (minutosPerdidos / minutosTotales) * 100.0;
-                Id = entidad.Id,
-                ValorTotal = entidad.ValorTotalInasistencia,
-                Mensaje = "Registrado correctamente."
-            };
         }
 
-        // =========================================
-        // OBTENER ASISTENCIAS
-        // =========================================
 
-        public async Task<IEnumerable<AsistenciaGetDTO>> ObtenerAsistenciasAsync(DateOnly? fecha, Guid? estudianteId)
+        // [ Helper Público ] Procesa las asistencias por espacio y calcula el valor final
+        public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales, HashSet<string>? turnosAFiltrar = null)
         {
-            var query = _context.Asistencias
-                .AsNoTracking()
-                .Include(a => a.Estudiante)
-                .Include(a => a.TipoManiana)
-                .Include(a => a.TipoTarde)
-                .AsQueryable();
+            // Se preparan los datos que se van a consultar con frecuencia
+            var estudiantesIds = asistenciasGenerales.Select(a => a.EstudianteId).Distinct().ToList();
+            var fechas = asistenciasGenerales.Select(a => a.Fecha).Distinct().ToList();
+            var diasSemana = fechas.Select(f => f.DayOfWeek).Distinct().ToList();
 
-            if (fecha.HasValue)
-                query = query.Where(a => a.Fecha == fecha.Value);
+            var inscripciones = await _context.DetallesCursado.AsNoTracking()
+                .Where(dc => estudiantesIds.Contains(dc.IdEstudiante) && dc.Estado == true).ToListAsync();
+            var cursosIds = inscripciones.Select(i => i.IdCurso).Distinct().ToList();
+            var horarios = await _context.Horarios.AsNoTracking()
+                .Where(h => cursosIds.Contains(h.IdCurso) && diasSemana.Contains(h.DíaSemana)).ToListAsync();
 
-            if (estudianteId.HasValue)
-                query = query.Where(a => a.EstudianteId == estudianteId.Value);
+            // Cache de clases
+            var clasesDictadasLocales = new Dictionary<(Guid IdEC, DateOnly Fecha), ClaseDictada>();
+            var clasesDbIds = horarios.Select(h => h.IdEC).Distinct().ToList();
+            var clasesExistentes = await _context.ClasesDictadas
+                .Where(c => clasesDbIds.Contains(c.IdEC) && fechas.Contains(c.Fecha)).ToListAsync();
+            foreach (var c in clasesExistentes) clasesDictadasLocales[(c.IdEC, c.Fecha)] = c;
 
-            return await query
-                .Select(a => new AsistenciaGetDTO
+            var nuevasAsistenciasEspacio = new List<AsistenciaPorEspacio>();
+
+            // Procesamiento de cada asistencia
+            foreach (var asistencia in asistenciasGenerales)
+            {
+                var inscripcion = inscripciones.FirstOrDefault(i => i.IdEstudiante == asistencia.EstudianteId);
+                if (inscripcion == null) continue;
+
+                var horariosDelDia = horarios
+                    .Where(h => h.IdCurso == inscripcion.IdCurso && h.DíaSemana == asistencia.Fecha.DayOfWeek)
+                    .ToList();
+
+                // Variables acumuladoras para el cálculo del turno
+                double minTotalesM = 0, minPerdidaIngresoM = 0, minPerdidaSalidaM = 0;
+                double minTotalesT = 0, minPerdidaIngresoT = 0, minPerdidaSalidaT = 0;
+
+                var gruposMaterias = horariosDelDia.GroupBy(h => h.IdEC).ToList();
+
+                foreach (var grupoMateria in gruposMaterias)
                 {
-                    Id = a.Id,
-                    Fecha = a.Fecha,
-                    ValorTotal = a.ValorTotalInasistencia,
-                    NombreCompleto = $"{a.Estudiante.Nombre} {a.Estudiante.Apellido}",
-                    Documento = a.Estudiante.Documento,
-                    CodigoManana = a.TipoManiana != null ? a.TipoManiana.Codigo : "-",
-                    CodigoTarde = a.TipoTarde != null ? a.TipoTarde.Codigo : "-"
-                })
-                .OrderByDescending(a => a.Fecha)
-                .ToListAsync();
-        }
+                    Guid idEC = grupoMateria.Key;
+                    var key = (idEC, asistencia.Fecha);
+
+                    // Determinar el turno del EC ANTES de cualquier operación sobre ClaseDictada o AsistenciaPorEspacio.
+                    // Cada turno es independiente: solo se procesan los ECs del turno que tiene asistencia registrada.
+                    var primerModulo = grupoMateria.First();
+                    bool esEcManana = primerModulo.HorarioEntrada < new TimeSpan(13, 20, 0);
+
+                    // Si se pasó un filtro de turno, saltear los ECs que no corresponden a ese turno.
+                    // Esto garantiza que registrar mañana no toque ECs de la tarde y viceversa.
+                    if (turnosAFiltrar != null)
+                    {
+                        string ecTurno = esEcManana ? "MANANA" : "TARDE";
+                        if (!turnosAFiltrar.Contains(ecTurno)) continue;
+                    }
+
+                    var tipoTurnoEc = esEcManana ? asistencia.TipoManiana : asistencia.TipoTarde;
+
+                    // Si el turno correspondiente a este EC no tiene asistencia registrada:
+                    // se elimina el AsistenciaPorEspacio existente (stale data de ejecuciones anteriores o de SA)
+                    // y se omite la creación de ClaseDictada y nuevos registros.
+                    if (tipoTurnoEc == null)
+                    {
+                        if (clasesDictadasLocales.TryGetValue(key, out var claseStale))
+                        {
+                            var stale = await _context.AsistenciasPorEspacio
+                                .FirstOrDefaultAsync(ae => ae.IdClaseDictada == claseStale.IdClaseDictada
+                                                        && ae.IdEstudiante   == asistencia.EstudianteId);
+                            if (stale != null) _context.AsistenciasPorEspacio.Remove(stale);
+                        }
+                        continue;
+                    }
+
+                    string codigoTurnoEc = tipoTurnoEc.Codigo.ToUpper();
 
                     if (!clasesDictadasLocales.ContainsKey(key))
                     {
@@ -286,35 +349,37 @@ namespace TesisGestorApi.Services
                     var claseDictada = clasesDictadasLocales[key];
                     // Si la clase fue marcada como no dictada, sus minutos no acumulan en minTotalesM/minTotalesT ni se crean AsistenciasPorEspacio.
                     if (!claseDictada.Dictada) continue;
-        // =========================================
-        // DESHACER ASISTENCIA RAPIDA
-        // =========================================
 
-        public async Task<AsistenciaResponseDto> DeshacerAsistenciaRapidaAsync(DeshacerAsistenciaRapidaDto dto)
-        {
-            var turno = (dto.Turno ?? "MANANA").Trim().ToUpperInvariant();
+                    // ANC: asistencia no computable → el EC queda en null (se elimina el registro si existía)
+                    if (codigoTurnoEc == "ANC")
+                    {
+                        var existenteAnc = await _context.AsistenciasPorEspacio
+                            .FirstOrDefaultAsync(ae => ae.IdClaseDictada == claseDictada.IdClaseDictada && ae.IdEstudiante == asistencia.EstudianteId);
+                        if (existenteAnc != null) _context.AsistenciasPorEspacio.Remove(existenteAnc);
+                        continue;
+                    }
 
-            if (turno == "MANIANA")
-                turno = "MANANA";
+                    double minTotalesMateria = 0;
+                    double minAsistidosMateria = 0;
 
-            bool esManana = turno == "MANANA";
+                    foreach (var horario in grupoMateria)
+                    {
+                        double duracionModulo = (horario.HorarioSalida - horario.HorarioEntrada).TotalMinutes;
+                        if (duracionModulo <= 0) continue;
 
-            var asistencia = await _context.Asistencias
-                .Include(a => a.TipoManiana)
-                .Include(a => a.TipoTarde)
-                .FirstOrDefaultAsync(a =>
-                    a.EstudianteId == dto.EstudianteId &&
-                    a.Fecha == dto.Fecha);
+                        // Acumula los minutos totales del Espacio Curricular en el día
+                        minTotalesMateria += duracionModulo;
 
-                        bool esManana = horario.HorarioEntrada.Hours < 13;
+                        bool esManana = horario.HorarioEntrada < new TimeSpan(13, 20, 0);
                         if (esManana) minTotalesM += duracionModulo; else minTotalesT += duracionModulo;
 
                         // Se obtiene el código para determinar si se aplica lógica de tiempo de asistencia o asignación directa
                         var tipoAsistencia = esManana ? asistencia.TipoManiana : asistencia.TipoTarde;
                         string codigo = tipoAsistencia?.Codigo?.ToUpper() ?? "-";
 
-                        // Presencia Total 
-                        if (codigo == "P" || codigo == "ANC" || codigo == "RE")
+                        // Presencia Total: P y RE siempre cuentan como asistencia completa al módulo.
+                        // RE = retiro con ≤10% perdido del turno → siempre < 20% por EC → siempre presente.
+                        if (codigo == "P" || codigo == "RE")
                         {
                             // Se asume que asistió todo el módulo sin pérdidas de tiempo.
                             minAsistidosMateria += duracionModulo;
@@ -353,8 +418,10 @@ namespace TesisGestorApi.Services
                         double asistidoEnModulo = (finEfectivo - inicioEfectivo).TotalMinutes;
                         if (asistidoEnModulo < 0) asistidoEnModulo = 0;
 
-                        // Ausencia Total
-                        if (codigo == "A" || codigo == "LLTC" || codigo == "RAE") asistidoEnModulo = 0; 
+                        // Ausencia Total: A fuerza 0 minutos asistidos.
+                        // LLTC y RAE (>50% turno perdido) también pasan por cálculo parcial por EC:
+                        // el estudiante puede haber asistido a algunos ECs → la regla del 20% determina por EC.
+                        if (codigo == "A") asistidoEnModulo = 0;
                         else minAsistidosMateria += asistidoEnModulo;
                     }
 
@@ -387,70 +454,18 @@ namespace TesisGestorApi.Services
 
                 // Cálculo Final de Asistencia General Diaria
                 asistencia.CalcularAsistencia(minTotalesM, minPerdidaIngresoM, minPerdidaSalidaM, minTotalesT, minPerdidaIngresoT, minPerdidaSalidaT);
-            if (asistencia == null)
-            {
-                return new AsistenciaResponseDto
-                {
-                    Id = Guid.Empty,
-                    ValorTotal = 0,
-                    Mensaje = "No había registro para deshacer."
-                };
             }
 
-            var tipoP = await _context.TiposAsistencia
-                .FirstOrDefaultAsync(t => t.Codigo.ToUpper() == "P");
-
-            if (tipoP == null)
-                throw new Exception("No existe el tipo 'P'.");
-
-            if (esManana)
-            {
-                asistencia.TipoManianaId = tipoP.IdTipo;
-                asistencia.TipoManiana = tipoP;
-                asistencia.HoraEntradaManana = null;
-                asistencia.HoraSalidaManana = null;
-            }
-            else
-            {
-                asistencia.TipoTardeId = tipoP.IdTipo;
-                asistencia.TipoTarde = tipoP;
-                asistencia.HoraEntradaTarde = null;
-                asistencia.HoraSalidaTarde = null;
-            }
-
-            await _context.SaveChangesAsync();
-
-            await ProcesarAsistenciaEspacios(new List<Asistencia> { asistencia });
-
-            return new AsistenciaResponseDto
-            {
-                Id = asistencia.Id,
-                ValorTotal = asistencia.ValorTotalInasistencia,
-                Mensaje = $"Se deshizo el registro del turno {turno} correctamente."
-            };
-        }
-
-        // =========================================
-        // PROCESAMIENTO DE ESPACIOS
-        // =========================================
-
-        public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales)
-        {
-            foreach (var asistencia in asistenciasGenerales)
-            {
-                asistencia.ValorTotalInasistencia = 0;
-            }
-
+            // Save en base de datos
+            if (nuevasAsistenciasEspacio.Any()) _context.AsistenciasPorEspacio.AddRange(nuevasAsistenciasEspacio);
             await _context.SaveChangesAsync();
         }
 
-        // =========================================
-        // CLASE DICTADA
-        // =========================================
-
+        // [ PUT ] Actualizar estado de clase de Dictada a No Dictada y viceversa.
         public async Task ActualizarEstadoClaseAsync(ClaseDictadaDTO dto)
         {
             var clase = await _context.ClasesDictadas
+                .Include(c => c.Asistencias)
                 .FirstOrDefaultAsync(c => c.IdEC == dto.IdEC && c.Fecha == dto.Fecha);
 
             if (clase == null)
@@ -463,18 +478,33 @@ namespace TesisGestorApi.Services
                     Dictada = dto.Dictada,
                     Tema = dto.Tema
                 };
-
                 _context.ClasesDictadas.Add(clase);
+                await _context.SaveChangesAsync();
+
+                if (clase.Dictada) await RegenerarAsistenciasParaClase(clase);
+                return;
             }
-            else
+
+            bool estadoAnterior = clase.Dictada;
+            clase.Dictada = dto.Dictada;
+            if (!string.IsNullOrEmpty(dto.Tema)) clase.Tema = dto.Tema;
+
+            if (estadoAnterior == true && dto.Dictada == false)
             {
-                clase.Dictada = dto.Dictada;
-                clase.Tema = dto.Tema;
+                if (clase.Asistencias.Any()) _context.AsistenciasPorEspacio.RemoveRange(clase.Asistencias);
+            }
+            else if (estadoAnterior == false && dto.Dictada == true)
+            {
+                await _context.SaveChangesAsync();
+                await RegenerarAsistenciasParaClase(clase);
+                return;
             }
 
             await _context.SaveChangesAsync();
         }
 
+
+        // [ Helper Público ] Regenera las asistencias de los EC de una clase específica en base al estado de Dictado (true o false) y recalcula en base a la información de asistencias generales.
         public async Task RegenerarAsistenciasParaClase(ClaseDictada clase)
         {
             var idCurso = await _context.EspaciosCurriculares.Where(ec => ec.IdEC == clase.IdEC).Select(ec => ec.IdCurso).FirstOrDefaultAsync();
@@ -629,12 +659,167 @@ namespace TesisGestorApi.Services
                     Id = c.IdCurso.ToString(),
                     Label = $"{c.Anio.Numero}{c.Division.Nombre}"
                 })
-            var asistencias = await _context.Asistencias
-                .Where(a => a.Fecha == clase.Fecha)
                 .ToListAsync();
-
-            await ProcesarAsistenciaEspacios(asistencias);
         }
 
+        public List<OpcionSeleccionDto> ObtenerTurnos()
+        {
+            return Enum.GetValues<Turno>()
+                .Select(t => new OpcionSeleccionDto
+                {
+                    Id = ((int)t).ToString(),
+                    Label = t.ToString()
+                })
+                .ToList();
+        }
+
+        public async Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync()
+        {
+            return await _context.TiposAsistencia
+                .Select(t => new OpcionSeleccionDto
+                {
+                    Id = t.IdTipo.ToString(),
+                    Label = t.Codigo
+                })
+                .ToListAsync();
+        }
+
+        // [ GET ] Asistencia por Espacio Curricular de un día para un estudiante
+        public async Task<List<AsistenciaEspacioItemDto>> ObtenerAsistenciaEspaciosDiaAsync(Guid estudianteId, DateOnly fecha)
+        {
+            var dc = await _context.DetallesCursado.AsNoTracking()
+                .Where(d => d.IdEstudiante == estudianteId && d.Estado)
+                .FirstOrDefaultAsync();
+            if (dc == null) return new List<AsistenciaEspacioItemDto>();
+
+            var diaSemana = fecha.DayOfWeek;
+            var ecs = await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .Include(ec => ec.Curricula)
+                .Include(ec => ec.Horarios.Where(h => h.DíaSemana == diaSemana))
+                .Include(ec => ec.ClasesDictadas.Where(cd => cd.Fecha == fecha))
+                    .ThenInclude(cd => cd.Asistencias.Where(a => a.IdEstudiante == estudianteId))
+                .Where(ec => ec.IdCurso == dc.IdCurso && ec.Horarios.Any(h => h.DíaSemana == diaSemana))
+                .ToListAsync();
+
+            return ecs.SelectMany(ec =>
+                ec.Horarios.Select(h => {
+                    var clase = ec.ClasesDictadas.FirstOrDefault();
+                    var asist = clase?.Asistencias.FirstOrDefault();
+                    return new AsistenciaEspacioItemDto
+                    {
+                        IdAsistenciaEspacio = asist?.IdAsistenciaEspacio,
+                        IdEC                = ec.IdEC,
+                        IdClaseDictada      = clase?.IdClaseDictada,
+                        NombreMateria       = ec.Curricula.Nombre,
+                        HorarioEntrada      = h.HorarioEntrada.ToString(@"hh\:mm"),
+                        HorarioSalida       = h.HorarioSalida.ToString(@"hh\:mm"),
+                        Dictada             = clase?.Dictada,
+                        Presente            = clase?.Dictada == true ? asist?.Presente : null,
+                    };
+                })
+            ).OrderBy(d => d.HorarioEntrada).ToList();
+        }
+
+        // [ PUT ] Actualización manual de presencia en un Espacio Curricular
+        public async Task ActualizarAsistenciaEspacioAsync(ActualizarAsistenciaEspacioDto dto)
+        {
+            var existente = await _context.AsistenciasPorEspacio
+                .FirstOrDefaultAsync(a => a.IdEstudiante == dto.EstudianteId && a.IdClaseDictada == dto.IdClaseDictada);
+
+            if (existente != null)
+            {
+                existente.Presente = dto.Presente;
+                existente.Motivo   = dto.Presente ? "P" : "Ausente Manual";
+            }
+            else
+            {
+                var clase = await _context.ClasesDictadas.FindAsync(dto.IdClaseDictada)
+                    ?? throw new Exception("ClaseDictada no encontrada.");
+                _context.AsistenciasPorEspacio.Add(new AsistenciaPorEspacio
+                {
+                    IdAsistenciaEspacio = Guid.NewGuid(),
+                    IdEstudiante        = dto.EstudianteId,
+                    IdClaseDictada      = dto.IdClaseDictada,
+                    Fecha               = clase.Fecha,
+                    Presente            = dto.Presente,
+                    Motivo              = dto.Presente ? "P" : "Ausente Manual",
+                });
+            }
+            await _context.SaveChangesAsync();
+        }
+
+        // [ POST ] Deshacer registro de asistencia rápida — restablece el turno a Presente (P)
+        public async Task<AsistenciaResponseDto> DeshacerAsistenciaRapidaAsync(DeshacerAsistenciaRapidaDto dto)
+        {
+            var turno = NormalizarTurno(dto.Turno ?? "MANANA");
+            bool esManana = turno == "MANANA";
+
+            var asistencia = await _context.Asistencias
+                .Include(a => a.TipoManiana)
+                .Include(a => a.TipoLlegadaManiana)
+                .Include(a => a.TipoTarde)
+                .FirstOrDefaultAsync(a => a.EstudianteId == dto.EstudianteId && a.Fecha == dto.Fecha);
+
+            if (asistencia == null)
+            {
+                return new AsistenciaResponseDto
+                {
+                    Id = Guid.Empty,
+                    ValorTotal = 0,
+                    Mensaje = "No había registro para deshacer."
+                };
+            }
+
+            var tipoP = await _context.TiposAsistencia
+                .FirstOrDefaultAsync(t => t.Codigo.ToUpper() == "P");
+
+            if (tipoP == null)
+                throw new Exception("No existe el tipo 'P'.");
+
+            if (esManana)
+            {
+                asistencia.TipoManianaId        = tipoP.IdTipo;
+                asistencia.TipoManiana           = tipoP;
+                asistencia.TipoLlegadaManianaId = tipoP.IdTipo;
+                asistencia.TipoLlegadaManiana   = tipoP;
+                asistencia.HoraEntradaManana    = null;
+                asistencia.HoraSalidaManana     = null;
+            }
+            else
+            {
+                asistencia.TipoTardeId      = tipoP.IdTipo;
+                asistencia.TipoTarde        = tipoP;
+                asistencia.HoraEntradaTarde = null;
+                asistencia.HoraSalidaTarde  = null;
+            }
+
+            await _context.SaveChangesAsync();
+            await ProcesarAsistenciaEspacios(new List<Asistencia> { asistencia },
+                new HashSet<string> { esManana ? "MANANA" : "TARDE" });
+
+            return new AsistenciaResponseDto
+            {
+                Id = asistencia.Id,
+                ValorTotal = asistencia.ValorTotalInasistencia,
+                Mensaje = $"Se deshizo el registro del turno {turno} correctamente."
+            };
+        }
+
+        private static string NormalizarTurno(string turno)
+        {
+            if (string.IsNullOrWhiteSpace(turno))
+                throw new AsistenciaException("INVALID_TURNO", "Turno inválido");
+
+            var t = turno.Trim().ToUpperInvariant();
+
+            if (t is "MAÑANA" or "MANANA" or "M" or "AM")
+                return "MANANA";
+
+            if (t is "TARDE" or "T" or "PM")
+                return "TARDE";
+
+            throw new AsistenciaException("INVALID_TURNO", $"Turno inválido: {turno}");
+        }
     }
 }
