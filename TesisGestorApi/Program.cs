@@ -15,11 +15,13 @@ builder.Services.AddScoped<IScannerService, ScannerService>();
 
 
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
-builder.Services.AddScoped<IQrEmailService, QrEmailService>();
 builder.Services.AddScoped<IQrCredentialGenerationService, QrCredentialGenerationService>();
+builder.Services.AddScoped<IQrCredentialDeliveryService, QrCredentialDeliveryService>();
+builder.Services.AddScoped<IQrCredentialVisualService, QrCredentialVisualService>();
+builder.Services.AddScoped<IQrCredentialEmailTemplateService, QrCredentialEmailTemplateService>();
 
-builder.Services.AddSingleton<QrEmailProgressStore>();
 builder.Services.AddSingleton<QrCredentialGenerationProgressStore>();
+builder.Services.AddSingleton<QrCredentialDeliveryProgressStore>();
 
 // Controllers
 builder.Services.AddControllers();
