@@ -1,6 +1,7 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿
+using System.ComponentModel.DataAnnotations;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class CredencialQR
     {
@@ -13,8 +14,9 @@ namespace RepoDB.Entities
         public DateTime FechaGeneracion { get; set; }
         public DateTime FechaExpiracion { get; set; }
 
-        public Guid IdEstudiante { get; set; } 
+        public Guid IdEstudiante { get; set; }
         public Estudiante Estudiante { get; set; } = null!;
     }
-
 }
+    
+

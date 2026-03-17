@@ -1,6 +1,4 @@
-﻿using RepoDB.Entities;
-
-namespace TesisGestorApi.DTOs
+﻿namespace TesisGestorApi.DTOs
 {
     public class AsistenciaGetDTO
     {

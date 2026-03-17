@@ -1,4 +1,4 @@
-﻿namespace RepoDB.Entities
+﻿namespace TesisGestorApi.Entities
 {
     public enum Sexo
     {

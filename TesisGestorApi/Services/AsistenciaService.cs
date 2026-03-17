@@ -1,9 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using RepoDB.Entities;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Dtos;
 using TesisGestorApi.Interfaces;
+using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Services
 {
@@ -11,11 +11,16 @@ namespace TesisGestorApi.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<AsistenciaService> _logger;
+        private readonly IAsistenciaUmbralService _umbrales;
 
-        public AsistenciaService(ApplicationDbContext context, ILogger<AsistenciaService> logger)
+        public AsistenciaService(
+            ApplicationDbContext context,
+            ILogger<AsistenciaService> logger,
+            IAsistenciaUmbralService umbrales)
         {
             _context = context;
             _logger = logger;
+            _umbrales = umbrales;
         }
 
         // =========================================
@@ -67,7 +72,10 @@ namespace TesisGestorApi.Services
                     asistenciasExistentes.Add(asistencia);
                 }
 
-                var turno = (dto.Turno ?? "MANANA").ToUpper();
+                var turno = (dto.Turno ?? "MANANA").Trim().ToUpperInvariant();
+                if (turno == "MANIANA")
+                    turno = "MANANA";
+
                 bool esManana = turno == "MANANA";
 
                 TimeSpan hora = dto.Hora ?? TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan();
@@ -85,7 +93,9 @@ namespace TesisGestorApi.Services
                     asistencia.HoraEntradaTarde = hora;
                 }
 
-                asistenciasParaProcesar.Add(asistencia);
+                if (!asistenciasParaProcesar.Contains(asistencia))
+                    asistenciasParaProcesar.Add(asistencia);
+
                 cont++;
             }
 
@@ -93,6 +103,18 @@ namespace TesisGestorApi.Services
 
             if (asistenciasParaProcesar.Any())
                 await ProcesarAsistenciaEspacios(asistenciasParaProcesar);
+
+            try
+            {
+                foreach (var anio in fechas.Select(f => f.Year).Distinct())
+                {
+                    await _umbrales.ProcesarUmbralesAsync(idsEstudiantes, anio);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error procesando umbrales de inasistencias");
+            }
 
             return cont;
         }
@@ -181,23 +203,17 @@ namespace TesisGestorApi.Services
                 };
             }
 
-            var tipoP = await _context.TiposAsistencia
-                .FirstOrDefaultAsync(t => t.Codigo.ToUpper() == "P");
-
-            if (tipoP == null)
-                throw new Exception("No existe el tipo 'P'.");
-
             if (esManana)
             {
-                asistencia.TipoManianaId = tipoP.IdTipo;
-                asistencia.TipoManiana = tipoP;
+                asistencia.TipoManianaId = null;
+                asistencia.TipoManiana = null;
                 asistencia.HoraEntradaManana = null;
                 asistencia.HoraSalidaManana = null;
             }
             else
             {
-                asistencia.TipoTardeId = tipoP.IdTipo;
-                asistencia.TipoTarde = tipoP;
+                asistencia.TipoTardeId = null;
+                asistencia.TipoTarde = null;
                 asistencia.HoraEntradaTarde = null;
                 asistencia.HoraSalidaTarde = null;
             }
@@ -206,11 +222,20 @@ namespace TesisGestorApi.Services
 
             await ProcesarAsistenciaEspacios(new List<Asistencia> { asistencia });
 
+            try
+            {
+                await _umbrales.ProcesarUmbralesAsync(new List<Guid> { dto.EstudianteId }, dto.Fecha.Year);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error procesando umbrales tras deshacer asistencia.");
+            }
+
             return new AsistenciaResponseDto
             {
                 Id = asistencia.Id,
                 ValorTotal = asistencia.ValorTotalInasistencia,
-                Mensaje = $"Se deshizo el registro del turno {turno} correctamente."
+                Mensaje = $"Se restableció el turno {turno} a sin definir."
             };
         }
 
@@ -220,10 +245,194 @@ namespace TesisGestorApi.Services
 
         public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales)
         {
+            if (asistenciasGenerales == null || !asistenciasGenerales.Any())
+                return;
+
+            var estudiantesIds = asistenciasGenerales.Select(a => a.EstudianteId).Distinct().ToList();
+            var fechas = asistenciasGenerales.Select(a => a.Fecha).Distinct().ToList();
+            var diasSemana = fechas.Select(f => f.DayOfWeek).Distinct().ToList();
+
+            var inscripciones = await _context.DetallesCursado
+                .AsNoTracking()
+                .Where(dc => estudiantesIds.Contains(dc.IdEstudiante) && dc.Estado == true)
+                .ToListAsync();
+
+            var cursosIds = inscripciones.Select(i => i.IdCurso).Distinct().ToList();
+
+            var horarios = await _context.Horarios
+                .AsNoTracking()
+                .Where(h => cursosIds.Contains(h.IdCurso) && diasSemana.Contains(h.DíaSemana))
+                .ToListAsync();
+
+            var clasesDbIds = horarios.Select(h => h.IdEC).Distinct().ToList();
+
+            var clasesExistentes = await _context.ClasesDictadas
+                .Where(c => clasesDbIds.Contains(c.IdEC) && fechas.Contains(c.Fecha))
+                .ToListAsync();
+
+            var clasesDictadasLocales = new Dictionary<(Guid IdEC, DateOnly Fecha), ClaseDictada>();
+            foreach (var c in clasesExistentes)
+                clasesDictadasLocales[(c.IdEC, c.Fecha)] = c;
+
+            var asistenciasEspacioExistentes = await (
+                from ae in _context.AsistenciasPorEspacio
+                join cd in _context.ClasesDictadas on ae.IdClaseDictada equals cd.IdClaseDictada
+                where estudiantesIds.Contains(ae.IdEstudiante) && fechas.Contains(cd.Fecha)
+                select ae
+            ).ToListAsync();
+
+            if (asistenciasEspacioExistentes.Any())
+                _context.AsistenciasPorEspacio.RemoveRange(asistenciasEspacioExistentes);
+
+            var nuevasAsistenciasEspacio = new List<AsistenciaPorEspacio>();
+
             foreach (var asistencia in asistenciasGenerales)
             {
-                asistencia.ValorTotalInasistencia = 0;
+                var inscripcion = inscripciones.FirstOrDefault(i => i.IdEstudiante == asistencia.EstudianteId);
+
+                if (inscripcion == null)
+                {
+                    asistencia.ValorTotalInasistencia = 0;
+                    continue;
+                }
+
+                var horariosDelDia = horarios
+                    .Where(h => h.IdCurso == inscripcion.IdCurso && h.DíaSemana == asistencia.Fecha.DayOfWeek)
+                    .ToList();
+
+                double minTotalesM = 0, minPerdidaIngresoM = 0, minPerdidaSalidaM = 0;
+                double minTotalesT = 0, minPerdidaIngresoT = 0, minPerdidaSalidaT = 0;
+
+                var gruposMaterias = horariosDelDia.GroupBy(h => h.IdEC).ToList();
+
+                foreach (var grupoMateria in gruposMaterias)
+                {
+                    Guid idEC = grupoMateria.Key;
+                    var key = (idEC, asistencia.Fecha);
+
+                    if (!clasesDictadasLocales.ContainsKey(key))
+                    {
+                        var nuevaClase = new ClaseDictada
+                        {
+                            IdClaseDictada = Guid.NewGuid(),
+                            IdEC = idEC,
+                            Fecha = asistencia.Fecha,
+                            Dictada = true,
+                            Tema = "Generado Automáticamente"
+                        };
+
+                        _context.ClasesDictadas.Add(nuevaClase);
+                        clasesDictadasLocales[key] = nuevaClase;
+                    }
+
+                    var claseDictada = clasesDictadasLocales[key];
+                    if (!claseDictada.Dictada) continue;
+
+                    double minTotalesMateria = 0;
+                    double minAsistidosMateria = 0;
+                    bool huboDefinicionMateria = false;
+
+                    foreach (var horario in grupoMateria)
+                    {
+                        double duracionModulo = (horario.HorarioSalida - horario.HorarioEntrada).TotalMinutes;
+                        if (duracionModulo <= 0) continue;
+
+                        bool esManana = horario.HorarioEntrada.Hours < 13;
+                        var tipoAsistencia = esManana ? asistencia.TipoManiana : asistencia.TipoTarde;
+                        string codigo = tipoAsistencia?.Codigo?.ToUpper() ?? "-";
+
+                        if (codigo == "-" || string.IsNullOrWhiteSpace(codigo))
+                            continue;
+
+                        huboDefinicionMateria = true;
+
+                        minTotalesMateria += duracionModulo;
+
+                        if (esManana) minTotalesM += duracionModulo;
+                        else minTotalesT += duracionModulo;
+
+                        if (codigo == "P" || codigo == "ANC" || codigo == "RE")
+                        {
+                            minAsistidosMateria += duracionModulo;
+                            continue;
+                        }
+
+                        TimeSpan entradaAlumno = esManana
+                            ? (asistencia.HoraEntradaManana ?? horario.HorarioEntrada)
+                            : (asistencia.HoraEntradaTarde ?? horario.HorarioEntrada);
+
+                        TimeSpan salidaAlumno = esManana
+                            ? (asistencia.HoraSalidaManana ?? horario.HorarioSalida)
+                            : (asistencia.HoraSalidaTarde ?? horario.HorarioSalida);
+
+                        if (entradaAlumno > horario.HorarioEntrada)
+                        {
+                            TimeSpan finPerdida = entradaAlumno < horario.HorarioSalida ? entradaAlumno : horario.HorarioSalida;
+                            double perdido = (finPerdida - horario.HorarioEntrada).TotalMinutes;
+                            if (perdido > 0)
+                            {
+                                if (esManana) minPerdidaIngresoM += perdido;
+                                else minPerdidaIngresoT += perdido;
+                            }
+                        }
+
+                        if (salidaAlumno < horario.HorarioSalida)
+                        {
+                            TimeSpan inicioPerdida = salidaAlumno > horario.HorarioEntrada ? salidaAlumno : horario.HorarioEntrada;
+                            double perdido = (horario.HorarioSalida - inicioPerdida).TotalMinutes;
+                            if (perdido > 0)
+                            {
+                                if (esManana) minPerdidaSalidaM += perdido;
+                                else minPerdidaSalidaT += perdido;
+                            }
+                        }
+
+                        TimeSpan inicioEfectivo = horario.HorarioEntrada > entradaAlumno ? horario.HorarioEntrada : entradaAlumno;
+                        TimeSpan finEfectivo = horario.HorarioSalida < salidaAlumno ? horario.HorarioSalida : salidaAlumno;
+                        double asistidoEnModulo = (finEfectivo - inicioEfectivo).TotalMinutes;
+                        if (asistidoEnModulo < 0) asistidoEnModulo = 0;
+
+                        if (codigo == "A" || codigo == "LLTC" || codigo == "RAE")
+                            asistidoEnModulo = 0;
+                        else
+                            minAsistidosMateria += asistidoEnModulo;
+                    }
+
+                    if (!huboDefinicionMateria)
+                        continue;
+
+                    bool presenteMateria = true;
+                    string motivoMateria = "P";
+
+                    if (minTotalesMateria > 0)
+                    {
+                        double porcentajeAusencia = 100.0 - ((minAsistidosMateria / minTotalesMateria) * 100.0);
+                        if (porcentajeAusencia > 20.0)
+                        {
+                            presenteMateria = false;
+                            motivoMateria = minAsistidosMateria == 0
+                                ? "Ausente Total"
+                                : $"Ausencia Parcial ({Math.Round(porcentajeAusencia)}%)";
+                        }
+                    }
+
+                    nuevasAsistenciasEspacio.Add(new AsistenciaPorEspacio
+                    {
+                        IdAsistenciaEspacio = Guid.NewGuid(),
+                        IdClaseDictada = claseDictada.IdClaseDictada,
+                        IdEstudiante = asistencia.EstudianteId,
+                        Presente = presenteMateria,
+                        Motivo = motivoMateria
+                    });
+                }
+
+                asistencia.CalcularAsistencia(
+                    minTotalesM, minPerdidaIngresoM, minPerdidaSalidaM,
+                    minTotalesT, minPerdidaIngresoT, minPerdidaSalidaT);
             }
+
+            if (nuevasAsistenciasEspacio.Any())
+                _context.AsistenciasPorEspacio.AddRange(nuevasAsistenciasEspacio);
 
             await _context.SaveChangesAsync();
         }
@@ -262,14 +471,27 @@ namespace TesisGestorApi.Services
         public async Task RegenerarAsistenciasParaClase(ClaseDictada clase)
         {
             var asistencias = await _context.Asistencias
+                .Include(a => a.TipoManiana)
+                .Include(a => a.TipoTarde)
                 .Where(a => a.Fecha == clase.Fecha)
                 .ToListAsync();
 
             await ProcesarAsistenciaEspacios(asistencias);
+
+            try
+            {
+                var ids = asistencias.Select(a => a.EstudianteId).Distinct().ToList();
+                if (ids.Any())
+                    await _umbrales.ProcesarUmbralesAsync(ids, clase.Fecha.Year);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error procesando umbrales tras regenerar asistencias.");
+            }
         }
 
         // =========================================
-        // METODOS SIN IMPLEMENTAR
+        // METODOS ADICIONALES
         // =========================================
 
         public Task<PrevisualizarAsistenciaResponse> PrevisualizarAsync(PrevisualizarAsistenciaRequest request)
@@ -284,17 +506,51 @@ namespace TesisGestorApi.Services
 
         public Task<List<OpcionSeleccionDto>> ObtenerCursosAsync()
         {
-            throw new NotImplementedException();
+            var anioActual = DateTime.UtcNow.Year;
+
+            return _context.Cursos
+                .AsNoTracking()
+                .Where(c => c.Estado && c.AñoLectivo.Year == anioActual)
+                .OrderBy(c => c.Codigo)
+                .Select(c => new OpcionSeleccionDto
+                {
+                    Id = c.IdCurso.ToString(),
+                    Label = c.Codigo
+                })
+                .ToListAsync();
         }
 
         public List<OpcionSeleccionDto> ObtenerTurnos()
         {
-            throw new NotImplementedException();
+            return new List<OpcionSeleccionDto>
+            {
+                new()
+                {
+                    Id = "MANANA",
+                    Label = "MANANA"
+                },
+                new()
+                {
+                    Id = "TARDE",
+                    Label = "TARDE"
+                }
+            };
         }
 
         public Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync()
         {
-            throw new NotImplementedException();
+            return _context.TiposAsistencia
+                .AsNoTracking()
+                .Where(t => t.Codigo != "RE" && t.Codigo != "RAE")
+                .OrderBy(t => t.Codigo)
+                .Select(t => new OpcionSeleccionDto
+                {
+                    Id = t.IdTipo.ToString(),
+                    Label = t.Descripcion
+                })
+                .ToListAsync();
         }
+
+      
     }
 }
