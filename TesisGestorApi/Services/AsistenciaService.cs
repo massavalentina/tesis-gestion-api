@@ -207,14 +207,19 @@ namespace TesisGestorApi.Services
 
             await _context.SaveChangesAsync();
 
-            // Se determina qué turnos estuvieron en este lote para procesar solo los ECs correspondientes.
-            var turnosEnLista = lista
-                .Select(d => d.Turno?.Trim().ToUpper() == "MANANA" ? "MANANA" : "TARDE")
-                .ToHashSet();
+            // Se determina qué turno fue registrado para CADA ESTUDIANTE en este lote.
+            // Usar un mapeo por estudiante (en lugar de un HashSet global) evita que un turno presente
+            // en el lote de un estudiante "contamine" el filtro de otro estudiante que no lo tiene.
+            var turnosPorEstudiante = lista
+                .GroupBy(d => d.EstudianteId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(d => d.Turno?.Trim().ToUpper() == "MANANA" ? "MANANA" : "TARDE").ToHashSet()
+                );
 
             if (asistenciasParaProcesar.Any())
             {
-                await ProcesarAsistenciaEspacios(asistenciasParaProcesar, turnosEnLista);
+                await ProcesarAsistenciaEspacios(asistenciasParaProcesar, turnosPorEstudiante);
             }
 
             return cont;
@@ -261,7 +266,9 @@ namespace TesisGestorApi.Services
 
 
         // [ Helper Público ] Procesa las asistencias por espacio y calcula el valor final
-        public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales, HashSet<string>? turnosAFiltrar = null)
+        // turnosPorEstudiante: para cada estudiante, qué turno(s) fueron explícitamente registrados en este request.
+        // Si es null, no se aplica filtro por turno (solo se salta si tipoTurnoEc == null).
+        public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales, Dictionary<Guid, HashSet<string>>? turnosPorEstudiante = null)
         {
             // Se preparan los datos que se van a consultar con frecuencia
             var estudiantesIds = asistenciasGenerales.Select(a => a.EstudianteId).Distinct().ToList();
@@ -309,12 +316,15 @@ namespace TesisGestorApi.Services
                     var primerModulo = grupoMateria.First();
                     bool esEcManana = primerModulo.HorarioEntrada < new TimeSpan(13, 20, 0);
 
-                    // Si se pasó un filtro de turno, saltear los ECs que no corresponden a ese turno.
-                    // Esto garantiza que registrar mañana no toque ECs de la tarde y viceversa.
-                    if (turnosAFiltrar != null)
+                    // Filtro por turno POR ESTUDIANTE: solo procesar ECs cuyo turno fue explícitamente
+                    // registrado para este estudiante en este request. Esto evita que un turno registrado
+                    // para otro estudiante (o cargado desde la BD) habilite ECs del turno incorrecto.
+                    if (turnosPorEstudiante != null)
                     {
                         string ecTurno = esEcManana ? "MANANA" : "TARDE";
-                        if (!turnosAFiltrar.Contains(ecTurno)) continue;
+                        if (!turnosPorEstudiante.TryGetValue(asistencia.EstudianteId, out var turnosEst)
+                            || !turnosEst.Contains(ecTurno))
+                            continue;
                     }
 
                     var tipoTurnoEc = esEcManana ? asistencia.TipoManiana : asistencia.TipoTarde;
@@ -796,7 +806,7 @@ namespace TesisGestorApi.Services
 
             await _context.SaveChangesAsync();
             await ProcesarAsistenciaEspacios(new List<Asistencia> { asistencia },
-                new HashSet<string> { esManana ? "MANANA" : "TARDE" });
+                new Dictionary<Guid, HashSet<string>> { { asistencia.EstudianteId, new HashSet<string> { esManana ? "MANANA" : "TARDE" } } });
 
             return new AsistenciaResponseDto
             {
