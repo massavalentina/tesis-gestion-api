@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
-using TesisGestorApi.Dtos;
 using TesisGestorApi.Interfaces;
 using TesisGestorApi.Entities;
 

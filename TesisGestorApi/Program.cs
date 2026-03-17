@@ -11,6 +11,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
 
 builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 builder.Services.AddScoped<IAsistenciaUmbralService, AsistenciaUmbralService>();
+builder.Services.AddScoped<IScannerService, ScannerService>();
+
+
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 
 builder.Services.AddScoped<IQrEmailService, QrEmailService>();

@@ -17,16 +17,6 @@ namespace TesisGestorApi.Interfaces
 
         Task RegenerarAsistenciasParaClase(ClaseDictada clase);
 
-        Task<PrevisualizarAsistenciaResponse> PrevisualizarAsync(PrevisualizarAsistenciaRequest request);
-
-        Task ConfirmarAsync(ConfirmarAsistenciaRequest request);
-
-        Task<List<OpcionSeleccionDto>> ObtenerCursosAsync();
-
-        List<OpcionSeleccionDto> ObtenerTurnos();
-
-        Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync();
-
         Task<AsistenciaResponseDto> DeshacerAsistenciaRapidaAsync(DeshacerAsistenciaRapidaDto dto);
     }
 }

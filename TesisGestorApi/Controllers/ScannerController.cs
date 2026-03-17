@@ -3,65 +3,68 @@ using TesisGestorApi.Dtos;
 using TesisGestorApi.Exceptions;
 using TesisGestorApi.Interfaces;
 
-[ApiController]
-[Route("api/asistencia/scanner")]
-public class ScannerController : ControllerBase
+namespace TesisGestorApi.Controllers
 {
-    private readonly IAsistenciaService _asistenciaService;
-
-    public ScannerController(IAsistenciaService asistenciaService)
+    [ApiController]
+    [Route("api/asistencia/scanner")]
+    public class ScannerController : ControllerBase
     {
-        _asistenciaService = asistenciaService;
-    }
+        private readonly IScannerService _scannerService;
 
-    [HttpPost("preview")]
-    public async Task<IActionResult> PreviewScaneo([FromBody] PrevisualizarAsistenciaRequest request)
-    {
-        try
+        public ScannerController(IScannerService scannerService)
         {
-            var result = await _asistenciaService.PrevisualizarAsync(request);
-            return Ok(result);
+            _scannerService = scannerService;
         }
-        catch (AsistenciaException ex)
+
+        [HttpPost("preview")]
+        public async Task<IActionResult> PreviewScaneo([FromBody] PrevisualizarAsistenciaRequest request)
         {
-            return Conflict(new
+            try
             {
-                code = ex.Code,
-                message = ex.Message
-            });
-        }
-    }
-
-
-    [HttpPost("confirm")]
-    public async Task<IActionResult> ConfirmarAsistenciaScan([FromBody] ConfirmarAsistenciaRequest request)
-    {
-        try
-        {
-            await _asistenciaService.ConfirmarAsync(request);
-            return Ok();
-        }
-        catch (AsistenciaException ex)
-        {
-            return Conflict(new
+                var result = await _scannerService.PrevisualizarAsync(request);
+                return Ok(result);
+            }
+            catch (AsistenciaException ex)
             {
-                code = ex.Code,
-                message = ex.Message
-            });
+                return Conflict(new
+                {
+                    code = ex.Code,
+                    message = ex.Message
+                });
+            }
         }
+
+
+        [HttpPost("confirm")]
+        public async Task<IActionResult> ConfirmarAsistenciaScan([FromBody] ConfirmarAsistenciaRequest request)
+        {
+            try
+            {
+                await _scannerService.ConfirmarAsync(request);
+                return Ok();
+            }
+            catch (AsistenciaException ex)
+            {
+                return Conflict(new
+                {
+                    code = ex.Code,
+                    message = ex.Message
+                });
+            }
+        }
+
+        [HttpGet("cursosscanner")]
+        public async Task<IActionResult> GetCursos()
+            => Ok(await _scannerService.ObtenerCursosScannerAsync());
+
+        [HttpGet("turnos")]
+        public IActionResult GetTurnos()
+            => Ok(_scannerService.ObtenerTurnos());
+
+        [HttpGet("tipos-asistencia")]
+        public async Task<IActionResult> GetTiposAsistencia()
+            => Ok(await _scannerService.ObtenerTiposAsistenciaAsync());
+
+
     }
-
-    [HttpGet("cursos")]
-    public async Task<IActionResult> GetCursos()
-        => Ok(await _asistenciaService.ObtenerCursosAsync());
-
-    [HttpGet("turnos")]
-    public IActionResult GetTurnos()
-        => Ok(_asistenciaService.ObtenerTurnos());
-
-    [HttpGet("tipos-asistencia")]
-    public async Task<IActionResult> GetTiposAsistencia()
-        => Ok(await _asistenciaService.ObtenerTiposAsistenciaAsync());
-
-
 }
