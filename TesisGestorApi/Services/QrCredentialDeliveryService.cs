@@ -22,6 +22,7 @@ namespace TesisGestorApi.Services
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly QrCredentialDeliveryProgressStore _progress;
         private readonly IQrCredentialVisualService _qrVisualService;
+        private static readonly Lazy<byte[]?> InstitutionLogoBytes = new(LoadInstitutionLogo);
 
         public QrCredentialDeliveryService(
             ApplicationDbContext db,
@@ -86,6 +87,8 @@ namespace TesisGestorApi.Services
                     var liveContext = await BuildContextAsync(db, req.IdCurso, CancellationToken.None);
                     var liveCandidates = SelectCandidates(liveContext.Rows, scope)
                         .ToDictionary(x => x.IdEstudiante, x => x);
+                    var logoBytes = TryLoadInstitutionLogo();
+                    const string logoContentId = "institution-logo";
 
                     foreach (var candidate in candidates)
                     {
@@ -140,10 +143,13 @@ namespace TesisGestorApi.Services
                             var htmlBody = templateService.Build(
                                 tutorNombre: liveCandidate.TutorPrincipalNombre ?? "Tutor/a",
                                 alumnoNombre: liveCandidate.NombreCompleto,
+                                alumnoDni: liveCandidate.Dni,
                                 anioLectivo: liveContext.AnioLectivo,
                                 codigoQr: liveCandidate.CodigoQr.Value,
+                                fechaVigencia: credencial.FechaExpiracion,
                                 mensajePersonalizado: req.MensajePersonalizado,
-                                qrInlineContentId: qrContentId);
+                                qrInlineContentId: qrContentId,
+                                logoInlineContentId: logoBytes is { Length: > 0 } ? logoContentId : null);
 
                             var attachment = new EmailAttachmentDto
                             {
@@ -159,13 +165,25 @@ namespace TesisGestorApi.Services
                                 Content = qrBytes
                             };
 
+                            var inlineResources = new List<EmailInlineResourceDto> { inlineImage };
+
+                            if (logoBytes is { Length: > 0 })
+                            {
+                                inlineResources.Add(new EmailInlineResourceDto
+                                {
+                                    ContentId = logoContentId,
+                                    ContentType = "image/png",
+                                    Content = logoBytes
+                                });
+                            }
+
                             await emailSender.SendAsync(
                                 to: liveCandidate.TutorEmail,
                                 subject: subject,
                                 htmlBody: htmlBody,
                                 ct: CancellationToken.None,
                                 attachments: [attachment],
-                                inlineResources: [inlineImage]);
+                                inlineResources: inlineResources);
 
                             credencial.Enviado = true;
                             await db.SaveChangesAsync(CancellationToken.None);
@@ -387,6 +405,37 @@ namespace TesisGestorApi.Services
 
         private static string BuildTutorName(string apellido, string nombre)
             => string.Join(" ", new[] { nombre?.Trim(), apellido?.Trim() }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+        private static byte[]? TryLoadInstitutionLogo()
+            => InstitutionLogoBytes.Value;
+
+        private static byte[]? LoadInstitutionLogo()
+        {
+            var candidates = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "utils", "robles.png"),
+                Path.Combine(Directory.GetCurrentDirectory(), "utils", "robles.png")
+            };
+
+            foreach (var candidate in candidates)
+            {
+                try
+                {
+                    var fullPath = Path.GetFullPath(candidate);
+
+                    if (File.Exists(fullPath))
+                    {
+                        return File.ReadAllBytes(fullPath);
+                    }
+                }
+                catch
+                {
+                    // Si no se puede leer el logo, el email se envía sin imagen institucional.
+                }
+            }
+
+            return null;
+        }
 
         private static async Task<DeliveryContext> BuildContextAsync(ApplicationDbContext db, Guid cursoId, CancellationToken ct)
         {
