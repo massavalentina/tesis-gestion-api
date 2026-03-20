@@ -3,6 +3,7 @@ using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Interfaces;
 using TesisGestorApi.Entities;
+using TesisGestorApi.Dtos;
 
 namespace TesisGestorApi.Services
 {
