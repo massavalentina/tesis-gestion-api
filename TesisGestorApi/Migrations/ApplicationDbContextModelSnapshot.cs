@@ -713,11 +713,10 @@ namespace TesisGestorApi.Migrations
                         .WithMany("Asistencias")
                         .HasForeignKey("EstudianteIdEstudiante");
 
-                    b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoLlegadaManiana")
+                    b.HasOne("TesisGestorApi.Entities.TipoAsistencia", "TipoLlegadaManiana")
                         .WithMany()
                         .HasForeignKey("TipoLlegadaManianaId");
 
-                    b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoManiana")
                     b.HasOne("TesisGestorApi.Entities.TipoAsistencia", "TipoManiana")
                         .WithMany()
                         .HasForeignKey("TipoManianaId");
