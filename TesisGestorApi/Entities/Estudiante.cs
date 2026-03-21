@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class Estudiante
     {
@@ -12,6 +12,8 @@ namespace RepoDB.Entities
         public string Documento { get; set; } = null!;
         public DateTime FechaNacimiento { get; set; }
         public Sexo Sexo { get; set; }
+
+        public bool TeaGeneral { get; set; }
 
         // Inscripciones a cursos
         public ICollection<DetalleCursado> DetallesCursado { get; set; }

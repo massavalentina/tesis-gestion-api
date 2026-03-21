@@ -1,6 +1,6 @@
-using RepoDB.Entities;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Dtos;
+using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Interfaces
 {

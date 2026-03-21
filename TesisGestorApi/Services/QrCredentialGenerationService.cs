@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using RepoDB.Entities;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
+using TesisGestorApi.Entities;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Services

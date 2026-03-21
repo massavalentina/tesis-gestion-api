@@ -3,23 +3,26 @@ using TesisGestorApi.Data;
 using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
 
-
 var builder = WebApplication.CreateBuilder(args);
 
-
-//Services
+// Services
 builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
+builder.Services.AddScoped<IAsistenciaUmbralService, AsistenciaUmbralService>();
 builder.Services.AddScoped<IScannerService, ScannerService>();
 
 
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+
 builder.Services.AddScoped<IQrEmailService, QrEmailService>();
 builder.Services.AddScoped<IQrCredentialGenerationService, QrCredentialGenerationService>();
 
 builder.Services.AddSingleton<QrEmailProgressStore>();
 builder.Services.AddSingleton<QrCredentialGenerationProgressStore>();
+
+builder.Services.AddHostedService<AsistenciaUmbralEmailWorker>();
 
 // Controllers
 builder.Services.AddControllers();
@@ -28,7 +31,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// CORS 
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -39,9 +42,9 @@ builder.Services.AddCors(options =>
     });
 });
 
-
 var app = builder.Build();
 
+// Migraciones automáticas fuera de Development
 if (!app.Environment.IsDevelopment())
 {
     using (var scope = app.Services.CreateScope())
@@ -51,7 +54,7 @@ if (!app.Environment.IsDevelopment())
     }
 }
 
-// Swagger 
+// Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
 

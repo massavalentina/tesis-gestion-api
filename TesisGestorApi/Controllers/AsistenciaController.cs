@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using RepoDB.Entities;
 using System.Runtime.InteropServices.Marshalling;
 using TesisGestorApi.Data;
 using TesisGestorApi.Dtos;
