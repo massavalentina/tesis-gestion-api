@@ -12,11 +12,13 @@ namespace TesisGestorApi.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<AsistenciaService> _logger;
+        private readonly IParteDiarioService _parteDiarioService;
 
-        public AsistenciaService(ApplicationDbContext context, ILogger<AsistenciaService> logger)
+        public AsistenciaService(ApplicationDbContext context, ILogger<AsistenciaService> logger, IParteDiarioService parteDiarioService)
         {
             _context = context;
             _logger = logger;
+            _parteDiarioService = parteDiarioService;
         }
 
         // [ POST ] Registro de Asistencia General por Lote
@@ -73,6 +75,17 @@ namespace TesisGestorApi.Services
                 .Include(a => a.TipoTarde)
                 .Where(a => idsEstudiantes.Contains(a.EstudianteId) && fechas.Contains(a.Fecha))
                 .ToListAsync();
+
+            // Captura de estado anterior (antes de modificar) para el log del parte diario
+            var oldManana = asistenciasExistentes.ToDictionary(a => (a.EstudianteId, a.Fecha), a => a.TipoManiana?.Codigo);
+            var oldTarde  = asistenciasExistentes.ToDictionary(a => (a.EstudianteId, a.Fecha), a => a.TipoTarde?.Codigo);
+
+            // Nombres de estudiantes para el log
+            var estudiantesDict = await _context.Estudiantes
+                .AsNoTracking()
+                .Where(e => idsEstudiantes.Contains(e.IdEstudiante))
+                .Select(e => new { e.IdEstudiante, e.Nombre, e.Apellido })
+                .ToDictionaryAsync(e => e.IdEstudiante, e => (e.Nombre, e.Apellido));
 
             int cont = 0;
             var asistenciasParaProcesar = new List<Asistencia>();
@@ -222,6 +235,9 @@ namespace TesisGestorApi.Services
                 await ProcesarAsistenciaEspacios(asistenciasParaProcesar, turnosPorEstudiante);
             }
 
+            // Registrar cambios de asistencia en el log del parte diario
+            await LogearCambiosAsistenciaAsync(lista, inscripciones, asistenciasExistentes, oldManana, oldTarde, estudiantesDict);
+
             return cont;
         }
 
@@ -241,22 +257,26 @@ namespace TesisGestorApi.Services
             double minutosTotales = 0;
             double minutosPerdidos = 0;
 
-            foreach (var h in horariosTurno)
+            // Agrupar por EC para manejar overrides de horario y multi-módulos correctamente
+            foreach (var grupoEC in horariosTurno.GroupBy(h => h.IdEC))
             {
-                // Si la clase está marcada como no dictada, no cuenta en el total de minutos de clase del turno.
-                // Si no hay registro (clase aún no procesada), se asume que sí se dictó.
-                bool seDicto = !clasesDictadasLocales.TryGetValue((h.IdEC, fecha), out var cd) || cd.Dictada;
-                if (!seDicto) continue;
+                clasesDictadasLocales.TryGetValue((grupoEC.Key, fecha), out var cd);
+                if (cd != null && !cd.Dictada) continue;
 
-                double duracion = (h.HorarioSalida - h.HorarioEntrada).TotalMinutes;
+                TimeSpan horaEntradaEf = cd?.HorarioEntradaEfectiva
+                    ?? grupoEC.OrderBy(h => h.HorarioEntrada).First().HorarioEntrada;
+                TimeSpan horaSalidaEf = cd?.HorarioSalidaEfectiva
+                    ?? grupoEC.OrderBy(h => h.HorarioSalida).Last().HorarioSalida;
+
+                double duracion = (horaSalidaEf - horaEntradaEf).TotalMinutes;
                 if (duracion <= 0) continue;
 
                 minutosTotales += duracion;
 
-                if (horaRetiro < h.HorarioSalida)
+                if (horaRetiro < horaSalidaEf)
                 {
-                    TimeSpan inicioPerdida = horaRetiro > h.HorarioEntrada ? horaRetiro : h.HorarioEntrada;
-                    double perdidoEnModulo = (h.HorarioSalida - inicioPerdida).TotalMinutes;
+                    TimeSpan inicioPerdida = horaRetiro > horaEntradaEf ? horaRetiro : horaEntradaEf;
+                    double perdidoEnModulo = (horaSalidaEf - inicioPerdida).TotalMinutes;
                     if (perdidoEnModulo > 0) minutosPerdidos += perdidoEnModulo;
                 }
             }
@@ -372,6 +392,13 @@ namespace TesisGestorApi.Services
                     double minTotalesMateria = 0;
                     double minAsistidosMateria = 0;
 
+                    // Offset de tiempo efectivo: desplaza todos los módulos del EC si el preceptor
+                    // lo movió a un horario distinto del programado (HorarioEntradaEfectiva != null).
+                    var primerModuloEC = grupoMateria.OrderBy(h => h.HorarioEntrada).First();
+                    TimeSpan offsetTiempo = claseDictada.HorarioEntradaEfectiva.HasValue
+                        ? claseDictada.HorarioEntradaEfectiva.Value - primerModuloEC.HorarioEntrada
+                        : TimeSpan.Zero;
+
                     foreach (var horario in grupoMateria)
                     {
                         double duracionModulo = (horario.HorarioSalida - horario.HorarioEntrada).TotalMinutes;
@@ -380,6 +407,7 @@ namespace TesisGestorApi.Services
                         // Acumula los minutos totales del Espacio Curricular en el día
                         minTotalesMateria += duracionModulo;
 
+                        // El turno se determina siempre con el horario original (un EC no cambia de turno al moverlo)
                         bool esManana = horario.HorarioEntrada < new TimeSpan(13, 20, 0);
                         if (esManana) minTotalesM += duracionModulo; else minTotalesT += duracionModulo;
 
@@ -391,40 +419,52 @@ namespace TesisGestorApi.Services
                         // RE = retiro con ≤10% perdido del turno → siempre < 20% por EC → siempre presente.
                         if (codigo == "P" || codigo == "RE")
                         {
-                            // Se asume que asistió todo el módulo sin pérdidas de tiempo.
                             minAsistidosMateria += duracionModulo;
-                            continue; // Salta al siguiente horario
+                            continue;
                         }
 
+                        // Tiempos efectivos del módulo (desplazados si el EC fue movido)
+                        TimeSpan entradaEfMod = horario.HorarioEntrada + offsetTiempo;
+                        TimeSpan salidaEfMod  = horario.HorarioSalida  + offsetTiempo;
+
                         // Presencia Parcial
-                        TimeSpan entradaAlumno = esManana ? (asistencia.HoraEntradaManana ?? horario.HorarioEntrada) : (asistencia.HoraEntradaTarde ?? horario.HorarioEntrada);
-                        TimeSpan salidaAlumno = esManana ? (asistencia.HoraSalidaManana ?? horario.HorarioSalida) : (asistencia.HoraSalidaTarde ?? horario.HorarioSalida);
+                        // Solo usar la hora de entrada real cuando el código de llegada es una llegada tarde
+                        // (LLT/LLTE/LLTC). Para "P" el docente pudo haberlo registrado después del inicio,
+                        // pero el alumno fue marcado como presente → se toma el horario efectivo.
+                        string? codigoLlegada = esManana
+                            ? asistencia.TipoLlegadaManiana?.Codigo?.ToUpper()
+                            : asistencia.TipoTarde?.Codigo?.ToUpper();
+                        bool usarHoraEntradaReal = codigoLlegada is "LLT" or "LLTE" or "LLTC";
+                        TimeSpan entradaAlumno = usarHoraEntradaReal
+                            ? (esManana ? (asistencia.HoraEntradaManana ?? entradaEfMod) : (asistencia.HoraEntradaTarde ?? entradaEfMod))
+                            : entradaEfMod;
+                        TimeSpan salidaAlumno = esManana ? (asistencia.HoraSalidaManana ?? salidaEfMod) : (asistencia.HoraSalidaTarde ?? salidaEfMod);
 
-                            // Llegadas Tarde
-                            if (entradaAlumno > horario.HorarioEntrada)
+                        // Llegadas Tarde
+                        if (entradaAlumno > entradaEfMod)
+                        {
+                            TimeSpan finPerdida = entradaAlumno < salidaEfMod ? entradaAlumno : salidaEfMod;
+                            double perdido = (finPerdida - entradaEfMod).TotalMinutes;
+                            if (perdido > 0)
                             {
-                                TimeSpan finPerdida = entradaAlumno < horario.HorarioSalida ? entradaAlumno : horario.HorarioSalida;
-                                double perdido = (finPerdida - horario.HorarioEntrada).TotalMinutes;
-                                if (perdido > 0)
-                                {
-                                    if (esManana) minPerdidaIngresoM += perdido; else minPerdidaIngresoT += perdido;
-                                }
+                                if (esManana) minPerdidaIngresoM += perdido; else minPerdidaIngresoT += perdido;
                             }
+                        }
 
-                            // Retiros Anticipados
-                            if (salidaAlumno < horario.HorarioSalida)
+                        // Retiros Anticipados
+                        if (salidaAlumno < salidaEfMod)
+                        {
+                            TimeSpan inicioPerdida = salidaAlumno > entradaEfMod ? salidaAlumno : entradaEfMod;
+                            double perdido = (salidaEfMod - inicioPerdida).TotalMinutes;
+                            if (perdido > 0)
                             {
-                                TimeSpan inicioPerdida = salidaAlumno > horario.HorarioEntrada ? salidaAlumno : horario.HorarioEntrada;
-                                double perdido = (horario.HorarioSalida - inicioPerdida).TotalMinutes;
-                                if (perdido > 0)
-                                {
-                                    if (esManana) minPerdidaSalidaM += perdido; else minPerdidaSalidaT += perdido;
-                                }
+                                if (esManana) minPerdidaSalidaM += perdido; else minPerdidaSalidaT += perdido;
                             }
+                        }
 
                         // Intersección entre tiempo de dictado y tiempo de asistencia
-                        TimeSpan inicioEfectivo = horario.HorarioEntrada > entradaAlumno ? horario.HorarioEntrada : entradaAlumno;
-                        TimeSpan finEfectivo = horario.HorarioSalida < salidaAlumno ? horario.HorarioSalida : salidaAlumno;
+                        TimeSpan inicioEfectivo = entradaEfMod > entradaAlumno ? entradaEfMod : entradaAlumno;
+                        TimeSpan finEfectivo    = salidaEfMod  < salidaAlumno  ? salidaEfMod  : salidaAlumno;
                         double asistidoEnModulo = (finEfectivo - inicioEfectivo).TotalMinutes;
                         if (asistidoEnModulo < 0) asistidoEnModulo = 0;
 
@@ -474,6 +514,12 @@ namespace TesisGestorApi.Services
         // [ PUT ] Actualizar estado de clase de Dictada a No Dictada y viceversa.
         public async Task ActualizarEstadoClaseAsync(ClaseDictadaDTO dto)
         {
+            // Obtener datos del EC para el mensaje de evento y el curso
+            var ec = await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .Include(e => e.Curricula)
+                .FirstOrDefaultAsync(e => e.IdEC == dto.IdEC);
+
             var clase = await _context.ClasesDictadas
                 .Include(c => c.Asistencias)
                 .FirstOrDefaultAsync(c => c.IdEC == dto.IdEC && c.Fecha == dto.Fecha);
@@ -483,36 +529,75 @@ namespace TesisGestorApi.Services
                 clase = new ClaseDictada
                 {
                     IdClaseDictada = Guid.NewGuid(),
-                    IdEC = dto.IdEC,
-                    Fecha = dto.Fecha,
+                    IdEC    = dto.IdEC,
+                    Fecha   = dto.Fecha,
                     Dictada = dto.Dictada,
-                    Tema = dto.Tema
+                    Tema    = dto.Tema,
+                    Motivo  = dto.Motivo,
                 };
                 _context.ClasesDictadas.Add(clase);
                 await _context.SaveChangesAsync();
 
                 if (clase.Dictada) await RegenerarAsistenciasParaClase(clase);
-                return;
             }
-
-            bool estadoAnterior = clase.Dictada;
-            clase.Dictada = dto.Dictada;
-            if (!string.IsNullOrEmpty(dto.Tema)) clase.Tema = dto.Tema;
-
-            if (estadoAnterior == true && dto.Dictada == false)
+            else
             {
-                if (clase.Asistencias.Any()) _context.AsistenciasPorEspacio.RemoveRange(clase.Asistencias);
-            }
-            else if (estadoAnterior == false && dto.Dictada == true)
-            {
-                await _context.SaveChangesAsync();
-                await RegenerarAsistenciasParaClase(clase);
-                return;
+                bool estadoAnterior = clase.Dictada;
+                clase.Dictada = dto.Dictada;
+                clase.Motivo  = dto.Motivo;
+                if (!string.IsNullOrEmpty(dto.Tema)) clase.Tema = dto.Tema;
+
+                if (estadoAnterior == true && dto.Dictada == false)
+                {
+                    if (clase.Asistencias.Any()) _context.AsistenciasPorEspacio.RemoveRange(clase.Asistencias);
+                    await _context.SaveChangesAsync();
+                }
+                else if (estadoAnterior == false && dto.Dictada == true)
+                {
+                    await _context.SaveChangesAsync();
+                    await RegenerarAsistenciasParaClase(clase);
+                }
+                else
+                {
+                    await _context.SaveChangesAsync();
+                }
             }
 
-            await _context.SaveChangesAsync();
+            // Registrar evento en el parte diario
+            if (ec != null)
+            {
+                string materiaNombre = ec.Curricula?.Nombre ?? "Clase";
+                string estadoTexto   = dto.Dictada ? "Dictada" : "No Dictada";
+                string descripcion   = string.IsNullOrWhiteSpace(dto.Motivo)
+                    ? $"{materiaNombre} marcada como {estadoTexto}"
+                    : $"{materiaNombre} marcada como {estadoTexto}. Motivo: {dto.Motivo}";
+
+                await _parteDiarioService.RegistrarEventoAsync(ec.IdCurso, dto.Fecha, descripcion);
+            }
         }
 
+
+        // [ POST ] Recalcula las asistencias por espacio de todos los alumnos del curso en una fecha,
+        // usando los tiempos efectivos vigentes (incluye overrides de horario del parte diario).
+        public async Task RecalcularAsistenciasCursoFechaAsync(Guid cursoId, DateOnly fecha)
+        {
+            var idsEstudiantes = await _context.DetallesCursado
+                .AsNoTracking()
+                .Where(dc => dc.IdCurso == cursoId && dc.Estado)
+                .Select(dc => dc.IdEstudiante)
+                .ToListAsync();
+
+            if (!idsEstudiantes.Any()) return;
+
+            var asistencias = await _context.Asistencias
+                .Include(a => a.TipoManiana)
+                .Include(a => a.TipoTarde)
+                .Include(a => a.TipoLlegadaManiana)
+                .Where(a => a.Fecha == fecha && idsEstudiantes.Contains(a.EstudianteId))
+                .ToListAsync();
+
+            if (asistencias.Any()) await ProcesarAsistenciaEspacios(asistencias);
+        }
 
         // [ Helper Público ] Regenera las asistencias de los EC de una clase específica en base al estado de Dictado (true o false) y recalcula en base a la información de asistencias generales.
         public async Task RegenerarAsistenciasParaClase(ClaseDictada clase)
@@ -814,6 +899,56 @@ namespace TesisGestorApi.Services
                 ValorTotal = asistencia.ValorTotalInasistencia,
                 Mensaje = $"Se deshizo el registro del turno {turno} correctamente."
             };
+        }
+
+        // [ Helper Privado ] Registra en el parte diario los cambios de estado de asistencia del lote.
+        private async Task LogearCambiosAsistenciaAsync(
+            List<RegistrarAsistenciaDto> lista,
+            List<DetalleCursado> inscripciones,
+            List<Asistencia> asistenciasPost,
+            Dictionary<(Guid, DateOnly), string?> oldManana,
+            Dictionary<(Guid, DateOnly), string?> oldTarde,
+            Dictionary<Guid, (string Nombre, string Apellido)> estudiantesDict)
+        {
+            var cambiosPorGrupo = new Dictionary<(Guid CursoId, DateOnly Fecha), List<string>>();
+            var procesados      = new HashSet<(Guid, DateOnly, bool)>();
+
+            foreach (var dto in lista)
+            {
+                bool esManana = dto.Turno?.Trim().ToUpperInvariant() is "MANANA" or "MAÑANA" or "M" or "AM";
+
+                if (!procesados.Add((dto.EstudianteId, dto.Fecha, esManana))) continue;
+
+                var inscripcion = inscripciones.FirstOrDefault(i => i.IdEstudiante == dto.EstudianteId);
+                if (inscripcion == null) continue;
+
+                var key = (dto.EstudianteId, dto.Fecha);
+                string? oldCode = esManana
+                    ? (oldManana.TryGetValue(key, out var v1) ? v1 : null)
+                    : (oldTarde .TryGetValue(key, out var v2) ? v2 : null);
+
+                var asist   = asistenciasPost.FirstOrDefault(a => a.EstudianteId == dto.EstudianteId && a.Fecha == dto.Fecha);
+                string? newCode = esManana ? asist?.TipoManiana?.Codigo : asist?.TipoTarde?.Codigo;
+
+                if (oldCode == newCode) continue;
+
+                estudiantesDict.TryGetValue(dto.EstudianteId, out var est);
+                string nombre = est != default ? $"{est.Apellido}, {est.Nombre}" : dto.EstudianteId.ToString("N")[..8];
+                string turnoLabel = esManana ? "M" : "T";
+
+                var grupoKey = (inscripcion.IdCurso, dto.Fecha);
+                if (!cambiosPorGrupo.ContainsKey(grupoKey)) cambiosPorGrupo[grupoKey] = new List<string>();
+                cambiosPorGrupo[grupoKey].Add($"• {nombre} ({turnoLabel}): {oldCode ?? "—"} → {newCode ?? "—"}");
+            }
+
+            foreach (var ((cursoId, fecha), cambios) in cambiosPorGrupo)
+            {
+                if (!cambios.Any()) continue;
+                string plural = cambios.Count == 1 ? "estudiante" : "estudiantes";
+                string msg    = $"Asistencia actualizada ({cambios.Count} {plural}):\n{string.Join("\n", cambios)}";
+                try   { await _parteDiarioService.RegistrarEventoAsync(cursoId, fecha, msg); }
+                catch (Exception ex) { _logger.LogWarning(ex, "No se pudo registrar el evento de asistencia en el parte diario."); }
+            }
         }
 
         private static string NormalizarTurno(string turno)

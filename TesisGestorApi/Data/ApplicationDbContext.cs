@@ -34,6 +34,10 @@ namespace TesisGestorApi.Data
         public DbSet<TipoAsistencia> TiposAsistencia { get; set; }
         public DbSet<ClaseDictada> ClasesDictadas { get; set; }
 
+        // ===== Parte Diario =====
+        public DbSet<ParteDiario> PartesDiarios { get; set; }
+        public DbSet<ComentarioParte> ComentariosParte { get; set; }
+
         // ===== Seguridad / Otros =====
         public DbSet<Usuario> Usuarios { get; set; }
         public DbSet<CredencialQR> CredencialesQR { get; set; }
@@ -209,12 +213,32 @@ namespace TesisGestorApi.Data
                 entity.HasIndex(a => new { a.EstudianteId, a.Fecha }).IsUnique();
             });
 
-            // Asistencias 1:1 Retiro Anticipado 
+            // Asistencias 1:1 Retiro Anticipado
             modelBuilder.Entity<RetiroAnticipado>()
                 .HasOne(r => r.Asistencia)
-                .WithOne() 
+                .WithOne()
                 .HasForeignKey<RetiroAnticipado>(r => r.IdAsistencia)
                 .OnDelete(DeleteBehavior.Cascade); // Si borro la asistencia, se borra el retiro
+
+            // Parte Diario
+            modelBuilder.Entity<ParteDiario>(entity =>
+            {
+                entity.HasOne(p => p.Curso)
+                      .WithMany()
+                      .HasForeignKey(p => p.IdCurso)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(p => new { p.IdCurso, p.Fecha }).IsUnique();
+            });
+
+            // Comentario Parte
+            modelBuilder.Entity<ComentarioParte>(entity =>
+            {
+                entity.HasOne(c => c.ParteDiario)
+                      .WithMany(p => p.Comentarios)
+                      .HasForeignKey(c => c.IdParte)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
         }
     }
 }

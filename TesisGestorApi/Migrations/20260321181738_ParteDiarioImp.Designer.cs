@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260321181738_ParteDiarioImp")]
+    partial class ParteDiarioImp
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -33,12 +36,6 @@ namespace TesisGestorApi.Migrations
 
                     b.Property<DateOnly>("Fecha")
                         .HasColumnType("date");
-
-                    b.Property<TimeSpan?>("HorarioEntradaEfectiva")
-                        .HasColumnType("interval");
-
-                    b.Property<TimeSpan?>("HorarioSalidaEfectiva")
-                        .HasColumnType("interval");
 
                     b.Property<Guid>("IdEC")
                         .HasColumnType("uuid");
