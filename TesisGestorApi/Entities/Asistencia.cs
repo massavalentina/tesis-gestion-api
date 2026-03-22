@@ -1,7 +1,7 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class Asistencia
     {
@@ -10,20 +10,44 @@ namespace RepoDB.Entities
         public DateOnly Fecha { get; set; }
         public Guid EstudianteId { get; set; }
         public Estudiante Estudiante { get; set; } = null!;
-        public Guid? TipoManianaId { get; set; } // El tipo de asistencia para el turno mañana
+
+        // ── Turno Mañana ──────────────────────────────────────────────────────
+        // TipoManianaId almacena el estado más reciente del turno. Si hay un retiro contemplará el retiro como último estado.
+        public Guid? TipoManianaId { get; set; }
         [ForeignKey("TipoManianaId")]
         public TipoAsistencia? TipoManiana { get; set; }
+
+        // TipoLlegadaManianaId almacena el código de llegada (Presente, Ausente o Llegada Tarde)
+        // Aunque TipoManianaId se sobreescriba, este campo mantendrá el primer código.
+        public Guid? TipoLlegadaManianaId { get; set; }
+        [ForeignKey("TipoLlegadaManianaId")]
+        public TipoAsistencia? TipoLlegadaManiana { get; set; }
+
         public TimeSpan? HoraEntradaManana { get; set; }
         public TimeSpan? HoraSalidaManana { get; set; }
-        public TimeSpan? HoraEntradaTarde { get; set; }
-        public TimeSpan? HoraSalidaTarde { get; set; }
-        public Guid? TipoTardeId { get; set; } // El tipo de asistencia para el turno tarde
+
+        // ── Turno Tarde ───────────────────────────────────────────────────────
+        public Guid? TipoTardeId { get; set; }
         [ForeignKey("TipoTardeId")]
         public TipoAsistencia? TipoTarde { get; set; }
-        public decimal ValorTotalInasistencia { get; set; } = 0m; // Valor total por cálculo de asistencia a partir de los tipos de asistencia de los turnos
 
-        /// Recalcula el valor total basándose en los estados actuales de Mañana y Tarde,
-        /// así como el tiempo de asistencia total en ambos turnos
+        public TimeSpan? HoraEntradaTarde { get; set; }
+        public TimeSpan? HoraSalidaTarde { get; set; }
+
+        // Valor total de inasistencia del día. El rango contemplado es [ 0.0, 0.25, 0.5, 0.75, 1.0].
+        public decimal ValorTotalInasistencia { get; set; } = 0m;
+
+        /// Este método recalcula el valor de la inasistencia a partir del tipo de cada turno 
+        /// y del tiempo de clases asistido sobre el total dado.
+        
+        /// Parámetros (turno mañana):
+        ///   minTotalesM = minutos totales de clases dadas en el turno.
+        ///   minPerdidaIngresoM = minutos perdidos por llegada tarde.
+        ///   minPerdidaSalidaM  = minutos perdidos por retiro anticipado en mañana
+        
+        /// Parámetros (turno tarde):
+        ///   minTotalesT, minPerdidaIngresoT, minPerdidaSalidaT
+
         public void CalcularAsistencia(
             double minTotalesM, double minPerdidaIngresoM, double minPerdidaSalidaM,
             double minTotalesT, double minPerdidaIngresoT, double minPerdidaSalidaT)
@@ -31,57 +55,59 @@ namespace RepoDB.Entities
             decimal valorM = 0m;
             decimal valorT = 0m;
 
-            // --- TURNO MAÑANA ---
-            if (TipoManiana != null)
+            // ── TURNO MAÑANA ─────────────────────────────────────────────────
+            // Utiliza TipoLlegadaManiana cuando existe sino utiliza TipoManiana
+            // TipoManiana puede ser sobreescrito por un retiro posterior.
+            // Si no hay retiro, ambas propiedades apuntan lo mismo.
+            var tipoLlegadaM = TipoLlegadaManiana ?? TipoManiana;
+
+            if (tipoLlegadaM != null)
             {
-                // 1. Valor por LLEGADA (Según código manual del preceptor)
-                decimal valorLlegada = TipoManiana.Codigo.ToUpper() switch
+                // Valores de llegada
+                decimal valorLlegada = tipoLlegadaM.Codigo.ToUpper() switch
                 {
-                    "LLT" => 0.25m,
-                    "LLTE" => 0.50m,
-                    "LLTC" => 1.00m,
-                    "A" => 1.00m, // Si puso Ausente manual, ya es 1.0
-                    "RAE" => 1.00m, // RAE manual pisa todo
-                    _ => 0.00m
+                    "LLT"  => 0.25m,  // Llegada Tarde (Primeros 10 minutos)
+                    "LLTE" => 0.50m,  // Llegada Tarde Extendida (Entre 10 y 25 minutos)
+                    "LLTC" => 1.00m,  // Llegada Tarde Completa (+ 25 minutos)
+                    "A"    => 1.00m,  // Ausente
+                    "RAE"  => 1.00m,  // Retiro Anticipado (sin llegada previa registrada)
+                    _      => 0.00m   // Presente (P), ANC (Ausente No Computable), RE (Retiro Express), RA (Retiro Anticipado)
                 };
 
-                // 2. Valor por RETIRO (Automático según tiempo perdido AL FINAL)
+                // Valor por retiro (calculado en base al porcentaje de tiempo perdido al final del turno, sobre clases efectivamente dadas)
                 decimal valorRetiro = 0m;
 
-                // Solo calculamos retiro si NO es un código de inasistencia total manual
+                // Se calcula el retiro si hay minutos de clases dadas y la llegada no es completa (ya es una inasistencia total).
                 if (minTotalesM > 0 && valorLlegada < 1.0m)
                 {
                     double porcPerdidaSalida = (minPerdidaSalidaM / minTotalesM) * 100.0;
 
-                    if (porcPerdidaSalida > 50) valorRetiro = 1.0m; // RAE Automático
-                    else if (porcPerdidaSalida > 10) valorRetiro = 0.5m; // RA Automático
-                                                                         // Si es <= 10% se considera RE (Express) y no suma
+                    if      (porcPerdidaSalida > 50) valorRetiro = 1.0m;  // RAE
+                    else if (porcPerdidaSalida > 10) valorRetiro = 0.5m;  // RA
+                    // <= 10%: Retiro Express (RE), no genera inasistencia
                 }
 
-                // 3. Suma inteligente
+                // Suma de ambos componentes con un tope de 1.0 para la mañana
                 valorM = Math.Min(1.0m, valorLlegada + valorRetiro);
             }
 
-            // --- TURNO TARDE ---
+            // ── TURNO TARDE ──────────────────────────────────────────────────
+            // En el turno tarde la inasistencia máxima es de 0.5. Si hay ausencia, llegada tarde o retiro, corresponde 0.5.
+            // La presencia o el retiro express no computan inasistencia.
             if (TipoTarde != null)
             {
-                if (TipoTarde.Codigo.ToUpper() == "A")
+                valorT = TipoTarde.Codigo.ToUpper() switch
                 {
-                    valorT = 0.5m;
-                }
-                else if (minTotalesT > 0)
-                {
-                    // En la tarde, miramos la pérdida global (ingreso + salida) o solo salida
-                    // según tu regla. Generalmente Retiro Tarde = Media Falta.
-                    double porcPerdidaSalida = (minPerdidaSalidaT / minTotalesT) * 100.0;
-
-                    if (porcPerdidaSalida > 10) valorT = 0.5m;
-                }
+                    "P"   => 0.0m,  // Presente
+                    "RE"  => 0.0m,  // Retiro Express (≤ 10% perdido)
+                    "ANC" => 0.0m,  // Ausencia No Computable
+                    _     => 0.5m   // A, LLT, LLTE, LLTC, RA, RAE => media inasistencia
+                };
             }
 
-            // --- TOTAL FINAL ---
-            ValorTotalInasistencia = Math.Min(1.5m, valorM + valorT);
+            // ── TOTAL FINAL ──────────────────────────────────────────────────
+            // El tope diario de inasistencia es de 1 (falta completa), aunque la suma de turnos supere ese valor.
+            ValorTotalInasistencia = Math.Min(1.0m, valorM + valorT);
         }
-
     }
 }
