@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class Tutor
     {
@@ -15,7 +15,6 @@ namespace RepoDB.Entities
         public string RelacionEstudiante { get; set; } = null!; //Puede ser cualquier valor
         public DateTime FechaNacimiento { get; set; }
         public string Disponibilidad { get; set; } = null!; 
-        public bool EsPrincipal { get; set; } //Define si es el primer con quien comunicarse
 
  
         public ICollection<TutorEstudiante> TutorEstudiantes { get; set; }

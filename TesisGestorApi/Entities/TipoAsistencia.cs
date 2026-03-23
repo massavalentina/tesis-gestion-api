@@ -1,15 +1,18 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class TipoAsistencia
     {
         [Key]
         public Guid IdTipo { get; set; }
 
-        public string Codigo { get; set; } = null!; //Presente, ausente, llegada tarde
+        [Required]
+        [MaxLength(10)]
+        public string Codigo { get; set; } // P, A, LLT, LLTE, LLTC
+        public string Descripcion { get; set; } = null!; // Presente - Ausente - Llegada Tarde - Llegada Tarde Extendida - Llegada Tarde Completa
+        public decimal ValorBase { get; set; } // Valor numérico asociado a este tipo de asistencia (0, 0.25, 0.5, 1)
 
-        public decimal? ValorAsistenciaMañana { get; set; }  // 1, 0.5, 0.25
-        public decimal? ValorAsistenciaTarde { get; set; }   // 1, 0.5, 0.25
     }
 }
+

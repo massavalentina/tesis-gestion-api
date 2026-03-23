@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class Curso
     {
@@ -22,8 +22,8 @@ namespace RepoDB.Entities
             = new List<DetalleCursado>();
 
        
-        public ICollection<Curricula> Curriculas { get; set; }  // Materias del curso
-            = new List<Curricula>();
+        public ICollection<EspacioCurricular> EspaciosCurriculares { get; set; }  // Materias del curso
+            = new List<EspacioCurricular>();
 
         
         public ICollection<Horario> Horarios { get; set; } // Horarios del curso

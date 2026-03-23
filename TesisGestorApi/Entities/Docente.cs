@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class Docente
     {
@@ -17,8 +17,8 @@ namespace RepoDB.Entities
         public Usuario Usuario { get; set; }
 
         
-        public ICollection<Curricula> Curriculas { get; set; }
-            = new List<Curricula>();
+        public ICollection<EspacioCurricular> EspaciosCurriculares { get; set; }
+            = new List<EspacioCurricular>();
     }
 
 }

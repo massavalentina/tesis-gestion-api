@@ -1,27 +1,19 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class Curricula
     {
         [Key]
         public Guid IdCurricula { get; set; }
 
-        public Guid IdCurso { get; set; }
-        public Curso Curso { get; set; } = null!;
+        public string Nombre { get; set; } = null!;
+        public string Descripcion { get; set; } = null!;
+        public string Codigo { get; set; } = null!;
+        public string Estado { get; set; } = null!; //Puede ser false, ya que puede ser de anios anteriores
+        public bool EsContraturno { get; set; } //Osea pertenece al turno tarde
 
-        public Guid IdHorario { get; set; }
-        public Horario Horario { get; set; } = null!;
-
-        public Guid IdDocente { get; set; }
-        public Docente Docente { get; set; } = null!;
-
-        public Guid IdEspacioCurricular { get; set; }
-        public EspacioCurricular EspacioCurricular { get; set; } = null!;
-
-        public ICollection<AsistenciaPorEspacio> AsistenciasPorEspacio { get; set; }
-            = new List<AsistenciaPorEspacio>();
+        public ICollection<EspacioCurricular> EspaciosCurriculares { get; set; } = new List<EspacioCurricular>();
     }
-
 
 }
