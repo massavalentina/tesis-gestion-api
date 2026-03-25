@@ -596,7 +596,20 @@ namespace TesisGestorApi.Services
                 .Where(a => a.Fecha == fecha && idsEstudiantes.Contains(a.EstudianteId))
                 .ToListAsync();
 
-            if (asistencias.Any()) await ProcesarAsistenciaEspacios(asistencias);
+            if (!asistencias.Any()) return;
+
+            // Filtrar por turno según el estado actual de cada asistencia para evitar crear
+            // ClaseDictadas en ECs del turno contrario como efecto secundario.
+            var turnosPorEstudiante = asistencias
+                .ToDictionary(a => a.EstudianteId, a =>
+                {
+                    var t = new HashSet<string>();
+                    if (a.TipoManiana != null) t.Add("MANANA");
+                    if (a.TipoTarde   != null) t.Add("TARDE");
+                    return t;
+                });
+
+            await ProcesarAsistenciaEspacios(asistencias, turnosPorEstudiante);
         }
 
         // [ Helper Público ] Regenera las asistencias de los EC de una clase específica en base al estado de Dictado (true o false) y recalcula en base a la información de asistencias generales.
@@ -611,7 +624,21 @@ namespace TesisGestorApi.Services
                 .Where(a => a.Fecha == clase.Fecha && idsAlumnos.Contains(a.EstudianteId))
                 .ToListAsync();
 
-            if (asistenciasGenerales.Any()) await ProcesarAsistenciaEspacios(asistenciasGenerales);
+            if (!asistenciasGenerales.Any()) return;
+
+            // Determinar el turno del EC regenerado para evitar crear ClaseDictadas
+            // en ECs del turno contrario como efecto secundario.
+            var primerHorario = await _context.Horarios.AsNoTracking()
+                .Where(h => h.IdEC == clase.IdEC)
+                .OrderBy(h => h.HorarioEntrada)
+                .FirstOrDefaultAsync();
+            bool esManana = primerHorario != null && primerHorario.HorarioEntrada < new TimeSpan(13, 20, 0);
+            string turnoEC = esManana ? "MANANA" : "TARDE";
+
+            var turnosPorEstudiante = asistenciasGenerales
+                .ToDictionary(a => a.EstudianteId, _ => new HashSet<string> { turnoEC });
+
+            await ProcesarAsistenciaEspacios(asistenciasGenerales, turnosPorEstudiante);
         }
 
         // [ POST ] Registro de Asistencia General Individual - Recibe una asistencia y la procesa con el método de procesamiento por lote.
