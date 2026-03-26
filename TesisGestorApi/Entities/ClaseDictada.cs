@@ -1,12 +1,13 @@
-﻿using RepoDB.Entities;
+﻿
 using System.ComponentModel.DataAnnotations;
-
-public class ClaseDictada
+namespace TesisGestorApi.Entities
 {
-    [Key]
-    public Guid IdClaseDictada { get; set; }
-    public DateOnly Fecha { get; set; }
-    public string? Tema { get; set; }
+    public class ClaseDictada
+    {
+        [Key]
+        public Guid IdClaseDictada { get; set; }
+        public DateOnly Fecha { get; set; }
+        public string? Tema { get; set; }
 
     // Flag para las asistencias al espacio curricular
     // True = Clase normal. False = Profesor ausente / Feriado / Jornada inst.

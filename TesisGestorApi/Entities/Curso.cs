@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RepoDB.Entities
+namespace TesisGestorApi.Entities
 {
     public class Curso
     {

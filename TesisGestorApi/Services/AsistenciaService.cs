@@ -1,10 +1,10 @@
 using Microsoft.EntityFrameworkCore;
-using RepoDB.Entities;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Dtos;
 using TesisGestorApi.Exceptions;
 using TesisGestorApi.Interfaces;
+using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Services
 {
@@ -19,6 +19,16 @@ namespace TesisGestorApi.Services
             _context = context;
             _logger = logger;
             _parteDiarioService = parteDiarioService;
+        private readonly IAsistenciaUmbralService _umbrales;
+
+        public AsistenciaService(
+            ApplicationDbContext context,
+            ILogger<AsistenciaService> logger,
+            IAsistenciaUmbralService umbrales)
+        {
+            _context = context;
+            _logger = logger;
+            _umbrales = umbrales;
         }
 
         // [ POST ] Registro de Asistencia General por Lote
@@ -119,7 +129,10 @@ namespace TesisGestorApi.Services
 
                 TimeSpan horaEfectiva = dto.Hora ?? TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan();
                 string codigoOriginal = tipoEntidadOriginal.Codigo.ToUpper();
-                var turno = dto.Turno?.Trim().ToUpper();
+                var turno = (dto.Turno ?? "MANANA").Trim().ToUpperInvariant();
+                if (turno == "MANIANA")
+                    turno = "MANANA";
+
                 bool esManana = turno == "MANANA";
 
                 TipoAsistencia tipoFinal = tipoEntidadOriginal;
@@ -215,6 +228,9 @@ namespace TesisGestorApi.Services
                     else if (esTipoRetiro)  asistencia.HoraSalidaTarde  = horaEfectiva;
                 }
 
+                if (!asistenciasParaProcesar.Contains(asistencia))
+                    asistenciasParaProcesar.Add(asistencia);
+
                 cont++;
             }
 
@@ -237,6 +253,17 @@ namespace TesisGestorApi.Services
 
             // Registrar cambios de asistencia en el log del parte diario
             await LogearCambiosAsistenciaAsync(lista, inscripciones, asistenciasExistentes, oldManana, oldTarde, estudiantesDict);
+            try
+            {
+                foreach (var anio in fechas.Select(f => f.Year).Distinct())
+                {
+                    await _umbrales.ProcesarUmbralesAsync(idsEstudiantes, anio);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error procesando umbrales de inasistencias");
+            }
 
             return cont;
         }
@@ -898,25 +925,19 @@ namespace TesisGestorApi.Services
                 };
             }
 
-            var tipoP = await _context.TiposAsistencia
-                .FirstOrDefaultAsync(t => t.Codigo.ToUpper() == "P");
-
-            if (tipoP == null)
-                throw new Exception("No existe el tipo 'P'.");
-
             if (esManana)
             {
-                asistencia.TipoManianaId        = tipoP.IdTipo;
-                asistencia.TipoManiana           = tipoP;
-                asistencia.TipoLlegadaManianaId = tipoP.IdTipo;
-                asistencia.TipoLlegadaManiana   = tipoP;
+                asistencia.TipoManianaId        = null;
+                asistencia.TipoManiana           = null;
+                asistencia.TipoLlegadaManianaId = null;
+                asistencia.TipoLlegadaManiana   = null;
                 asistencia.HoraEntradaManana    = null;
                 asistencia.HoraSalidaManana     = null;
             }
             else
             {
-                asistencia.TipoTardeId      = tipoP.IdTipo;
-                asistencia.TipoTarde        = tipoP;
+                asistencia.TipoTardeId      = null;
+                asistencia.TipoTarde        = null;
                 asistencia.HoraEntradaTarde = null;
                 asistencia.HoraSalidaTarde  = null;
             }
@@ -925,11 +946,20 @@ namespace TesisGestorApi.Services
             await ProcesarAsistenciaEspacios(new List<Asistencia> { asistencia },
                 new Dictionary<Guid, HashSet<string>> { { asistencia.EstudianteId, new HashSet<string> { esManana ? "MANANA" : "TARDE" } } });
 
+            try
+            {
+                await _umbrales.ProcesarUmbralesAsync(new List<Guid> { dto.EstudianteId }, dto.Fecha.Year);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error procesando umbrales tras deshacer asistencia.");
+            }
+
             return new AsistenciaResponseDto
             {
                 Id = asistencia.Id,
                 ValorTotal = asistencia.ValorTotalInasistencia,
-                Mensaje = $"Se deshizo el registro del turno {turno} correctamente."
+                Mensaje = $"Se restableció el turno {turno} a sin definir."
             };
         }
 
@@ -998,5 +1028,7 @@ namespace TesisGestorApi.Services
 
             throw new AsistenciaException("INVALID_TURNO", $"Turno inválido: {turno}");
         }
+
     }
 }
+

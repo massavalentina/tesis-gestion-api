@@ -1,6 +1,6 @@
-﻿namespace TesisGestorApi.DTOs
+namespace TesisGestorApi.DTOs
 {
-    public class QrEmailProgressDto
+    public class QrCredentialDeliveryProgressDto
     {
         public Guid JobId { get; set; }
         public string Estado { get; set; } = "RUNNING"; // RUNNING | COMPLETED | FAILED
@@ -11,8 +11,10 @@
         public int Omitidos { get; set; }
         public int Errores { get; set; }
 
-        public string? UltimoDestino { get; set; } // mail al que se intentó enviar
+        public string? UltimoDestino { get; set; }
+        public string? UltimoEstudiante { get; set; }
         public string? UltimoMensaje { get; set; }
+        public List<string> DetallesErrores { get; set; } = new();
 
         public DateTime Inicio { get; set; }
         public DateTime? Fin { get; set; }
