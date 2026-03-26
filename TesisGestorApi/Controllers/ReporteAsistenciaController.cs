@@ -83,16 +83,18 @@ namespace TesisGestorApi.Controllers
                 // Inasistencias: sum of ValorTotalInasistencia in the period
                 var inasistencias = asistenciasEst.Sum(a => a.ValorTotalInasistencia);
 
-                // Llegadas tarde: LLT or LLTE (partial, does not imply full absence)
-                var llegadasTarde = asistenciasEst
+                // Llegadas tarde: LLT o LLTE (parciales, no implican inasistencia completa por sí solas)
+                var nLLT = asistenciasEst
                     .Count(a => a.TipoManiana != null &&
-                                (string.Equals(a.TipoManiana.Codigo, "LLT", StringComparison.OrdinalIgnoreCase) ||
-                                 string.Equals(a.TipoManiana.Codigo, "LLTE", StringComparison.OrdinalIgnoreCase)));
+                                string.Equals(a.TipoManiana.Codigo, "LLT", StringComparison.OrdinalIgnoreCase));
+                var nLLTE = asistenciasEst
+                    .Count(a => a.TipoManiana != null &&
+                                string.Equals(a.TipoManiana.Codigo, "LLTE", StringComparison.OrdinalIgnoreCase));
+                var llegadasTarde = nLLT + nLLTE;
 
-                // Ausente por LLT: LLTC (late enough to count as full absence)
-                var ausentePorLLT = asistenciasEst
-                    .Count(a => a.TipoManiana != null &&
-                                string.Equals(a.TipoManiana.Codigo, "LLTC", StringComparison.OrdinalIgnoreCase));
+                // Ausente por LLT: inasistencias enteras acumuladas por llegadas tardes
+                // LLT = 0.25 falta, LLTE = 0.50 falta → cada 1.0 acumulada = 1 inasistencia completa
+                var ausentePorLLT = (int)Math.Floor(nLLT * 0.25 + nLLTE * 0.5);
 
                 // Retiros anticipados: RA or RAE explicitly registered
                 var retirosAnticipados = asistenciasEst
