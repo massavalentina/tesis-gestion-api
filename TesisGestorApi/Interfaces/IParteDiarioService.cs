@@ -9,7 +9,7 @@ namespace TesisGestorApi.Interfaces
         Task<ComentarioParteDto> AgregarComentarioAsync(AgregarComentarioDto dto);
         Task RegistrarEventoAsync(Guid cursoId, DateOnly fecha, string descripcion);
         Task IntercambiarHorarioClasesAsync(IntercambiarHorarioDto dto);
-        Task ResetearHorarioClaseAsync(Guid idEC, DateOnly fecha, Guid cursoId);
+        Task ResetearHorarioClaseAsync(Guid idHorario, DateOnly fecha, Guid cursoId);
         Task ReorganizarHorarioAsync(ReorganizarHorarioDto dto);
     }
 }

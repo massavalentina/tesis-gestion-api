@@ -2,7 +2,8 @@ namespace TesisGestorApi.DTOs.ParteDiario
 {
     public class HorarioClaseDto
     {
-        public Guid IdEC { get; set; }
+        public Guid  IdHorario     { get; set; }
+        public Guid  IdEC          { get; set; }
         public Guid? IdClaseDictada { get; set; }
         public string Materia { get; set; } = null!;
         public string Docente { get; set; } = null!;

@@ -91,13 +91,13 @@ public class ParteDiarioController : ControllerBase
 
     [HttpPost("horario/resetear")]
     public async Task<IActionResult> ResetearHorario(
-        [FromQuery] Guid idEC,
+        [FromQuery] Guid idHorario,
         [FromQuery] Guid cursoId,
         [FromQuery] DateOnly fecha)
     {
         try
         {
-            await _service.ResetearHorarioClaseAsync(idEC, fecha, cursoId);
+            await _service.ResetearHorarioClaseAsync(idHorario, fecha, cursoId);
             await _asistenciaService.RecalcularAsistenciasCursoFechaAsync(cursoId, fecha);
             return Ok();
         }

@@ -178,7 +178,15 @@ namespace TesisGestorApi.Data
                       .WithMany(ec => ec.ClasesDictadas)
                       .HasForeignKey(c => c.IdEC)
                       .OnDelete(DeleteBehavior.Cascade); // Si se borra el espacio curricular, se borran las clases dictadas asociadas a este.
-                entity.HasIndex(c => new { c.IdEC, c.Fecha });
+
+                // Horario 1:N Clases Dictadas — cada slot de horario tiene su propio registro
+                entity.HasOne(c => c.Horario)
+                      .WithMany(h => h.ClasesDictadas)
+                      .HasForeignKey(c => c.IdHorario)
+                      .OnDelete(DeleteBehavior.Restrict); // No borrar el horario si tiene clases dictadas.
+
+                // Un slot de horario solo puede tener un registro de clase dictada por día
+                entity.HasIndex(c => new { c.IdHorario, c.Fecha }).IsUnique();
             });
 
             // Asistencia por Espacio

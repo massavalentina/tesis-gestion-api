@@ -15,6 +15,8 @@ namespace RepoDB.Entities
 
         public Guid IdEC { get; set; }
         public EspacioCurricular EspacioCurricular { get; set; }
+
+        public ICollection<ClaseDictada> ClasesDictadas { get; set; } = new List<ClaseDictada>();
     }
 
 }

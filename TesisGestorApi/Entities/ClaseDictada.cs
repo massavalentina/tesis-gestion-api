@@ -21,5 +21,8 @@ public class ClaseDictada
     public Guid IdEC { get; set; }
     public EspacioCurricular EspacioCurricular { get; set; } = null!;
 
+    public Guid IdHorario { get; set; }
+    public Horario Horario { get; set; } = null!;
+
     public ICollection<AsistenciaPorEspacio> Asistencias { get; set; } = new List<AsistenciaPorEspacio>();
 }
