@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using RepoDB.Entities;
 using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Data
@@ -170,7 +171,6 @@ namespace TesisGestorApi.Data
 
                 // Un slot de horario solo puede tener un registro de clase dictada por día
                 entity.HasIndex(c => new { c.IdHorario, c.Fecha }).IsUnique();
-                      .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasIndex(c => new { c.IdEC, c.Fecha });
             });
@@ -225,7 +225,7 @@ namespace TesisGestorApi.Data
                       .WithMany(p => p.Comentarios)
                       .HasForeignKey(c => c.IdParte)
                       .OnDelete(DeleteBehavior.Cascade);
-                .OnDelete(DeleteBehavior.Cascade);
+            });
 
             /// Umbrales de asistencia
 

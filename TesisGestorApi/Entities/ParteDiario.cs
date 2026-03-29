@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using TesisGestorApi.Entities;
 
 namespace RepoDB.Entities
 {

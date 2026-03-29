@@ -14,20 +14,17 @@ namespace TesisGestorApi.Services
         private readonly ILogger<AsistenciaService> _logger;
         private readonly IParteDiarioService _parteDiarioService;
 
-        public AsistenciaService(ApplicationDbContext context, ILogger<AsistenciaService> logger, IParteDiarioService parteDiarioService)
-        {
-            _context = context;
-            _logger = logger;
-            _parteDiarioService = parteDiarioService;
         private readonly IAsistenciaUmbralService _umbrales;
 
         public AsistenciaService(
             ApplicationDbContext context,
             ILogger<AsistenciaService> logger,
+            IParteDiarioService parteDiarioService,
             IAsistenciaUmbralService umbrales)
         {
             _context = context;
             _logger = logger;
+            _parteDiarioService = parteDiarioService;
             _umbrales = umbrales;
         }
 

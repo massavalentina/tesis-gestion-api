@@ -12,7 +12,7 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260326193958_ClaseDictadaPerHorario")]
+    [Migration("20260326222923_ClaseDictadaPerHorario")]
     partial class ClaseDictadaPerHorario
     {
         /// <inheritdoc />
@@ -25,47 +25,57 @@ namespace TesisGestorApi.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("ClaseDictada", b =>
+            modelBuilder.Entity("RepoDB.Entities.ComentarioParte", b =>
                 {
-                    b.Property<Guid>("IdClaseDictada")
+                    b.Property<Guid>("IdComentario")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("Dictada")
-                        .HasColumnType("boolean");
+                    b.Property<string>("Autor")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Contenido")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("IdParte")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer");
+
+                    b.HasKey("IdComentario");
+
+                    b.HasIndex("IdParte");
+
+                    b.ToTable("ComentariosParte");
+                });
+
+            modelBuilder.Entity("RepoDB.Entities.ParteDiario", b =>
+                {
+                    b.Property<Guid>("IdParte")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
 
                     b.Property<DateOnly>("Fecha")
                         .HasColumnType("date");
 
-                    b.Property<TimeSpan?>("HorarioEntradaEfectiva")
-                        .HasColumnType("interval");
-
-                    b.Property<TimeSpan?>("HorarioSalidaEfectiva")
-                        .HasColumnType("interval");
-
-                    b.Property<Guid>("IdEC")
+                    b.Property<Guid>("IdCurso")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("IdHorario")
-                        .HasColumnType("uuid");
+                    b.HasKey("IdParte");
 
-                    b.Property<string>("Motivo")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Tema")
-                        .HasColumnType("text");
-
-                    b.HasKey("IdClaseDictada");
-
-                    b.HasIndex("IdEC");
-
-                    b.HasIndex("IdHorario", "Fecha")
+                    b.HasIndex("IdCurso", "Fecha")
                         .IsUnique();
 
-                    b.ToTable("ClasesDictadas");
+                    b.ToTable("PartesDiarios");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Anio", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Anio", b =>
                 {
                     b.Property<Guid>("IdAnio")
                         .ValueGeneratedOnAdd()
@@ -79,7 +89,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Anios");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Asistencia", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Asistencia", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -134,7 +144,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Asistencias");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.AsistenciaPorEspacio", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.AsistenciaPorEspacio", b =>
                 {
                     b.Property<Guid>("IdAsistenciaEspacio")
                         .ValueGeneratedOnAdd()
@@ -166,37 +176,124 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("AsistenciasPorEspacio");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.ComentarioParte", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.AsistenciaResumenAnual", b =>
                 {
-                    b.Property<Guid>("IdComentario")
+                    b.Property<Guid>("IdResumen")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Autor")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Contenido")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("IdParte")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Tipo")
+                    b.Property<int>("AnioLectivo")
                         .HasColumnType("integer");
 
-                    b.HasKey("IdComentario");
+                    b.Property<decimal>("FaltasAcumuladas")
+                        .HasColumnType("numeric");
 
-                    b.HasIndex("IdParte");
+                    b.Property<DateTime?>("FechaTeaGeneralUtc")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.ToTable("ComentariosParte");
+                    b.Property<Guid>("IdEstudiante")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("TeaGeneral")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UltimoRecalculoUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("IdResumen");
+
+                    b.HasIndex("IdEstudiante", "AnioLectivo")
+                        .IsUnique();
+
+                    b.ToTable("AsistenciaResumenAnual", (string)null);
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.CredencialQR", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.AsistenciaUmbralNotificacion", b =>
+                {
+                    b.Property<Guid>("IdNotif")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AnioLectivo")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CantidadEnviados")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreadoUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("IdEstudiante")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ProximoEnvioUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UltimoEnvioUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UltimoError")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Umbral")
+                        .HasColumnType("integer");
+
+                    b.HasKey("IdNotif");
+
+                    b.HasIndex("Estado", "ProximoEnvioUtc");
+
+                    b.HasIndex("IdEstudiante", "AnioLectivo", "Umbral")
+                        .IsUnique();
+
+                    b.ToTable("AsistenciaUmbralNotificacion", (string)null);
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.ClaseDictada", b =>
+                {
+                    b.Property<Guid>("IdClaseDictada")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Dictada")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly>("Fecha")
+                        .HasColumnType("date");
+
+                    b.Property<TimeSpan?>("HorarioEntradaEfectiva")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan?>("HorarioSalidaEfectiva")
+                        .HasColumnType("interval");
+
+                    b.Property<Guid>("IdEC")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("IdHorario")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Motivo")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Tema")
+                        .HasColumnType("text");
+
+                    b.HasKey("IdClaseDictada");
+
+                    b.HasIndex("IdEC", "Fecha");
+
+                    b.HasIndex("IdHorario", "Fecha")
+                        .IsUnique();
+
+                    b.ToTable("ClasesDictadas");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.CredencialQR", b =>
                 {
                     b.Property<Guid>("IdQR")
                         .ValueGeneratedOnAdd()
@@ -233,7 +330,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("CredencialesQR");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Curricula", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Curricula", b =>
                 {
                     b.Property<Guid>("IdCurricula")
                         .ValueGeneratedOnAdd()
@@ -263,7 +360,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Curriculas");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Curso", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Curso", b =>
                 {
                     b.Property<Guid>("IdCurso")
                         .ValueGeneratedOnAdd()
@@ -294,7 +391,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Cursos");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.DetalleCursado", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.DetalleCursado", b =>
                 {
                     b.Property<Guid>("IdCursado")
                         .ValueGeneratedOnAdd()
@@ -318,7 +415,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("DetallesCursado");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Division", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Division", b =>
                 {
                     b.Property<Guid>("IdDivision")
                         .ValueGeneratedOnAdd()
@@ -332,7 +429,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Divisiones");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Docente", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Docente", b =>
                 {
                     b.Property<Guid>("IdDocente")
                         .ValueGeneratedOnAdd()
@@ -365,7 +462,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Docentes");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.EspacioCurricular", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.EspacioCurricular", b =>
                 {
                     b.Property<Guid>("IdEC")
                         .ValueGeneratedOnAdd()
@@ -391,7 +488,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("EspaciosCurriculares");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Estudiante", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Estudiante", b =>
                 {
                     b.Property<Guid>("IdEstudiante")
                         .ValueGeneratedOnAdd()
@@ -415,12 +512,15 @@ namespace TesisGestorApi.Migrations
                     b.Property<int>("Sexo")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("TeaGeneral")
+                        .HasColumnType("boolean");
+
                     b.HasKey("IdEstudiante");
 
                     b.ToTable("Estudiantes");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Horario", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Horario", b =>
                 {
                     b.Property<Guid>("IdHorario")
                         .ValueGeneratedOnAdd()
@@ -450,27 +550,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Horarios");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.ParteDiario", b =>
-                {
-                    b.Property<Guid>("IdParte")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateOnly>("Fecha")
-                        .HasColumnType("date");
-
-                    b.Property<Guid>("IdCurso")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("IdParte");
-
-                    b.HasIndex("IdCurso", "Fecha")
-                        .IsUnique();
-
-                    b.ToTable("PartesDiarios");
-                });
-
-            modelBuilder.Entity("RepoDB.Entities.Preceptor", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
                 {
                     b.Property<Guid>("IdPreceptor")
                         .ValueGeneratedOnAdd()
@@ -507,7 +587,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Preceptores");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.RetiroAnticipado", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.RetiroAnticipado", b =>
                 {
                     b.Property<Guid>("IdRetiro")
                         .ValueGeneratedOnAdd()
@@ -549,7 +629,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("RetirosAnticipados");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Rol", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Rol", b =>
                 {
                     b.Property<Guid>("IdRol")
                         .ValueGeneratedOnAdd()
@@ -564,7 +644,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Roles");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.TipoAsistencia", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.TipoAsistencia", b =>
                 {
                     b.Property<Guid>("IdTipo")
                         .ValueGeneratedOnAdd()
@@ -587,7 +667,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("TiposAsistencia");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Tutor", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Tutor", b =>
                 {
                     b.Property<Guid>("IdTutor")
                         .ValueGeneratedOnAdd()
@@ -628,7 +708,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Tutores");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.TutorEstudiante", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.TutorEstudiante", b =>
                 {
                     b.Property<Guid>("IdTutor")
                         .HasColumnType("uuid");
@@ -646,7 +726,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("TutorEstudiante");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Usuario", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Usuario", b =>
                 {
                     b.Property<Guid>("IdUsuario")
                         .ValueGeneratedOnAdd()
@@ -674,7 +754,7 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Usuarios");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.UsuarioRol", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.UsuarioRol", b =>
                 {
                     b.Property<Guid>("IdUsuario")
                         .HasColumnType("uuid");
@@ -689,46 +769,49 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("UsuariosRoles");
                 });
 
-            modelBuilder.Entity("ClaseDictada", b =>
+            modelBuilder.Entity("RepoDB.Entities.ComentarioParte", b =>
                 {
-                    b.HasOne("RepoDB.Entities.EspacioCurricular", "EspacioCurricular")
-                        .WithMany("ClasesDictadas")
-                        .HasForeignKey("IdEC")
+                    b.HasOne("RepoDB.Entities.ParteDiario", "ParteDiario")
+                        .WithMany("Comentarios")
+                        .HasForeignKey("IdParte")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Horario", "Horario")
-                        .WithMany("ClasesDictadas")
-                        .HasForeignKey("IdHorario")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("EspacioCurricular");
-
-                    b.Navigation("Horario");
+                    b.Navigation("ParteDiario");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Asistencia", b =>
+            modelBuilder.Entity("RepoDB.Entities.ParteDiario", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
+                    b.HasOne("TesisGestorApi.Entities.Curso", "Curso")
+                        .WithMany()
+                        .HasForeignKey("IdCurso")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Curso");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.Asistencia", b =>
+                {
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
                         .WithMany()
                         .HasForeignKey("EstudianteId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Estudiante", null)
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", null)
                         .WithMany("Asistencias")
                         .HasForeignKey("EstudianteIdEstudiante");
 
-                    b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoLlegadaManiana")
+                    b.HasOne("TesisGestorApi.Entities.TipoAsistencia", "TipoLlegadaManiana")
                         .WithMany()
                         .HasForeignKey("TipoLlegadaManianaId");
 
-                    b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoManiana")
+                    b.HasOne("TesisGestorApi.Entities.TipoAsistencia", "TipoManiana")
                         .WithMany()
                         .HasForeignKey("TipoManianaId");
 
-                    b.HasOne("RepoDB.Entities.TipoAsistencia", "TipoTarde")
+                    b.HasOne("TesisGestorApi.Entities.TipoAsistencia", "TipoTarde")
                         .WithMany()
                         .HasForeignKey("TipoTardeId");
 
@@ -741,15 +824,15 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("TipoTarde");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.AsistenciaPorEspacio", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.AsistenciaPorEspacio", b =>
                 {
-                    b.HasOne("ClaseDictada", "ClaseDictada")
+                    b.HasOne("TesisGestorApi.Entities.ClaseDictada", "ClaseDictada")
                         .WithMany("Asistencias")
                         .HasForeignKey("IdClaseDictada")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
                         .WithMany("AsistenciasPorEspacio")
                         .HasForeignKey("IdEstudiante")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -760,20 +843,50 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Estudiante");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.ComentarioParte", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.AsistenciaResumenAnual", b =>
                 {
-                    b.HasOne("RepoDB.Entities.ParteDiario", "ParteDiario")
-                        .WithMany("Comentarios")
-                        .HasForeignKey("IdParte")
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
+                        .WithMany()
+                        .HasForeignKey("IdEstudiante")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("ParteDiario");
+                    b.Navigation("Estudiante");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.CredencialQR", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.AsistenciaUmbralNotificacion", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
+                        .WithMany()
+                        .HasForeignKey("IdEstudiante")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Estudiante");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.ClaseDictada", b =>
+                {
+                    b.HasOne("TesisGestorApi.Entities.EspacioCurricular", "EspacioCurricular")
+                        .WithMany("ClasesDictadas")
+                        .HasForeignKey("IdEC")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TesisGestorApi.Entities.Horario", "Horario")
+                        .WithMany("ClasesDictadas")
+                        .HasForeignKey("IdHorario")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("EspacioCurricular");
+
+                    b.Navigation("Horario");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.CredencialQR", b =>
+                {
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
                         .WithMany()
                         .HasForeignKey("EstudianteIdEstudiante")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -782,15 +895,15 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Estudiante");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Curso", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Curso", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Anio", "Anio")
+                    b.HasOne("TesisGestorApi.Entities.Anio", "Anio")
                         .WithMany("Cursos")
                         .HasForeignKey("IdAnio")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Division", "Division")
+                    b.HasOne("TesisGestorApi.Entities.Division", "Division")
                         .WithMany("Cursos")
                         .HasForeignKey("IdDivision")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -801,15 +914,15 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Division");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.DetalleCursado", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.DetalleCursado", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Curso", "Curso")
+                    b.HasOne("TesisGestorApi.Entities.Curso", "Curso")
                         .WithMany("DetallesCursado")
                         .HasForeignKey("IdCurso")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
                         .WithMany("DetallesCursado")
                         .HasForeignKey("IdEstudiante")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -820,32 +933,32 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Estudiante");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Docente", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Docente", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Usuario", "Usuario")
+                    b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
                         .WithOne("Docente")
-                        .HasForeignKey("RepoDB.Entities.Docente", "IdUsuario")
+                        .HasForeignKey("TesisGestorApi.Entities.Docente", "IdUsuario")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Usuario");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.EspacioCurricular", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.EspacioCurricular", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Curricula", "Curricula")
+                    b.HasOne("TesisGestorApi.Entities.Curricula", "Curricula")
                         .WithMany("EspaciosCurriculares")
                         .HasForeignKey("IdCurricula")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Curso", "Curso")
+                    b.HasOne("TesisGestorApi.Entities.Curso", "Curso")
                         .WithMany("EspaciosCurriculares")
                         .HasForeignKey("IdCurso")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Docente", "Docente")
+                    b.HasOne("TesisGestorApi.Entities.Docente", "Docente")
                         .WithMany("EspaciosCurriculares")
                         .HasForeignKey("IdDocente")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -858,15 +971,15 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Docente");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Horario", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Horario", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Curso", "Curso")
+                    b.HasOne("TesisGestorApi.Entities.Curso", "Curso")
                         .WithMany("Horarios")
                         .HasForeignKey("IdCurso")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.EspacioCurricular", "EspacioCurricular")
+                    b.HasOne("TesisGestorApi.Entities.EspacioCurricular", "EspacioCurricular")
                         .WithMany("Horarios")
                         .HasForeignKey("IdEC")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -877,28 +990,17 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("EspacioCurricular");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.ParteDiario", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Curso", "Curso")
-                        .WithMany()
-                        .HasForeignKey("IdCurso")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Curso");
-                });
-
-            modelBuilder.Entity("RepoDB.Entities.Preceptor", b =>
-                {
-                    b.HasOne("RepoDB.Entities.Curso", "Curso")
+                    b.HasOne("TesisGestorApi.Entities.Curso", "Curso")
                         .WithMany("Preceptores")
                         .HasForeignKey("CursoIdCurso")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Usuario", "Usuario")
+                    b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
                         .WithOne("Preceptor")
-                        .HasForeignKey("RepoDB.Entities.Preceptor", "IdUsuario")
+                        .HasForeignKey("TesisGestorApi.Entities.Preceptor", "IdUsuario")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -907,21 +1009,21 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Usuario");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.RetiroAnticipado", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.RetiroAnticipado", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
                         .WithMany("RetirosAnticipados")
                         .HasForeignKey("EstudianteIdEstudiante")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Asistencia", "Asistencia")
+                    b.HasOne("TesisGestorApi.Entities.Asistencia", "Asistencia")
                         .WithOne()
-                        .HasForeignKey("RepoDB.Entities.RetiroAnticipado", "IdAsistencia")
+                        .HasForeignKey("TesisGestorApi.Entities.RetiroAnticipado", "IdAsistencia")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Tutor", "Tutor")
+                    b.HasOne("TesisGestorApi.Entities.Tutor", "Tutor")
                         .WithMany("RetirosAnticipados")
                         .HasForeignKey("TutorIdTutor")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -934,15 +1036,15 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Tutor");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.TutorEstudiante", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.TutorEstudiante", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Estudiante", "Estudiante")
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
                         .WithMany("TutorEstudiantes")
                         .HasForeignKey("IdEstudiante")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Tutor", "Tutor")
+                    b.HasOne("TesisGestorApi.Entities.Tutor", "Tutor")
                         .WithMany("TutorEstudiantes")
                         .HasForeignKey("IdTutor")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -953,15 +1055,15 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Tutor");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.UsuarioRol", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.UsuarioRol", b =>
                 {
-                    b.HasOne("RepoDB.Entities.Rol", "Rol")
+                    b.HasOne("TesisGestorApi.Entities.Rol", "Rol")
                         .WithMany("UsuarioRoles")
                         .HasForeignKey("IdRol")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RepoDB.Entities.Usuario", "Usuario")
+                    b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
                         .WithMany("UsuarioRoles")
                         .HasForeignKey("IdUsuario")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -972,22 +1074,27 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Usuario");
                 });
 
-            modelBuilder.Entity("ClaseDictada", b =>
+            modelBuilder.Entity("RepoDB.Entities.ParteDiario", b =>
                 {
-                    b.Navigation("Asistencias");
+                    b.Navigation("Comentarios");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Anio", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Anio", b =>
                 {
                     b.Navigation("Cursos");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Curricula", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.ClaseDictada", b =>
+                {
+                    b.Navigation("Asistencias");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.Curricula", b =>
                 {
                     b.Navigation("EspaciosCurriculares");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Curso", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Curso", b =>
                 {
                     b.Navigation("DetallesCursado");
 
@@ -998,24 +1105,24 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Preceptores");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Division", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Division", b =>
                 {
                     b.Navigation("Cursos");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Docente", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Docente", b =>
                 {
                     b.Navigation("EspaciosCurriculares");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.EspacioCurricular", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.EspacioCurricular", b =>
                 {
                     b.Navigation("ClasesDictadas");
 
                     b.Navigation("Horarios");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Estudiante", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Estudiante", b =>
                 {
                     b.Navigation("Asistencias");
 
@@ -1028,29 +1135,24 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("TutorEstudiantes");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Horario", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Horario", b =>
                 {
                     b.Navigation("ClasesDictadas");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.ParteDiario", b =>
-                {
-                    b.Navigation("Comentarios");
-                });
-
-            modelBuilder.Entity("RepoDB.Entities.Rol", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Rol", b =>
                 {
                     b.Navigation("UsuarioRoles");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Tutor", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Tutor", b =>
                 {
                     b.Navigation("RetirosAnticipados");
 
                     b.Navigation("TutorEstudiantes");
                 });
 
-            modelBuilder.Entity("RepoDB.Entities.Usuario", b =>
+            modelBuilder.Entity("TesisGestorApi.Entities.Usuario", b =>
                 {
                     b.Navigation("Docente");
 

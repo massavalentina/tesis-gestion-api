@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RepoDB.Entities;
 using TesisGestorApi.Data;
+using TesisGestorApi.Entities;
 using TesisGestorApi.DTOs.ParteDiario;
 using TesisGestorApi.Interfaces;
 
@@ -12,7 +13,7 @@ namespace TesisGestorApi.Services
         private static readonly TimeSpan LimiteTarde = new(13, 20, 0);
 
         // RE (retiro express, ≤10% perdido, 0 inasistencia) se trata como Presente.
-        // RA y RAE son Retiros Anticipados y se muestran diferenciados de los Ausentes.
+        // RA y RAE se muestran como "Retirado" por estudiante, pero también suman al contador Ausentes.
         private static readonly HashSet<string> CodigosPresente  = new(StringComparer.OrdinalIgnoreCase) { "P", "LLT", "LLTE", "RE" };
         private static readonly HashSet<string> CodigosRetirado  = new(StringComparer.OrdinalIgnoreCase) { "RA", "RAE" };
         private static readonly HashSet<string> CodigosAusente   = new(StringComparer.OrdinalIgnoreCase) { "A", "LLTC", "ANC" };
@@ -112,6 +113,7 @@ namespace TesisGestorApi.Services
                 {
                     estado = "Retirado";
                     turno.Retirados++;
+                    turno.Ausentes++; // los retirados también cuentan en el total de ausentes
                 }
                 else if (CodigosAusente.Contains(codigo))
                 {

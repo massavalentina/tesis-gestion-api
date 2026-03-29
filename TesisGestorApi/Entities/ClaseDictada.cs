@@ -26,4 +26,5 @@ namespace TesisGestorApi.Entities
     public Horario Horario { get; set; } = null!;
 
     public ICollection<AsistenciaPorEspacio> Asistencias { get; set; } = new List<AsistenciaPorEspacio>();
+    }
 }
