@@ -563,7 +563,8 @@ namespace TesisGestorApi.Services
                 _context.ClasesDictadas.Add(clase);
                 await _context.SaveChangesAsync();
 
-                if (clase.Dictada) await RegenerarAsistenciasParaClase(clase);
+                if (horario != null) await RecalcularRetiroEstudiantesAsync(horario.IdCurso, dto.Fecha);
+                await RegenerarAsistenciasParaClase(clase);
             }
             else
             {
@@ -576,10 +577,13 @@ namespace TesisGestorApi.Services
                 {
                     if (clase.Asistencias.Any()) _context.AsistenciasPorEspacio.RemoveRange(clase.Asistencias);
                     await _context.SaveChangesAsync();
+                    if (horario != null) await RecalcularRetiroEstudiantesAsync(horario.IdCurso, dto.Fecha);
+                    await RegenerarAsistenciasParaClase(clase);
                 }
                 else if (estadoAnterior == false && dto.Dictada == true)
                 {
                     await _context.SaveChangesAsync();
+                    if (horario != null) await RecalcularRetiroEstudiantesAsync(horario.IdCurso, dto.Fecha);
                     await RegenerarAsistenciasParaClase(clase);
                 }
                 else
@@ -614,6 +618,10 @@ namespace TesisGestorApi.Services
 
             if (!idsEstudiantes.Any()) return;
 
+            // 1. Actualizar tipos de retiro según el estado vigente de las clases
+            await RecalcularRetiroEstudiantesAsync(cursoId, fecha);
+
+            // 2. Recargar asistencias con los tipos ya actualizados
             var asistencias = await _context.Asistencias
                 .Include(a => a.TipoManiana)
                 .Include(a => a.TipoTarde)
@@ -663,6 +671,86 @@ namespace TesisGestorApi.Services
                 .ToDictionary(a => a.EstudianteId, _ => new HashSet<string> { turnoEC });
 
             await ProcesarAsistenciaEspacios(asistenciasGenerales, turnosPorEstudiante);
+        }
+
+        // [ Helper Privado ] Recalcula el tipo de retiro (RA/RAE/RE) para estudiantes del curso en una fecha,
+        // en función del estado actual de las clases dictadas. Debe llamarse ANTES de ProcesarAsistenciaEspacios
+        // para que el cálculo de APEs use los tipos correctos.
+        private async Task RecalcularRetiroEstudiantesAsync(Guid cursoId, DateOnly fecha)
+        {
+            var diaSemana = fecha.DayOfWeek;
+
+            var idsEstudiantes = await _context.DetallesCursado
+                .AsNoTracking()
+                .Where(dc => dc.IdCurso == cursoId && dc.Estado)
+                .Select(dc => dc.IdEstudiante)
+                .ToListAsync();
+
+            if (!idsEstudiantes.Any()) return;
+
+            var codigosRetiro = new[] { "RA", "RAE", "RE" };
+            var asistencias = await _context.Asistencias
+                .Include(a => a.TipoManiana)
+                .Include(a => a.TipoTarde)
+                .Where(a => a.Fecha == fecha && idsEstudiantes.Contains(a.EstudianteId))
+                .Where(a => (a.TipoManiana != null && codigosRetiro.Contains(a.TipoManiana.Codigo))
+                         || (a.TipoTarde   != null && codigosRetiro.Contains(a.TipoTarde.Codigo)))
+                .ToListAsync();
+
+            if (!asistencias.Any()) return;
+
+            var horarios = await _context.Horarios
+                .AsNoTracking()
+                .Where(h => h.IdCurso == cursoId && h.DíaSemana == diaSemana)
+                .ToListAsync();
+
+            var idsHorario = horarios.Select(h => h.IdHorario).ToList();
+            var clasesDictadasLocales = await _context.ClasesDictadas
+                .AsNoTracking()
+                .Where(c => idsHorario.Contains(c.IdHorario) && c.Fecha == fecha)
+                .ToDictionaryAsync(c => (c.IdHorario, c.Fecha));
+
+            var tiposPorCodigo = await _context.TiposAsistencia
+                .AsNoTracking()
+                .Where(t => codigosRetiro.Contains(t.Codigo))
+                .ToDictionaryAsync(t => t.Codigo.ToUpper());
+
+            bool hayActualizaciones = false;
+
+            foreach (var asist in asistencias)
+            {
+                var codigoM = asist.TipoManiana?.Codigo?.ToUpper();
+                if (codigoM is "RA" or "RAE" or "RE" && asist.HoraSalidaManana.HasValue)
+                {
+                    var horariosTurno = horarios.Where(h => h.HorarioEntrada < new TimeSpan(13, 20, 0)).ToList();
+                    double porc = CalcularPorcentajePerdidoHelper(horariosTurno, asist.HoraSalidaManana.Value, clasesDictadasLocales, fecha);
+
+                    string nuevoCodigo = porc <= 10 ? "RE" : porc > 50 ? "RAE" : "RA";
+                    if (nuevoCodigo != codigoM && tiposPorCodigo.TryGetValue(nuevoCodigo, out var tipo))
+                    {
+                        asist.TipoManianaId = tipo.IdTipo;
+                        asist.TipoManiana   = tipo;
+                        hayActualizaciones  = true;
+                    }
+                }
+
+                var codigoT = asist.TipoTarde?.Codigo?.ToUpper();
+                if (codigoT is "RA" or "RAE" or "RE" && asist.HoraSalidaTarde.HasValue)
+                {
+                    var horariosTurno = horarios.Where(h => h.HorarioEntrada >= new TimeSpan(13, 20, 0)).ToList();
+                    double porc = CalcularPorcentajePerdidoHelper(horariosTurno, asist.HoraSalidaTarde.Value, clasesDictadasLocales, fecha);
+
+                    string nuevoCodigo = porc <= 10 ? "RE" : porc > 50 ? "RAE" : "RA";
+                    if (nuevoCodigo != codigoT && tiposPorCodigo.TryGetValue(nuevoCodigo, out var tipo))
+                    {
+                        asist.TipoTardeId = tipo.IdTipo;
+                        asist.TipoTarde   = tipo;
+                        hayActualizaciones = true;
+                    }
+                }
+            }
+
+            if (hayActualizaciones) await _context.SaveChangesAsync();
         }
 
         // [ POST ] Registro de Asistencia General Individual - Recibe una asistencia y la procesa con el método de procesamiento por lote.

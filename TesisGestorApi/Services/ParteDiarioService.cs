@@ -12,10 +12,10 @@ namespace TesisGestorApi.Services
         private readonly ApplicationDbContext _context;
         private static readonly TimeSpan LimiteTarde = new(13, 20, 0);
 
-        // RE (retiro express, ≤10% perdido, 0 inasistencia) se trata como Presente.
-        // RA y RAE se muestran como "Retirado" por estudiante, pero también suman al contador Ausentes.
-        private static readonly HashSet<string> CodigosPresente  = new(StringComparer.OrdinalIgnoreCase) { "P", "LLT", "LLTE", "RE" };
-        private static readonly HashSet<string> CodigosRetirado  = new(StringComparer.OrdinalIgnoreCase) { "RA", "RAE" };
+        // RE (retiro express, ≤10% perdido) sigue siendo un retiro y se muestra como tal.
+        // RA, RAE y RE se muestran como "Retirado" por estudiante, pero también suman al contador Ausentes.
+        private static readonly HashSet<string> CodigosPresente  = new(StringComparer.OrdinalIgnoreCase) { "P", "LLT", "LLTE" };
+        private static readonly HashSet<string> CodigosRetirado  = new(StringComparer.OrdinalIgnoreCase) { "RA", "RAE", "RE" };
         private static readonly HashSet<string> CodigosAusente   = new(StringComparer.OrdinalIgnoreCase) { "A", "LLTC", "ANC" };
 
         public ParteDiarioService(ApplicationDbContext context)
@@ -324,26 +324,15 @@ namespace TesisGestorApi.Services
 
         public async Task ReorganizarHorarioAsync(ReorganizarHorarioDto dto)
         {
-            var diaSemana    = dto.Fecha.DayOfWeek;
-            var idsHorario   = dto.IdHorariosOrdenados;
+            var diaSemana  = dto.Fecha.DayOfWeek;
+            var idsHorario = dto.Slots.Select(s => s.IdHorario).ToList();
 
-            // Cargar los slots con nombres de materia para el log
+            // Cargar horarios base (para comparar con los tiempos nuevos y para el log)
             var horarios = await _context.Horarios
                 .AsNoTracking()
                 .Include(h => h.EspacioCurricular).ThenInclude(ec => ec.Curricula)
                 .Where(h => idsHorario.Contains(h.IdHorario) && h.DíaSemana == diaSemana)
-                .ToListAsync();
-
-            // Tiempos base por slot (IdHorario)
-            var basePorSlot = horarios.ToDictionary(h => h.IdHorario, h => (
-                Entrada: h.HorarioEntrada,
-                Salida:  h.HorarioSalida,
-                Nombre:  h.EspacioCurricular.Curricula.Nombre,
-                IdEC:    h.IdEC
-            ));
-
-            // Orden base: slots ordenados por horario de entrada original (define las "posiciones")
-            var ordenBase = basePorSlot.OrderBy(kv => kv.Value.Entrada).Select(kv => kv.Key).ToList();
+                .ToDictionaryAsync(h => h.IdHorario);
 
             // Cargar ClaseDictadas existentes para estos slots
             var clasesExistentes = await _context.ClasesDictadas
@@ -353,35 +342,43 @@ namespace TesisGestorApi.Services
 
             var cambios = new List<string>();
 
-            for (int i = 0; i < dto.IdHorariosOrdenados.Count; i++)
+            foreach (var slot in dto.Slots)
             {
-                var idHorario = dto.IdHorariosOrdenados[i];
-                if (!basePorSlot.TryGetValue(idHorario, out var ownBase)) continue;
+                if (!horarios.TryGetValue(slot.IdHorario, out var horario)) continue;
 
-                // La posición i tiene los tiempos del slot que originalmente estaba en esa posición
-                var idHorarioDelSlot = i < ordenBase.Count ? ordenBase[i] : ordenBase.Last();
-                if (!basePorSlot.TryGetValue(idHorarioDelSlot, out var slotTimes)) continue;
+                var nuevaEntrada = TimeSpan.Parse(slot.HoraEntrada);
+                var nuevaSalida  = TimeSpan.Parse(slot.HoraSalida);
 
-                // Obtener o crear ClaseDictada para este slot
-                if (!clasesDict.TryGetValue(idHorario, out var clase))
+                // Si el preceptor eligió exactamente el horario base, se limpia el override
+                bool esBasePropia = nuevaEntrada == horario.HorarioEntrada
+                                 && nuevaSalida  == horario.HorarioSalida;
+
+                if (!clasesDict.TryGetValue(slot.IdHorario, out var clase))
                 {
-                    clase = new ClaseDictada { IdClaseDictada = Guid.NewGuid(), IdHorario = idHorario, IdEC = ownBase.IdEC, Fecha = dto.Fecha, Dictada = true };
+                    // Sin registro previo y sin cambio — nada que hacer
+                    if (esBasePropia) continue;
+
+                    clase = new ClaseDictada
+                    {
+                        IdClaseDictada = Guid.NewGuid(),
+                        IdHorario      = slot.IdHorario,
+                        IdEC           = horario.IdEC,
+                        Fecha          = dto.Fecha,
+                        Dictada        = true,
+                    };
                     _context.ClasesDictadas.Add(clase);
-                    clasesDict[idHorario] = clase;
+                    clasesDict[slot.IdHorario] = clase;
                 }
 
-                var prevEntrada = clase.HorarioEntradaEfectiva ?? ownBase.Entrada;
-                var prevSalida  = clase.HorarioSalidaEfectiva  ?? ownBase.Salida;
+                var prevEntrada = clase.HorarioEntradaEfectiva ?? horario.HorarioEntrada;
+                var prevSalida  = clase.HorarioSalidaEfectiva  ?? horario.HorarioSalida;
 
-                bool usaBasePropia = slotTimes.Entrada == ownBase.Entrada && slotTimes.Salida == ownBase.Salida;
-                clase.HorarioEntradaEfectiva = usaBasePropia ? null : slotTimes.Entrada;
-                clase.HorarioSalidaEfectiva  = usaBasePropia ? null : slotTimes.Salida;
+                clase.HorarioEntradaEfectiva = esBasePropia ? null : nuevaEntrada;
+                clase.HorarioSalidaEfectiva  = esBasePropia ? null : nuevaSalida;
 
-                var newEntrada = clase.HorarioEntradaEfectiva ?? ownBase.Entrada;
-                var newSalida  = clase.HorarioSalidaEfectiva  ?? ownBase.Salida;
-
-                if (prevEntrada != newEntrada || prevSalida != newSalida)
-                    cambios.Add($"• {ownBase.Nombre}: {prevEntrada:hh\\:mm}–{prevSalida:hh\\:mm} → {newEntrada:hh\\:mm}–{newSalida:hh\\:mm}");
+                if (prevEntrada != nuevaEntrada || prevSalida != nuevaSalida)
+                    cambios.Add($"• {horario.EspacioCurricular.Curricula.Nombre}: " +
+                                $"{prevEntrada:hh\\:mm}–{prevSalida:hh\\:mm} → {nuevaEntrada:hh\\:mm}–{nuevaSalida:hh\\:mm}");
             }
 
             await _context.SaveChangesAsync();
