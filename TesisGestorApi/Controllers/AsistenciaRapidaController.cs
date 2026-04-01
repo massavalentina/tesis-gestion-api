@@ -132,12 +132,12 @@ public class AsistenciaRapidaController : ControllerBase
                 Apellido = e.Apellido,
                 Documento = e.Documento,
                 Curso = c != null ? c.Codigo : "-",
-
                 RegistradoHoy = (tm != null) && (
                     tm.Codigo.ToUpper() == "LLT" ||
                     tm.Codigo.ToUpper() == "LLTE" ||
                     tm.Codigo.ToUpper() == "LLTC"
-                )
+                ),
+                TeaGeneral = e.TeaGeneral
             }
         )
         .OrderBy(x => x.Apellido)

@@ -5,6 +5,7 @@ using TesisGestorApi.Dtos;
 using TesisGestorApi.Exceptions;
 using TesisGestorApi.Interfaces;
 using TesisGestorApi.Entities;
+using TesisGestorApi.Dtos;
 
 namespace TesisGestorApi.Services
 {
