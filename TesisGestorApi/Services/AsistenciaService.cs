@@ -596,11 +596,13 @@ namespace TesisGestorApi.Services
             {
                 string materiaNombre = horario.EspacioCurricular.Curricula?.Nombre ?? "Clase";
                 string estadoTexto   = dto.Dictada ? "Dictada" : "No Dictada";
-                string descripcion   = string.IsNullOrWhiteSpace(dto.Motivo)
-                    ? $"{materiaNombre} marcada como {estadoTexto}"
-                    : $"{materiaNombre} marcada como {estadoTexto}. Motivo: {dto.Motivo}";
+                string? motivo       = string.IsNullOrWhiteSpace(dto.Motivo) ? null : dto.Motivo;
 
-                await _parteDiarioService.RegistrarEventoAsync(horario.EspacioCurricular.IdCurso, dto.Fecha, descripcion);
+                await _parteDiarioService.RegistrarEventoAsync(
+                    horario.EspacioCurricular.IdCurso, dto.Fecha,
+                    "HORARIO",
+                    $"{materiaNombre} marcada como {estadoTexto}",
+                    motivo);
             }
         }
 
@@ -1092,8 +1094,7 @@ namespace TesisGestorApi.Services
             {
                 if (!cambios.Any()) continue;
                 string plural = cambios.Count == 1 ? "estudiante" : "estudiantes";
-                string msg    = $"Asistencia actualizada ({cambios.Count} {plural}):\n{string.Join("\n", cambios)}";
-                try   { await _parteDiarioService.RegistrarEventoAsync(cursoId, fecha, msg); }
+                try   { await _parteDiarioService.RegistrarEventoAsync(cursoId, fecha, "ASISTENCIA", $"Asistencia actualizada ({cambios.Count} {plural})", string.Join("\n", cambios)); }
                 catch (Exception ex) { _logger.LogWarning(ex, "No se pudo registrar el evento de asistencia en el parte diario."); }
             }
         }

@@ -7,7 +7,7 @@ namespace TesisGestorApi.Interfaces
         Task<ParteDiarioResumenDto> ObtenerResumenAsync(Guid cursoId, DateOnly fecha);
         Task<List<ComentarioParteDto>> ObtenerComentariosAsync(Guid cursoId, DateOnly fecha);
         Task<ComentarioParteDto> AgregarComentarioAsync(AgregarComentarioDto dto);
-        Task RegistrarEventoAsync(Guid cursoId, DateOnly fecha, string descripcion);
+        Task RegistrarEventoAsync(Guid cursoId, DateOnly fecha, string subTipo, string titulo, string? detalle = null);
         Task IntercambiarHorarioClasesAsync(IntercambiarHorarioDto dto);
         Task ResetearHorarioClaseAsync(Guid idHorario, DateOnly fecha, Guid cursoId);
         Task ReorganizarHorarioAsync(ReorganizarHorarioDto dto);

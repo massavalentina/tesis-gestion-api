@@ -188,15 +188,48 @@ namespace TesisGestorApi.Services
 
             return parte.Comentarios
                 .OrderByDescending(c => c.Timestamp)
-                .Select(c => new ComentarioParteDto
+                .Select(c =>
                 {
-                    IdComentario = c.IdComentario,
-                    Timestamp    = c.Timestamp,
-                    Contenido    = c.Contenido,
-                    Tipo         = c.Tipo.ToString(),
-                    Autor        = c.Autor,
+                    var (subTipo, titulo, detalle) = ParseContenido(c.Contenido, c.Tipo);
+                    return new ComentarioParteDto
+                    {
+                        IdComentario = c.IdComentario,
+                        Timestamp    = c.Timestamp,
+                        Contenido    = c.Contenido,
+                        Tipo         = c.Tipo.ToString(),
+                        SubTipo      = subTipo,
+                        Titulo       = titulo,
+                        Detalle      = detalle,
+                        Autor        = c.Autor,
+                    };
                 })
                 .ToList();
+        }
+
+        private static (string subTipo, string? titulo, string? detalle) ParseContenido(string contenido, TipoComentarioParte tipo)
+        {
+            if (tipo == TipoComentarioParte.Comentario)
+                return ("NOTA", null, null);
+
+            var lines = contenido.Split('\n');
+
+            // Formato nuevo estructurado: primera línea es [SUBTYPE]
+            if (lines.Length > 0 && lines[0].StartsWith("[") && lines[0].EndsWith("]"))
+            {
+                var subTipo = lines[0][1..^1];
+                var titulo  = lines.Length > 1 ? lines[1] : string.Empty;
+                var detalle = lines.Length > 2 ? string.Join("\n", lines[2..]) : null;
+                return (subTipo, titulo, string.IsNullOrWhiteSpace(detalle) ? null : detalle);
+            }
+
+            // Formato legacy — detección heurística
+            var firstLine = lines[0];
+            var restLines = lines.Length > 1 ? string.Join("\n", lines[1..]) : null;
+
+            if (firstLine.StartsWith("Asistencia actualizada"))
+                return ("ASISTENCIA", firstLine.TrimEnd(':'), string.IsNullOrWhiteSpace(restLines) ? null : restLines);
+
+            return ("HORARIO", firstLine.TrimEnd(':'), string.IsNullOrWhiteSpace(restLines) ? null : restLines);
         }
 
         public async Task<ComentarioParteDto> AgregarComentarioAsync(AgregarComentarioDto dto)
@@ -222,20 +255,26 @@ namespace TesisGestorApi.Services
                 Timestamp    = comentario.Timestamp,
                 Contenido    = comentario.Contenido,
                 Tipo         = comentario.Tipo.ToString(),
+                SubTipo      = "NOTA",
+                Titulo       = null,
+                Detalle      = null,
                 Autor        = comentario.Autor,
             };
         }
 
-        public async Task RegistrarEventoAsync(Guid cursoId, DateOnly fecha, string descripcion)
+        public async Task RegistrarEventoAsync(Guid cursoId, DateOnly fecha, string subTipo, string titulo, string? detalle = null)
         {
-            var parte = await ObtenerOCrearParteAsync(cursoId, fecha);
+            var parte    = await ObtenerOCrearParteAsync(cursoId, fecha);
+            string contenido = detalle != null
+                ? $"[{subTipo}]\n{titulo}\n{detalle}"
+                : $"[{subTipo}]\n{titulo}";
 
             _context.ComentariosParte.Add(new ComentarioParte
             {
                 IdComentario = Guid.NewGuid(),
                 IdParte      = parte.IdParte,
                 Timestamp    = DateTime.UtcNow,
-                Contenido    = descripcion,
+                Contenido    = contenido,
                 Tipo         = TipoComentarioParte.Evento,
                 Autor        = "Sistema",
             });
@@ -318,8 +357,9 @@ namespace TesisGestorApi.Services
             clase.HorarioSalidaEfectiva  = null;
             await _context.SaveChangesAsync();
 
-            await RegistrarEventoAsync(cursoId, fecha,
-                $"{materiaNombre}: horario restablecido (era {prevEntrada:hh\\:mm}).");
+            await RegistrarEventoAsync(cursoId, fecha, "HORARIO",
+                $"{materiaNombre}: horario restablecido",
+                $"Horario anterior: {prevEntrada:hh\\:mm}");
         }
 
         public async Task ReorganizarHorarioAsync(ReorganizarHorarioDto dto)
@@ -384,8 +424,9 @@ namespace TesisGestorApi.Services
             await _context.SaveChangesAsync();
 
             if (cambios.Any())
-                await RegistrarEventoAsync(dto.CursoId, dto.Fecha,
-                    $"Horario reorganizado:\n{string.Join("\n", cambios)}");
+                await RegistrarEventoAsync(dto.CursoId, dto.Fecha, "HORARIO",
+                    "Horario reorganizado",
+                    string.Join("\n", cambios));
         }
 
         private async Task<ParteDiario> ObtenerOCrearParteAsync(Guid cursoId, DateOnly fecha)
