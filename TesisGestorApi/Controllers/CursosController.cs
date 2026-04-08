@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
+using TesisGestorApi.DTOs;
 
 namespace TesisGestorApi.Controllers
 {
@@ -68,6 +69,27 @@ namespace TesisGestorApi.Controllers
                 .ToListAsync(ct);
 
             return Ok(estudiantes);
+        }
+
+        // GET /api/cursos/{cursoId}/espacios-curriculares
+        [HttpGet("{cursoId:guid}/espacios-curriculares")]
+        public async Task<IActionResult> GetEspaciosCurriculares(
+            Guid cursoId,
+            CancellationToken ct = default)
+        {
+            var espacios = await _db.EspaciosCurriculares
+                .AsNoTracking()
+                .Where(ec => ec.IdCurso == cursoId)
+                .Include(ec => ec.Curricula)
+                .OrderBy(ec => ec.Curricula.Nombre)
+                .Select(ec => new EspacioCurricularDto
+                {
+                    IdEC = ec.IdEC,
+                    Nombre = ec.Curricula.Nombre
+                })
+                .ToListAsync(ct);
+
+            return Ok(espacios);
         }
 
         // GET /api/cursos/buscar-estudiantes?texto=xxx&anioLectivo=2026

@@ -6,8 +6,9 @@
         public string Nombre { get; set; } = null!;
         public string Apellido { get; set; } = null!;
         public string Documento { get; set; } = null!;
-        public string Curso { get; set; } = "-";      // por ahora fijo si no tenés el join armado
+        public string Curso { get; set; } = "-";
         public bool RegistradoHoy { get; set; }
+        public bool TeaGeneral { get; set; }
     }
 
 }

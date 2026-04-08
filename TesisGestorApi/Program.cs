@@ -9,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+builder.Services.AddScoped<IParteDiarioService, ParteDiarioService>();
 builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 builder.Services.AddScoped<IAsistenciaUmbralService, AsistenciaUmbralService>();
 builder.Services.AddScoped<IScannerService, ScannerService>();

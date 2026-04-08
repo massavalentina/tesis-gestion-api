@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using RepoDB.Entities;
 using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Data
@@ -35,6 +36,10 @@ namespace TesisGestorApi.Data
         public DbSet<ClaseDictada> ClasesDictadas { get; set; }
         public DbSet<AsistenciaResumenAnual> AsistenciasResumenAnual { get; set; }
         public DbSet<AsistenciaUmbralNotificacion> AsistenciasUmbralNotificacion { get; set; }
+
+        // ===== Parte Diario =====
+        public DbSet<ParteDiario> PartesDiarios { get; set; }
+        public DbSet<ComentarioParte> ComentariosParte { get; set; }
 
         // ===== Seguridad / Otros =====
         public DbSet<Usuario> Usuarios { get; set; }
@@ -156,7 +161,16 @@ namespace TesisGestorApi.Data
                 entity.HasOne(c => c.EspacioCurricular)
                       .WithMany(ec => ec.ClasesDictadas)
                       .HasForeignKey(c => c.IdEC)
-                      .OnDelete(DeleteBehavior.Cascade);
+                      .OnDelete(DeleteBehavior.Cascade); // Si se borra el espacio curricular, se borran las clases dictadas asociadas a este.
+
+                // Horario 1:N Clases Dictadas — cada slot de horario tiene su propio registro
+                entity.HasOne(c => c.Horario)
+                      .WithMany(h => h.ClasesDictadas)
+                      .HasForeignKey(c => c.IdHorario)
+                      .OnDelete(DeleteBehavior.Restrict); // No borrar el horario si tiene clases dictadas.
+
+                // Un slot de horario solo puede tener un registro de clase dictada por día
+                entity.HasIndex(c => new { c.IdHorario, c.Fecha }).IsUnique();
 
                 entity.HasIndex(c => new { c.IdEC, c.Fecha });
             });
@@ -186,11 +200,32 @@ namespace TesisGestorApi.Data
                 entity.HasIndex(a => new { a.EstudianteId, a.Fecha }).IsUnique();
             });
 
+            // Asistencias 1:1 Retiro Anticipado
             modelBuilder.Entity<RetiroAnticipado>()
                 .HasOne(r => r.Asistencia)
                 .WithOne()
                 .HasForeignKey<RetiroAnticipado>(r => r.IdAsistencia)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Cascade); // Si borro la asistencia, se borra el retiro
+
+            // Parte Diario
+            modelBuilder.Entity<ParteDiario>(entity =>
+            {
+                entity.HasOne(p => p.Curso)
+                      .WithMany()
+                      .HasForeignKey(p => p.IdCurso)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(p => new { p.IdCurso, p.Fecha }).IsUnique();
+            });
+
+            // Comentario Parte
+            modelBuilder.Entity<ComentarioParte>(entity =>
+            {
+                entity.HasOne(c => c.ParteDiario)
+                      .WithMany(p => p.Comentarios)
+                      .HasForeignKey(c => c.IdParte)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
 
             /// Umbrales de asistencia
 
