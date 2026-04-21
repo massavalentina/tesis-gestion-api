@@ -46,6 +46,8 @@ namespace TesisGestorApi.Controllers
             var credencial = await _db.CredencialesQR
                 .AsNoTracking()
                 .Where(c => c.IdEstudiante == id && c.AñoLectivo.Year == anioLectivo)
+                .OrderByDescending(c => c.FechaGeneracion)
+                .ThenByDescending(c => c.IdQR)
                 .Select(c => new { c.Activo })
                 .FirstOrDefaultAsync(ct);
 
