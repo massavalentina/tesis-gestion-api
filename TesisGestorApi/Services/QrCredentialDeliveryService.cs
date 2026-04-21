@@ -77,6 +77,16 @@ namespace TesisGestorApi.Services
                     string? lastErrorMessage = null;
                     string? lastErrorStudent = null;
                     string? lastErrorDestination = null;
+                    var cancelacionSolicitada = false;
+                    var jobCancellation = CancellationToken.None;
+
+                    if (_progress.TryGetState(job.JobId, out var jobState))
+                    {
+                        lock (jobState.SyncRoot)
+                        {
+                            jobCancellation = jobState.CancellationSource.Token;
+                        }
+                    }
 
                     using var scopeFactory = _scopeFactory.CreateScope();
                     var db = scopeFactory.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -92,6 +102,12 @@ namespace TesisGestorApi.Services
 
                     foreach (var candidate in candidates)
                     {
+                        if (IsCancellationRequested(job.JobId))
+                        {
+                            cancelacionSolicitada = true;
+                            break;
+                        }
+
                         if (!liveCandidates.TryGetValue(candidate.IdEstudiante, out var liveCandidate))
                         {
                             _progress.Update(job.JobId, p =>
@@ -117,7 +133,7 @@ namespace TesisGestorApi.Services
                         }
 
                         var credencial = await db.CredencialesQR
-                            .FirstOrDefaultAsync(q => q.IdQR == liveCandidate.IdQr.Value, CancellationToken.None);
+                            .FirstOrDefaultAsync(q => q.IdQR == liveCandidate.IdQr.Value, jobCancellation);
 
                         if (credencial is null)
                         {
@@ -133,6 +149,12 @@ namespace TesisGestorApi.Services
 
                         try
                         {
+                            if (IsCancellationRequested(job.JobId))
+                            {
+                                cancelacionSolicitada = true;
+                                break;
+                            }
+
                             var qrBytes = qrVisualService.BuildQrPng(liveCandidate.CodigoQr.Value);
                             var qrContentId = $"qr-{liveCandidate.IdEstudiante:N}";
 
@@ -181,12 +203,18 @@ namespace TesisGestorApi.Services
                                 to: liveCandidate.TutorEmail,
                                 subject: subject,
                                 htmlBody: htmlBody,
-                                ct: CancellationToken.None,
+                                ct: jobCancellation,
                                 attachments: [attachment],
                                 inlineResources: inlineResources);
 
+                            if (IsCancellationRequested(job.JobId))
+                            {
+                                cancelacionSolicitada = true;
+                                break;
+                            }
+
                             credencial.Enviado = true;
-                            await db.SaveChangesAsync(CancellationToken.None);
+                            await db.SaveChangesAsync(jobCancellation);
 
                             _progress.Update(job.JobId, p =>
                             {
@@ -196,6 +224,11 @@ namespace TesisGestorApi.Services
                                 p.UltimoEstudiante = liveCandidate.NombreCompleto;
                                 p.UltimoMensaje = "Enviado.";
                             });
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            cancelacionSolicitada = true;
+                            break;
                         }
                         catch (Exception ex)
                         {
@@ -226,6 +259,12 @@ namespace TesisGestorApi.Services
                         p.Estado = "COMPLETED";
                         p.Fin = DateTime.UtcNow;
 
+                        if (cancelacionSolicitada || IsCancellationRequested(job.JobId))
+                        {
+                            p.UltimoMensaje = BuildCancellationMessage(p.Enviados, p.Total, p.Procesados, p.Errores);
+                            return;
+                        }
+
                         if (p.Errores > 0 && !string.IsNullOrWhiteSpace(lastErrorMessage))
                         {
                             p.UltimoEstudiante = lastErrorStudent;
@@ -236,6 +275,15 @@ namespace TesisGestorApi.Services
                         {
                             p.UltimoMensaje = "Proceso finalizado.";
                         }
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    _progress.Update(job.JobId, p =>
+                    {
+                        p.Estado = "COMPLETED";
+                        p.Fin = DateTime.UtcNow;
+                        p.UltimoMensaje = BuildCancellationMessage(p.Enviados, p.Total, p.Procesados, p.Errores);
                     });
                 }
                 catch (Exception ex)
@@ -250,6 +298,17 @@ namespace TesisGestorApi.Services
             });
 
             return job;
+        }
+
+        public Task<QrCredentialDeliveryProgressDto> CancelDeliveryJobAsync(Guid jobId, CancellationToken ct = default)
+        {
+            if (jobId == Guid.Empty)
+                throw new InvalidOperationException("JobId inválido.");
+
+            if (!_progress.RequestCancellation(jobId, out var progress))
+                throw new InvalidOperationException("No existe un proceso de envío con el identificador indicado.");
+
+            return Task.FromResult(progress);
         }
 
         public async Task<QrCredentialDeliveryStudentsPageDto> GetStudentsPageAsync(
@@ -357,6 +416,32 @@ namespace TesisGestorApi.Services
             {
                 return false;
             }
+        }
+
+        private bool IsCancellationRequested(Guid jobId)
+        {
+            if (!_progress.TryGetState(jobId, out var state))
+                return false;
+
+            lock (state.SyncRoot)
+            {
+                return state.CancellationRequested;
+            }
+        }
+
+        private static string BuildCancellationMessage(int enviados, int total, int procesados, int errores)
+        {
+            var pendientesCancelados = Math.Max(total - procesados, 0);
+            var mensajeCancelacion = pendientesCancelados > 0
+                ? $"Proceso cancelado por el usuario. Se enviaron {enviados} credencial(es) y se cancelaron {pendientesCancelados} envío(s) pendiente(s)."
+                : "Cancelación solicitada, pero no quedaban envíos pendientes por detener.";
+
+            if (errores > 0)
+            {
+                mensajeCancelacion += $" Se registraron {errores} error(es) durante el proceso.";
+            }
+
+            return mensajeCancelacion;
         }
 
         private static IEnumerable<DeliveryStudentRow> SelectCandidates(IEnumerable<DeliveryStudentRow> rows, string scope)

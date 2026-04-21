@@ -66,6 +66,20 @@ namespace TesisGestorApi.Controllers
             return Ok(dto);
         }
 
+        [HttpPost("cancel/{jobId:guid}")]
+        public async Task<ActionResult<QrCredentialDeliveryProgressDto>> CancelJob([FromRoute] Guid jobId, CancellationToken ct)
+        {
+            try
+            {
+                var progress = await _service.CancelDeliveryJobAsync(jobId, ct);
+                return Ok(progress);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpGet("students")]
         public async Task<ActionResult<QrCredentialDeliveryStudentsPageDto>> Students(
             [FromQuery] Guid cursoId,

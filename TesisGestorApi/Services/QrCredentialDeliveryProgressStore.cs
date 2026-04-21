@@ -36,6 +36,9 @@ namespace TesisGestorApi.Services
             return false;
         }
 
+        public bool TryGetState(Guid jobId, out QrCredentialDeliveryJobState state)
+            => _jobs.TryGetValue(jobId, out state!);
+
         public void Update(Guid jobId, Action<QrCredentialDeliveryProgressDto> update)
         {
             if (!_jobs.TryGetValue(jobId, out var state))
@@ -44,6 +47,32 @@ namespace TesisGestorApi.Services
             lock (state.SyncRoot)
             {
                 update(state.Progress);
+            }
+        }
+
+        public bool RequestCancellation(Guid jobId, out QrCredentialDeliveryProgressDto progress)
+        {
+            if (!_jobs.TryGetValue(jobId, out var state))
+            {
+                progress = default!;
+                return false;
+            }
+
+            lock (state.SyncRoot)
+            {
+                if (state.Progress.Estado != "RUNNING")
+                {
+                    progress = Clone(state.Progress);
+                    return true;
+                }
+
+                state.CancellationRequested = true;
+                state.CancellationSource.Cancel();
+
+                state.Progress.UltimoMensaje = "Cancelación solicitada. Se completará el envío en curso y luego se detendrán los pendientes.";
+
+                progress = Clone(state.Progress);
+                return true;
             }
         }
 
@@ -77,5 +106,7 @@ namespace TesisGestorApi.Services
 
         public object SyncRoot { get; } = new();
         public QrCredentialDeliveryProgressDto Progress { get; }
+        public bool CancellationRequested { get; set; }
+        public CancellationTokenSource CancellationSource { get; } = new();
     }
 }
