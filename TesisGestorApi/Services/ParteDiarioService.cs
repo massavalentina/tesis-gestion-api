@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RepoDB.Entities;
 using TesisGestorApi.Data;
+using TesisGestorApi.DTOs.Retiro;
 using TesisGestorApi.Entities;
 using TesisGestorApi.DTOs.ParteDiario;
 using TesisGestorApi.Interfaces;
@@ -14,9 +15,9 @@ namespace TesisGestorApi.Services
 
         // RE (retiro express, ≤10% perdido) sigue siendo un retiro y se muestra como tal.
         // RA, RAE y RE se muestran como "Retirado" por estudiante, pero también suman al contador Ausentes.
-        private static readonly HashSet<string> CodigosPresente  = new(StringComparer.OrdinalIgnoreCase) { "P", "LLT", "LLTE" };
+        private static readonly HashSet<string> CodigosPresente  = new(StringComparer.OrdinalIgnoreCase) { "P", "LLT", "LLTE", "LLTC" };
         private static readonly HashSet<string> CodigosRetirado  = new(StringComparer.OrdinalIgnoreCase) { "RA", "RAE", "RE" };
-        private static readonly HashSet<string> CodigosAusente   = new(StringComparer.OrdinalIgnoreCase) { "A", "LLTC", "ANC" };
+        private static readonly HashSet<string> CodigosAusente   = new(StringComparer.OrdinalIgnoreCase) { "A", "ANC" };
 
         public ParteDiarioService(ApplicationDbContext context)
         {
@@ -41,10 +42,21 @@ namespace TesisGestorApi.Services
                 .AsNoTracking()
                 .Include(a => a.TipoManiana)
                 .Include(a => a.TipoTarde)
+                .Include(a => a.TipoLlegadaManiana)
                 .Where(a => a.Fecha == fecha && idsEstudiantes.Contains(a.EstudianteId))
                 .ToListAsync();
 
             var asistenciaDict = asistencias.ToDictionary(a => a.EstudianteId);
+
+            // Retiros del día — keyed by IdAsistencia
+            var idsAsistencia = asistencias.Select(a => a.Id).ToList();
+            var retiros = await _context.RetirosAnticipados
+                .AsNoTracking()
+                .Include(r => r.Tutor)
+                .Where(r => idsAsistencia.Contains(r.IdAsistencia))
+                .ToListAsync();
+            // Clave compuesta (IdAsistencia, Turno) para soportar un retiro por turno
+            var retirosDict = retiros.ToDictionary(r => (r.IdAsistencia, r.Turno));
 
             // Horarios del día para el curso
             var horarios = await _context.Horarios
@@ -73,9 +85,9 @@ namespace TesisGestorApi.Services
             var horariosTarde  = horarios.Where(h => h.HorarioEntrada >= LimiteTarde).ToList();
 
             var turnoManana = BuildTurno(estudiantes.Select(e => (e.IdEstudiante, e.Nombre, e.Apellido, e.Documento)).ToList(),
-                                         asistenciaDict, horariosMañana, clasesDict, esMañana: true);
+                                         asistenciaDict, retirosDict, horariosMañana, clasesDict, esMañana: true);
             var turnoTarde  = BuildTurno(estudiantes.Select(e => (e.IdEstudiante, e.Nombre, e.Apellido, e.Documento)).ToList(),
-                                         asistenciaDict, horariosTarde, clasesDict, esMañana: false);
+                                         asistenciaDict, retirosDict, horariosTarde,  clasesDict, esMañana: false);
 
             turnoManana.Disponible = horariosMañana.Any();
             turnoTarde.Disponible  = horariosTarde.Any();
@@ -86,17 +98,24 @@ namespace TesisGestorApi.Services
         private static TurnoParteDto BuildTurno(
             List<(Guid IdEstudiante, string Nombre, string Apellido, string Documento)> estudiantes,
             Dictionary<Guid, Asistencia> asistenciaDict,
+            Dictionary<(Guid IdAsistencia, string Turno), RetiroAnticipado> retirosDict,
             List<Horario> horarios,
             Dictionary<Guid, ClaseDictada> clasesDict,  // keyed by IdHorario
             bool esMañana)
         {
             var turno = new TurnoParteDto { TotalEstudiantes = estudiantes.Count };
+            string turnoStr = esMañana ? "MANANA" : "TARDE";
 
             foreach (var est in estudiantes)
             {
                 asistenciaDict.TryGetValue(est.IdEstudiante, out var asist);
                 var tipoTurno = esMañana ? asist?.TipoManiana : asist?.TipoTarde;
                 string? codigo = tipoTurno?.Codigo;
+
+                // Retiro activo del estudiante en este turno (necesario antes del cómputo de contadores)
+                RetiroAnticipado? retiro = null;
+                if (asist != null)
+                    retirosDict.TryGetValue((asist.Id, turnoStr), out retiro);
 
                 string estado;
                 if (codigo == null)
@@ -113,7 +132,9 @@ namespace TesisGestorApi.Services
                 {
                     estado = "Retirado";
                     turno.Retirados++;
-                    turno.Ausentes++; // los retirados también cuentan en el total de ausentes
+                    // Con reingreso registrado cuenta como presente; sin reingreso, como ausente
+                    if (retiro?.HorarioReingreso != null) turno.Presentes++;
+                    else turno.Ausentes++;
                 }
                 else if (CodigosAusente.Contains(codigo))
                 {
@@ -129,16 +150,46 @@ namespace TesisGestorApi.Services
                 TimeSpan? entrada = esMañana ? asist?.HoraEntradaManana : asist?.HoraEntradaTarde;
                 TimeSpan? salida  = esMañana ? asist?.HoraSalidaManana  : asist?.HoraSalidaTarde;
 
+                // Construir DTO del retiro
+                RetiroActivoDto? retiroDto = null;
+                if (retiro != null)
+                {
+                    bool esTutor = retiro.IdTutor.HasValue;
+                    var  tutorPd = retiro.Tutor;
+                    retiroDto = new RetiroActivoDto
+                    {
+                        IdRetiro               = retiro.IdRetiro,
+                        Turno                  = retiro.Turno,
+                        HorarioRetiro          = retiro.HorarioRetiro.ToString(@"HH\:mm"),
+                        ConReingreso           = retiro.ConReingreso,
+                        HorarioLimiteReingreso = retiro.HorarioLimiteReingreso?.ToString(@"HH\:mm"),
+                        HorarioReingreso       = retiro.HorarioReingreso?.ToString(@"HH\:mm"),
+                        EtiquetaEstado         = ComputarEtiqueta(retiro),
+                        TipoRetiro             = codigo,
+                        NombrePreceptor        = retiro.NombrePreceptor,
+                        Motivo                 = retiro.Motivo,
+                        IdTutor                = retiro.IdTutor,
+                        NombreResponsable      = esTutor ? tutorPd?.Nombre            : retiro.NombreResponsable,
+                        ApellidoResponsable    = esTutor ? tutorPd?.Apellido          : retiro.ApellidoResponsable,
+                        DniResponsable         = esTutor ? tutorPd?.Documento         : retiro.DNIResponsable,
+                        RelacionResponsable    = esTutor ? tutorPd?.RelacionEstudiante : retiro.RelacionResponsable,
+                        TelefonoResponsable    = esTutor ? (tutorPd?.Telefono == 0 ? null : tutorPd?.Telefono.ToString()) : retiro.TelefonoResponsable,
+                        CorreoResponsable      = esTutor ? tutorPd?.Correo            : retiro.CorreoResponsable,
+                    };
+                }
+
                 turno.Estudiantes.Add(new EstudianteParteDto
                 {
-                    IdEstudiante     = est.IdEstudiante,
-                    Nombre           = est.Nombre,
-                    Apellido         = est.Apellido,
-                    Documento        = est.Documento,
-                    Estado           = estado,
-                    CodigoAsistencia = codigo,
-                    HoraEntrada      = entrada?.ToString(@"hh\:mm"),
-                    HoraSalida       = salida?.ToString(@"hh\:mm"),
+                    IdEstudiante        = est.IdEstudiante,
+                    Nombre              = est.Nombre,
+                    Apellido            = est.Apellido,
+                    Documento           = est.Documento,
+                    Estado              = estado,
+                    CodigoAsistencia    = codigo,
+                    CodigoLlegadaManiana = esMañana ? asist?.TipoLlegadaManiana?.Codigo : null,
+                    HoraEntrada         = entrada?.ToString(@"hh\:mm"),
+                    HoraSalida          = salida?.ToString(@"hh\:mm"),
+                    RetiroActivo        = retiroDto,
                 });
             }
 
@@ -204,6 +255,18 @@ namespace TesisGestorApi.Services
                     };
                 })
                 .ToList();
+        }
+
+        private static string? ComputarEtiqueta(RetiroAnticipado retiro)
+        {
+            if (retiro.HorarioReingreso != null) return "Reingresado";
+            // HorarioLimiteReingreso se almacena con la hora local etiquetada como UTC;
+            // comparar solo la hora del día para evitar desfase de zona horaria.
+            if (retiro.ConReingreso && retiro.HorarioLimiteReingreso.HasValue
+                && DateTime.Now.TimeOfDay > retiro.HorarioLimiteReingreso.Value.TimeOfDay)
+                return "ReingresoVencido";
+            if (retiro.ConReingreso) return "ConReingreso";
+            return null;
         }
 
         private static (string subTipo, string? titulo, string? detalle) ParseContenido(string contenido, TipoComentarioParte tipo)

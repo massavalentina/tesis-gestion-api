@@ -50,7 +50,8 @@ namespace TesisGestorApi.Entities
 
         public void CalcularAsistencia(
             double minTotalesM, double minPerdidaIngresoM, double minPerdidaSalidaM,
-            double minTotalesT, double minPerdidaIngresoT, double minPerdidaSalidaT)
+            double minTotalesT, double minPerdidaIngresoT, double minPerdidaSalidaT,
+            bool procesadoManana = true, bool procesadoTarde = true)
         {
             decimal valorM = 0m;
             decimal valorT = 0m;
@@ -85,6 +86,17 @@ namespace TesisGestorApi.Entities
                     if      (porcPerdidaSalida > 50) valorRetiro = 1.0m;  // RAE
                     else if (porcPerdidaSalida > 10) valorRetiro = 0.5m;  // RA
                     // <= 10%: Retiro Express (RE), no genera inasistencia
+                }
+                else if (!procesadoManana && valorLlegada < 1.0m && TipoManiana != null)
+                {
+                    // Solo se procesó el turno tarde: los ECs de mañana fueron salteados (minTotalesM = 0).
+                    // Se preserva el valor del retiro usando directamente el código de TipoManiana.
+                    valorRetiro = TipoManiana.Codigo.ToUpper() switch
+                    {
+                        "RAE" => 1.0m,
+                        "RA"  => 0.5m,
+                        _     => 0.0m   // RE y otros no generan inasistencia
+                    };
                 }
 
                 // Suma de ambos componentes con un tope de 1.0 para la mañana

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260402033058_FeatRetiroAnticipado")]
+    partial class FeatRetiroAnticipado
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -623,10 +626,6 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid?>("IdTutor")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Motivo")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("NombrePreceptor")
                         .IsRequired()
                         .HasColumnType("text");
@@ -648,12 +647,12 @@ namespace TesisGestorApi.Migrations
 
                     b.HasIndex("EstudianteIdEstudiante");
 
+                    b.HasIndex("IdAsistencia")
+                        .IsUnique();
+
                     b.HasIndex("IdEstudiante");
 
                     b.HasIndex("IdTutor");
-
-                    b.HasIndex("IdAsistencia", "Turno")
-                        .IsUnique();
 
                     b.ToTable("RetirosAnticipados");
                 });
@@ -1045,8 +1044,8 @@ namespace TesisGestorApi.Migrations
                         .HasForeignKey("EstudianteIdEstudiante");
 
                     b.HasOne("TesisGestorApi.Entities.Asistencia", "Asistencia")
-                        .WithMany()
-                        .HasForeignKey("IdAsistencia")
+                        .WithOne()
+                        .HasForeignKey("TesisGestorApi.Entities.RetiroAnticipado", "IdAsistencia")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
