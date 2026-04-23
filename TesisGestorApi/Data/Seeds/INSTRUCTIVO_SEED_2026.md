@@ -18,9 +18,11 @@ Ruta:
 
 ## Prerrequisitos
 - Base PostgreSQL accesible.
+- Tener levantada una db (se puede crear una nueva de prueba para no ensuciar la actual e ir intercambiando entre las dos)
+  - Para eso cambiar la connection string(en appsettings.Development.json) a una nueva db y levantarla
 - Migraciones aplicadas.
 - `psql` instalado.
-- Variable `DATABASE_URL` configurada (o usar parametros `-h/-p/-U/-d`).
+- Variable `DATABASE_URL` configurada (o usar parametros `-h/-p/-U/-d`). (creo que no es necesario este paso, probar)
 
 Ejemplo:
 ```bash
@@ -37,7 +39,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /home/lenovo/Desktop/untitled-/tesis-
 Notas:
 - El seed es idempotente (puede correrse mas de una vez).
 - Usa UUIDs deterministicos para mantener dependencias estables entre tablas.
-- No carga tablas de flujo (asistencia, clases dictadas, retiros, QR, etc.).
+- No carga tablas de flujo (asistencia, clases dictadas, retiros, QR, etc.) solo las base.
 
 ## Paso 2: ejecutar validaciones post-seed
 ```bash
@@ -81,17 +83,16 @@ Con seed base correcto, proba:
 3. Obtener ficha de estudiante (incluyendo tutor principal).
 4. Registrar asistencia manual/rapida para 1-2 estudiantes.
 5. Registrar un retiro anticipado.
+6. Más pruebas.
 
-## Consideraciones importantes
-- `CredencialesQR` **no** se incluye en seed base (se genera por flujo).
-- Tablas de flujo (`Asistencias`, `ClasesDictadas`, `RetirosAnticipados`, etc.) pueden quedar vacias al inicio.
-
-## Troubleshooting rapido
-- Error `relation ... does not exist`:
+## Troubleshooting rapido (!)
+- Si sale Error `relation ... does not exist`:
   - Faltan migraciones o estas en otra base.
-- Error de conexion:
+- Si sale Error de conexion:
   - Revisar `DATABASE_URL`, usuario, password y puerto.
 - Conteos distintos a los esperados:
   - Correr nuevamente seed + validaciones.
   - Si persiste, revisar si hay datos previos ajenos al seed.
 
+
+## (!) Esta en la primera vesión de este seed, en caso de proponer mejores o arreglos, duplicar archivo, modificar lo necesario y versionar (!)
