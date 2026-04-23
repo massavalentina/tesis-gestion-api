@@ -13,6 +13,7 @@ builder.Services.AddScoped<IParteDiarioService, ParteDiarioService>();
 builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 builder.Services.AddScoped<IAsistenciaUmbralService, AsistenciaUmbralService>();
 builder.Services.AddScoped<IScannerService, ScannerService>();
+builder.Services.AddScoped<IRetiroService, RetiroService>();
 
 
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260408214904_FixTelephoneNumber")]
+    partial class FixTelephoneNumber
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -593,23 +596,11 @@ namespace TesisGestorApi.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ApellidoResponsable")
-                        .HasColumnType("text");
-
                     b.Property<bool>("ConReingreso")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("CorreoResponsable")
-                        .HasColumnType("text");
-
-                    b.Property<string>("DNIResponsable")
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("EstudianteIdEstudiante")
+                    b.Property<Guid>("EstudianteIdEstudiante")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("HorarioLimiteReingreso")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("HorarioReingreso")
                         .HasColumnType("timestamp with time zone");
@@ -623,40 +614,20 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdEstudiante")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("IdTutor")
+                    b.Property<Guid>("IdTutor")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Motivo")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("NombrePreceptor")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("NombreResponsable")
-                        .HasColumnType("text");
-
-                    b.Property<string>("RelacionResponsable")
-                        .HasColumnType("text");
-
-                    b.Property<string>("TelefonoResponsable")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Turno")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<Guid>("TutorIdTutor")
+                        .HasColumnType("uuid");
 
                     b.HasKey("IdRetiro");
 
                     b.HasIndex("EstudianteIdEstudiante");
 
-                    b.HasIndex("IdEstudiante");
-
-                    b.HasIndex("IdTutor");
-
-                    b.HasIndex("IdAsistencia", "Turno")
+                    b.HasIndex("IdAsistencia")
                         .IsUnique();
+
+                    b.HasIndex("TutorIdTutor");
 
                     b.ToTable("RetirosAnticipados");
                 });
@@ -725,12 +696,6 @@ namespace TesisGestorApi.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime>("FechaNacimiento")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("FechaUltimaActualizacion")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("FechaUltimaNotificacion")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Nombre")
@@ -1052,26 +1017,23 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("TesisGestorApi.Entities.RetiroAnticipado", b =>
                 {
-                    b.HasOne("TesisGestorApi.Entities.Estudiante", null)
+                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
                         .WithMany("RetirosAnticipados")
-                        .HasForeignKey("EstudianteIdEstudiante");
-
-                    b.HasOne("TesisGestorApi.Entities.Asistencia", "Asistencia")
-                        .WithMany()
-                        .HasForeignKey("IdAsistencia")
+                        .HasForeignKey("EstudianteIdEstudiante")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
-                        .WithMany()
-                        .HasForeignKey("IdEstudiante")
-                        .OnDelete(DeleteBehavior.Restrict)
+                    b.HasOne("TesisGestorApi.Entities.Asistencia", "Asistencia")
+                        .WithOne()
+                        .HasForeignKey("TesisGestorApi.Entities.RetiroAnticipado", "IdAsistencia")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("TesisGestorApi.Entities.Tutor", "Tutor")
                         .WithMany("RetirosAnticipados")
-                        .HasForeignKey("IdTutor")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("TutorIdTutor")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Asistencia");
 

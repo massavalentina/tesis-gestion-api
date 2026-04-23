@@ -200,12 +200,31 @@ namespace TesisGestorApi.Data
                 entity.HasIndex(a => new { a.EstudianteId, a.Fecha }).IsUnique();
             });
 
-            // Asistencias 1:1 Retiro Anticipado
+            // RetiroAnticipado → Asistencia (N:1 — máx. uno por (Asistencia, Turno) vía unique index)
             modelBuilder.Entity<RetiroAnticipado>()
                 .HasOne(r => r.Asistencia)
-                .WithOne()
-                .HasForeignKey<RetiroAnticipado>(r => r.IdAsistencia)
-                .OnDelete(DeleteBehavior.Cascade); // Si borro la asistencia, se borra el retiro
+                .WithMany()
+                .HasForeignKey(r => r.IdAsistencia)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<RetiroAnticipado>()
+                .HasIndex(r => new { r.IdAsistencia, r.Turno })
+                .IsUnique();
+
+            // RetiroAnticipado → Tutor (nullable, SetNull on delete)
+            modelBuilder.Entity<RetiroAnticipado>()
+                .HasOne(r => r.Tutor)
+                .WithMany(t => t.RetirosAnticipados)
+                .HasForeignKey(r => r.IdTutor)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // RetiroAnticipado → Estudiante (Restrict)
+            modelBuilder.Entity<RetiroAnticipado>()
+                .HasOne(r => r.Estudiante)
+                .WithMany()
+                .HasForeignKey(r => r.IdEstudiante)
+                .OnDelete(DeleteBehavior.Restrict);
 
             // Parte Diario
             modelBuilder.Entity<ParteDiario>(entity =>

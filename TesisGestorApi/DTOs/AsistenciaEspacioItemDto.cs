@@ -11,4 +11,5 @@ public class AsistenciaEspacioItemDto
     public string? HorarioSalidaOriginal  { get; set; }  // null si no fue modificado
     public bool?   Dictada                { get; set; }
     public bool?   Presente               { get; set; }
+    public string? Motivo                 { get; set; }
 }
