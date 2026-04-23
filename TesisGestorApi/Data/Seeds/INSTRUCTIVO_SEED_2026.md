@@ -95,7 +95,3 @@ Con seed base correcto, proba:
   - Correr nuevamente seed + validaciones.
   - Si persiste, revisar si hay datos previos ajenos al seed.
 
-## Terminologia: queries o querys
-- Correcto: **queries**.
-- Incorrecto: `querys`.
-- En documentacion en espanol, tambien podes usar: **consultas SQL**.
