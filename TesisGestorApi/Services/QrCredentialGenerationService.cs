@@ -315,6 +315,8 @@ namespace TesisGestorApi.Services
                         }
                     }
 
+                    var completionGraceApplied = false;
+
                     while (true)
                     {
                         await WaitIfPausedAsync(job.JobId);
@@ -328,6 +330,15 @@ namespace TesisGestorApi.Services
                                 p.UltimoMensaje = cancelMessageFinal;
                             });
                             return;
+                        }
+
+                        // Pequeña ventana de gracia para captar solicitudes de pausa/cancelación
+                        // que pueden llegar justo al finalizar el último alumno.
+                        if (!completionGraceApplied)
+                        {
+                            completionGraceApplied = true;
+                            await Task.Delay(1500, CancellationToken.None);
+                            continue;
                         }
 
                         if (_progress.TryMarkCompleted(job.JobId, out _))
