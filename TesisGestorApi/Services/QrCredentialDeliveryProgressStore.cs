@@ -60,16 +60,86 @@ namespace TesisGestorApi.Services
 
             lock (state.SyncRoot)
             {
-                if (state.Progress.Estado != "RUNNING")
+                if (state.Progress.Estado is "COMPLETED" or "FAILED" or "CANCELLED")
                 {
                     progress = Clone(state.Progress);
                     return true;
                 }
 
                 state.CancellationRequested = true;
-                state.CancellationSource.Cancel();
+                state.PauseRequested = false;
+                state.PauseReleaseSource?.TrySetResult(true);
+                state.PauseReleaseSource = null;
 
-                state.Progress.UltimoMensaje = "Cancelación solicitada. Se completará el envío en curso y luego se detendrán los pendientes.";
+                if (state.Progress.Estado is "RUNNING" or "PAUSING" or "PAUSED" or "CANCELLING")
+                {
+                    state.Progress.Estado = "CANCELLING";
+                    state.Progress.UltimoMensaje = "Cancelación solicitada. Se completará el envío en curso y luego se detendrán los pendientes.";
+                }
+
+                progress = Clone(state.Progress);
+                return true;
+            }
+        }
+
+        public bool RequestPause(Guid jobId, out QrCredentialDeliveryProgressDto progress)
+        {
+            if (!_jobs.TryGetValue(jobId, out var state))
+            {
+                progress = default!;
+                return false;
+            }
+
+            lock (state.SyncRoot)
+            {
+                if (state.Progress.Estado == "RUNNING")
+                {
+                    state.PauseRequested = true;
+                    state.Progress.Estado = "PAUSING";
+                    state.Progress.UltimoMensaje = "Pausa solicitada. Se completará el envío en curso antes de pausar.";
+                }
+
+                progress = Clone(state.Progress);
+                return true;
+            }
+        }
+
+        public bool Pause(Guid jobId, out QrCredentialDeliveryProgressDto progress)
+        {
+            if (!_jobs.TryGetValue(jobId, out var state))
+            {
+                progress = default!;
+                return false;
+            }
+
+            lock (state.SyncRoot)
+            {
+                state.PauseRequested = false;
+                state.PauseReleaseSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                state.Progress.Estado = "PAUSED";
+                state.Progress.UltimoMensaje = "Proceso pausado. Elegí si querés continuarlo o cancelarlo.";
+                progress = Clone(state.Progress);
+                return true;
+            }
+        }
+
+        public bool Resume(Guid jobId, out QrCredentialDeliveryProgressDto progress)
+        {
+            if (!_jobs.TryGetValue(jobId, out var state))
+            {
+                progress = default!;
+                return false;
+            }
+
+            lock (state.SyncRoot)
+            {
+                if (state.Progress.Estado == "PAUSED")
+                {
+                    state.Progress.Estado = "RUNNING";
+                    state.Progress.UltimoMensaje = "Proceso reanudado.";
+                    state.PauseReleaseSource?.TrySetResult(true);
+                    state.PauseReleaseSource = null;
+                }
 
                 progress = Clone(state.Progress);
                 return true;
@@ -106,7 +176,8 @@ namespace TesisGestorApi.Services
 
         public object SyncRoot { get; } = new();
         public QrCredentialDeliveryProgressDto Progress { get; }
+        public bool PauseRequested { get; set; }
         public bool CancellationRequested { get; set; }
-        public CancellationTokenSource CancellationSource { get; } = new();
+        public TaskCompletionSource<bool>? PauseReleaseSource { get; set; }
     }
 }

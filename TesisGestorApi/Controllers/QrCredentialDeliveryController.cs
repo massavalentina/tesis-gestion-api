@@ -66,6 +66,34 @@ namespace TesisGestorApi.Controllers
             return Ok(dto);
         }
 
+        [HttpPost("pause/{jobId:guid}")]
+        public async Task<ActionResult<QrCredentialDeliveryProgressDto>> PauseJob([FromRoute] Guid jobId, CancellationToken ct)
+        {
+            try
+            {
+                var progress = await _service.PauseDeliveryJobAsync(jobId, ct);
+                return Ok(progress);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("resume/{jobId:guid}")]
+        public async Task<ActionResult<QrCredentialDeliveryProgressDto>> ResumeJob([FromRoute] Guid jobId, CancellationToken ct)
+        {
+            try
+            {
+                var progress = await _service.ResumeDeliveryJobAsync(jobId, ct);
+                return Ok(progress);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpPost("cancel/{jobId:guid}")]
         public async Task<ActionResult<QrCredentialDeliveryProgressDto>> CancelJob([FromRoute] Guid jobId, CancellationToken ct)
         {
@@ -87,6 +115,8 @@ namespace TesisGestorApi.Controllers
             [FromQuery] string? busqueda,
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20,
+            [FromQuery] string? sortBy = null,
+            [FromQuery] string? sortDir = null,
             CancellationToken ct = default)
         {
             if (cursoId == Guid.Empty)
@@ -94,7 +124,7 @@ namespace TesisGestorApi.Controllers
 
             try
             {
-                var result = await _service.GetStudentsPageAsync(cursoId, estado, busqueda, page, pageSize, ct);
+                var result = await _service.GetStudentsPageAsync(cursoId, estado, busqueda, page, pageSize, sortBy, sortDir, ct);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
