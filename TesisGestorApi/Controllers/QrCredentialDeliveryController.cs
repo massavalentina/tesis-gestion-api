@@ -133,6 +133,29 @@ namespace TesisGestorApi.Controllers
             }
         }
 
+        [HttpPost("student/{estudianteId:guid}/send")]
+        public async Task<ActionResult<QrCredentialDeliverySingleResponseDto>> SendStudent(
+            [FromRoute] Guid estudianteId,
+            [FromBody] QrCredentialDeliverySingleRequestDto req,
+            CancellationToken ct)
+        {
+            if (estudianteId == Guid.Empty)
+                return BadRequest("IdEstudiante inválido.");
+
+            if (req.IdCurso == Guid.Empty)
+                return BadRequest("IdCurso inválido.");
+
+            try
+            {
+                var result = await _service.SendStudentAsync(estudianteId, req, ct);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpGet("student/{estudianteId:guid}/qr-image")]
         public async Task<IActionResult> StudentQrImage([FromRoute] Guid estudianteId, CancellationToken ct)
         {

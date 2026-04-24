@@ -6,9 +6,14 @@ namespace TesisGestorApi.Interfaces
     {
         Task<QrCredentialDeliverySummaryDto> GetSummaryAsync(Guid cursoId, string? alcance, CancellationToken ct = default);
         Task<QrCredentialDeliveryProgressDto> StartDeliveryJobAsync(QrCredentialDeliveryRequestDto req, CancellationToken ct = default);
+        Task<QrCredentialDeliverySingleResponseDto> SendStudentAsync(
+            Guid estudianteId,
+            QrCredentialDeliverySingleRequestDto req,
+            CancellationToken ct = default);
         Task<QrCredentialDeliveryProgressDto> PauseDeliveryJobAsync(Guid jobId, CancellationToken ct = default);
         Task<QrCredentialDeliveryProgressDto> ResumeDeliveryJobAsync(Guid jobId, CancellationToken ct = default);
         Task<QrCredentialDeliveryProgressDto> CancelDeliveryJobAsync(Guid jobId, CancellationToken ct = default);
+        
         Task<QrCredentialDeliveryStudentsPageDto> GetStudentsPageAsync(
             Guid cursoId,
             string? estado,

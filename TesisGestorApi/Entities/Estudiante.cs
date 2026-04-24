@@ -11,6 +11,7 @@ namespace TesisGestorApi.Entities
         public string Apellido { get; set; } = null!;
         public string Documento { get; set; } = null!;
         public DateTime FechaNacimiento { get; set; }
+        public string? Domicilio { get; set; }
         public Sexo Sexo { get; set; }
 
         public bool TeaGeneral { get; set; }

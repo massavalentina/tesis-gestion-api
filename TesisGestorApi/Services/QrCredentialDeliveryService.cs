@@ -25,6 +25,8 @@ namespace TesisGestorApi.Services
         private readonly ApplicationDbContext _db;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly QrCredentialDeliveryProgressStore _progress;
+        private readonly IEmailSender _emailSender;
+        private readonly IQrCredentialEmailTemplateService _templateService;
         private readonly IQrCredentialVisualService _qrVisualService;
         private static readonly Lazy<byte[]?> InstitutionLogoBytes = new(LoadInstitutionLogo);
 
@@ -32,11 +34,15 @@ namespace TesisGestorApi.Services
             ApplicationDbContext db,
             IServiceScopeFactory scopeFactory,
             QrCredentialDeliveryProgressStore progress,
+            IEmailSender emailSender,
+            IQrCredentialEmailTemplateService templateService,
             IQrCredentialVisualService qrVisualService)
         {
             _db = db;
             _scopeFactory = scopeFactory;
             _progress = progress;
+            _emailSender = emailSender;
+            _templateService = templateService;
             _qrVisualService = qrVisualService;
         }
 
@@ -285,6 +291,109 @@ namespace TesisGestorApi.Services
             });
 
             return job;
+        }
+
+        public async Task<QrCredentialDeliverySingleResponseDto> SendStudentAsync(
+            Guid estudianteId,
+            QrCredentialDeliverySingleRequestDto req,
+            CancellationToken ct = default)
+        {
+            if (req.IdCurso == Guid.Empty)
+                throw new InvalidOperationException("IdCurso inválido.");
+
+            var context = await BuildContextAsync(_db, req.IdCurso, ct);
+            var candidate = context.Rows.FirstOrDefault(r => r.IdEstudiante == estudianteId);
+
+            if (candidate is null)
+                throw new InvalidOperationException("El estudiante no pertenece al curso seleccionado.");
+
+            if (candidate.Estado == EstadoSinQr)
+                throw new InvalidOperationException("El estudiante no tiene una credencial QR activa.");
+
+            if (candidate.Estado == EstadoSinTutor)
+                throw new InvalidOperationException("El estudiante no tiene tutor principal configurado.");
+
+            if (candidate.Estado == EstadoEmailInvalido)
+                throw new InvalidOperationException("El tutor principal tiene un correo inválido.");
+
+            if (!candidate.IdQr.HasValue || !candidate.CodigoQr.HasValue || string.IsNullOrWhiteSpace(candidate.TutorEmail))
+                throw new InvalidOperationException("Faltan datos requeridos para el envío.");
+
+            var tutorEmail = candidate.TutorEmail.Trim();
+
+            var credencial = await _db.CredencialesQR
+                .FirstOrDefaultAsync(
+                    q => q.IdQR == candidate.IdQr.Value && q.Activo,
+                    ct);
+
+            if (credencial is null)
+                throw new InvalidOperationException("No se encontró una credencial QR activa para el estudiante.");
+
+            var qrBytes = _qrVisualService.BuildQrPng(candidate.CodigoQr.Value);
+            var qrContentId = $"qr-{candidate.IdEstudiante:N}";
+            var logoBytes = TryLoadInstitutionLogo();
+            const string logoContentId = "institution-logo";
+
+            var subject = string.IsNullOrWhiteSpace(req.Asunto)
+                ? $"Credencial QR - {context.AnioLectivo} - {candidate.NombreCompleto}"
+                : req.Asunto.Trim();
+
+            var htmlBody = _templateService.Build(
+                tutorNombre: candidate.TutorPrincipalNombre ?? "Tutor/a",
+                alumnoNombre: candidate.NombreCompleto,
+                alumnoDni: candidate.Dni,
+                anioLectivo: context.AnioLectivo,
+                codigoQr: candidate.CodigoQr.Value,
+                fechaVigencia: credencial.FechaExpiracion,
+                mensajePersonalizado: req.MensajePersonalizado,
+                qrInlineContentId: qrContentId,
+                logoInlineContentId: logoBytes is { Length: > 0 } ? logoContentId : null);
+
+            var attachment = new EmailAttachmentDto
+            {
+                FileName = $"credencial-{candidate.Dni}.png",
+                ContentType = "image/png",
+                Content = qrBytes
+            };
+
+            var inlineResources = new List<EmailInlineResourceDto>
+            {
+                new()
+                {
+                    ContentId = qrContentId,
+                    ContentType = "image/png",
+                    Content = qrBytes
+                }
+            };
+
+            if (logoBytes is { Length: > 0 })
+            {
+                inlineResources.Add(new EmailInlineResourceDto
+                {
+                    ContentId = logoContentId,
+                    ContentType = "image/png",
+                    Content = logoBytes
+                });
+            }
+
+            await _emailSender.SendAsync(
+                to: tutorEmail,
+                subject: subject,
+                htmlBody: htmlBody,
+                ct: ct,
+                attachments: [attachment],
+                inlineResources: inlineResources);
+
+            credencial.Enviado = true;
+            await _db.SaveChangesAsync(ct);
+
+            return new QrCredentialDeliverySingleResponseDto
+            {
+                IdEstudiante = candidate.IdEstudiante,
+                Estado = EstadoEnviado,
+                Destino = tutorEmail,
+                Mensaje = "Credencial enviada correctamente."
+            };
         }
 
         public async Task<QrCredentialDeliveryProgressDto> PauseDeliveryJobAsync(Guid jobId, CancellationToken ct = default)
