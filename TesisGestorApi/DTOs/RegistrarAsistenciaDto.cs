@@ -10,6 +10,8 @@
         public Guid TipoAsistenciaId { get; set; }
         // Hora a la que se efectúa el registro
         public TimeSpan? Hora { get; set; }
+        // Si true, los APEs manuales de ese turno se preservan (no se recalculan)
+        public bool PriorizarManualesEC { get; set; }
     }
 
     // Response al Front

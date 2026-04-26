@@ -31,6 +31,7 @@ namespace TesisGestorApi.Interfaces
         Task<List<AsistenciaEspacioItemDto>> ObtenerAsistenciaEspaciosDiaAsync(Guid estudianteId, DateOnly fecha);
 
         Task ActualizarAsistenciaEspacioAsync(ActualizarAsistenciaEspacioDto dto);
+        Task ActualizarAsistenciaEspacioLoteAsync(List<ActualizarAsistenciaEspacioDto> dtos);
         Task RecalcularAsistenciasCursoFechaAsync(Guid cursoId, DateOnly fecha);
     }
 }

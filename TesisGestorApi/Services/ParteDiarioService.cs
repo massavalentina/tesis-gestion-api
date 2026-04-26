@@ -408,21 +408,46 @@ namespace TesisGestorApi.Services
 
             if (clase == null || !clase.HorarioEntradaEfectiva.HasValue) return;
 
-            var materiaNombre = await _context.Horarios
+            var horario = await _context.Horarios
                 .AsNoTracking()
                 .Include(h => h.EspacioCurricular).ThenInclude(ec => ec.Curricula)
-                .Where(h => h.IdHorario == idHorario)
-                .Select(h => h.EspacioCurricular.Curricula.Nombre)
-                .FirstOrDefaultAsync() ?? "Clase";
+                .FirstOrDefaultAsync(h => h.IdHorario == idHorario);
 
-            var prevEntrada = clase.HorarioEntradaEfectiva.Value;
+            if (horario == null) return;
+
+            await ValidarSuperposicionRestablecerAsync(idHorario, fecha, cursoId,
+                horario.HorarioEntrada, horario.HorarioSalida);
+
+            var prevEntrada = clase.HorarioEntradaEfectiva!.Value;
+            var prevSalida  = clase.HorarioSalidaEfectiva!.Value;
             clase.HorarioEntradaEfectiva = null;
             clase.HorarioSalidaEfectiva  = null;
             await _context.SaveChangesAsync();
 
             await RegistrarEventoAsync(cursoId, fecha, "HORARIO",
-                $"{materiaNombre}: horario restablecido",
-                $"Horario anterior: {prevEntrada:hh\\:mm}");
+                $"{horario.EspacioCurricular.Curricula.Nombre}: horario restablecido",
+                $"De {prevEntrada:hh\\:mm}–{prevSalida:hh\\:mm} → {horario.HorarioEntrada:hh\\:mm}–{horario.HorarioSalida:hh\\:mm}");
+        }
+
+        private async Task ValidarSuperposicionRestablecerAsync(
+            Guid idHorario, DateOnly fecha, Guid cursoId,
+            TimeSpan entradaOriginal, TimeSpan salidaOriginal)
+        {
+            var otrasClases = await _context.ClasesDictadas
+                .AsNoTracking()
+                .Include(c => c.Horario)
+                .Where(c => c.Fecha == fecha && c.Dictada && c.IdHorario != idHorario
+                         && c.Horario.IdCurso == cursoId)
+                .ToListAsync();
+
+            foreach (var otra in otrasClases)
+            {
+                TimeSpan e2 = otra.HorarioEntradaEfectiva ?? otra.Horario.HorarioEntrada;
+                TimeSpan s2 = otra.HorarioSalidaEfectiva  ?? otra.Horario.HorarioSalida;
+                if (entradaOriginal < s2 && e2 < salidaOriginal)
+                    throw new InvalidOperationException(
+                        "El restablecimiento del horario implica un conflicto de superposición con otra clase.");
+            }
         }
 
         public async Task ReorganizarHorarioAsync(ReorganizarHorarioDto dto)

@@ -101,6 +101,10 @@ public class ParteDiarioController : ControllerBase
             await _asistenciaService.RecalcularAsistenciasCursoFechaAsync(cursoId, fecha);
             return Ok();
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al resetear horario de clase.");

@@ -124,6 +124,10 @@ public class AsistenciaController : ControllerBase
             string estado = dto.Dictada ? "Dictada" : "No Dictada";
             return Ok(new { Mensaje = $"La clase se marcó como '{estado}' correctamente y se recalcularon las asistencias." });
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al actualizar estado de la clase.");
@@ -147,6 +151,46 @@ public class AsistenciaController : ControllerBase
         }
     }
 
+    [HttpPost("verificar-manuales-ec")]
+    public async Task<ActionResult<List<VerificarManualesEcResultDto>>> VerificarManualesEc(
+        [FromBody] List<VerificarManualesEcRequestDto> requests)
+    {
+        try
+        {
+            var limite     = new TimeSpan(13, 20, 0);
+            var resultados = new List<VerificarManualesEcResultDto>();
+
+            foreach (var req in requests)
+            {
+                bool esManana = req.Turno?.Trim().ToUpper() == "MANANA";
+                bool tieneManuales = await _context.AsistenciasPorEspacio
+                    .AsNoTracking()
+                    .Include(a => a.ClaseDictada).ThenInclude(c => c.Horario)
+                    .Where(a => a.IdEstudiante == req.EstudianteId
+                             && a.ClaseDictada.Fecha == req.Fecha
+                             && a.ClaseDictada.Dictada == true
+                             && (a.Motivo == "Presente Manual" || a.Motivo == "Ausente Manual")
+                             && (esManana
+                                 ? a.ClaseDictada.Horario.HorarioEntrada < limite
+                                 : a.ClaseDictada.Horario.HorarioEntrada >= limite))
+                    .AnyAsync();
+
+                resultados.Add(new VerificarManualesEcResultDto
+                {
+                    EstudianteId  = req.EstudianteId,
+                    Turno         = req.Turno,
+                    TieneManuales = tieneManuales,
+                });
+            }
+            return Ok(resultados);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al verificar manuales EC.");
+            return StatusCode(500, "Error interno.");
+        }
+    }
+
     [HttpPut("espacio")]
     public async Task<IActionResult> ActualizarEspacio([FromBody] ActualizarAsistenciaEspacioDto dto)
     {
@@ -158,6 +202,21 @@ public class AsistenciaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al actualizar asistencia por espacio.");
+            return StatusCode(500, ex.Message);
+        }
+    }
+
+    [HttpPut("espacio/lote")]
+    public async Task<IActionResult> ActualizarEspacioLote([FromBody] List<ActualizarAsistenciaEspacioDto> dtos)
+    {
+        try
+        {
+            await _asistenciaService.ActualizarAsistenciaEspacioLoteAsync(dtos);
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al actualizar lote de asistencias por espacio.");
             return StatusCode(500, ex.Message);
         }
     }
