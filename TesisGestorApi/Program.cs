@@ -5,6 +5,13 @@ using TesisGestorApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Render asigna el puerto de escucha por la variable PORT.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://*:{port}");
+}
+
 // Services
 builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -64,6 +71,9 @@ app.UseSwaggerUI();
 // Middleware
 app.UseCors();
 app.UseAuthorization();
+
+app.MapGet("/", () => Results.Ok(new { status = "ok", service = "TesisGestorApi" }));
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 
 app.MapControllers();
 
