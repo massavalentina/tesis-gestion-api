@@ -1325,8 +1325,7 @@ namespace TesisGestorApi.Services
                 string estadoPrevio;
                 if (existentesDict.TryGetValue(dto.IdClaseDictada, out var existente))
                 {
-                    estadoPrevio = !string.IsNullOrEmpty(existente.Motivo) ? existente.Motivo
-                                 : existente.Presente ? "Presente" : "Ausente";
+                    estadoPrevio       = existente.Presente ? "Presente" : "Ausente";
                     existente.Presente = dto.Presente;
                     existente.Motivo   = dto.Presente ? "Presente Manual" : "Ausente Manual";
                 }
@@ -1348,7 +1347,7 @@ namespace TesisGestorApi.Services
                 var entrada    = clase.HorarioEntradaEfectiva ?? horario.HorarioEntrada;
                 var salida     = clase.HorarioSalidaEfectiva  ?? horario.HorarioSalida;
                 var horarioStr = $"{entrada.ToString(@"hh\:mm")}–{salida.ToString(@"hh\:mm")}";
-                var estadoNuevo = dto.Presente ? "Presente Manual" : "Ausente Manual";
+                var estadoNuevo = dto.Presente ? "Presente" : "Ausente";
 
                 lineas.Add($"• {horario.EspacioCurricular.Curricula.Nombre} ({horarioStr}): {estadoPrevio} → {estadoNuevo}");
             }
@@ -1450,7 +1449,8 @@ namespace TesisGestorApi.Services
             Dictionary<(Guid, DateOnly), string?> oldTarde,
             Dictionary<Guid, (string Nombre, string Apellido)> estudiantesDict)
         {
-            var cambiosPorGrupo = new Dictionary<(Guid CursoId, DateOnly Fecha), List<string>>();
+            var ahora           = DateTime.Now.TimeOfDay;
+            var cambiosPorGrupo = new Dictionary<(Guid CursoId, DateOnly Fecha), List<(string Linea, TimeSpan Hora)>>();
             var procesados      = new HashSet<(Guid, DateOnly, bool)>();
 
             foreach (var dto in lista)
@@ -1473,19 +1473,30 @@ namespace TesisGestorApi.Services
                 if (oldCode == newCode) continue;
 
                 estudiantesDict.TryGetValue(dto.EstudianteId, out var est);
-                string nombre = est != default ? $"{est.Apellido}, {est.Nombre}" : dto.EstudianteId.ToString("N")[..8];
+                string nombre     = est != default ? $"{est.Apellido}, {est.Nombre}" : dto.EstudianteId.ToString("N")[..8];
                 string turnoLabel = esManana ? "M" : "T";
+                var    hora       = dto.Hora ?? ahora;
 
                 var grupoKey = (inscripcion.IdCurso, dto.Fecha);
-                if (!cambiosPorGrupo.ContainsKey(grupoKey)) cambiosPorGrupo[grupoKey] = new List<string>();
-                cambiosPorGrupo[grupoKey].Add($"• {nombre} ({turnoLabel}): {oldCode ?? "—"} → {newCode ?? "—"}");
+                if (!cambiosPorGrupo.ContainsKey(grupoKey)) cambiosPorGrupo[grupoKey] = new List<(string, TimeSpan)>();
+                cambiosPorGrupo[grupoKey].Add(($"• {nombre} ({turnoLabel}): {oldCode ?? "—"} → {newCode ?? "—"}", hora));
             }
 
             foreach (var ((cursoId, fecha), cambios) in cambiosPorGrupo)
             {
                 if (!cambios.Any()) continue;
                 string plural = cambios.Count == 1 ? "estudiante" : "estudiantes";
-                try   { await _parteDiarioService.RegistrarEventoAsync(cursoId, fecha, "ASISTENCIA", $"Asistencia actualizada ({cambios.Count} {plural})", string.Join("\n", cambios)); }
+
+                var horasUnicas = cambios.Select(c => c.Hora).Distinct().ToList();
+                bool mismaHora  = horasUnicas.Count == 1;
+
+                string horaHeader = mismaHora ? $" @ {horasUnicas[0].ToString(@"hh\:mm")}" : "";
+                string titulo     = $"Asistencia actualizada ({cambios.Count} {plural}){horaHeader}";
+                string detalle    = mismaHora
+                    ? string.Join("\n", cambios.Select(c => c.Linea))
+                    : string.Join("\n", cambios.Select(c => $"{c.Linea} @ {c.Hora.ToString(@"hh\:mm")}"));
+
+                try   { await _parteDiarioService.RegistrarEventoAsync(cursoId, fecha, "ASISTENCIA", titulo, detalle); }
                 catch (Exception ex) { _logger.LogWarning(ex, "No se pudo registrar el evento de asistencia en el parte diario."); }
             }
         }
