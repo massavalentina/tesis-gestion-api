@@ -36,6 +36,7 @@ namespace TesisGestorApi.Controllers
             var query = _db.Asistencias
                 .AsNoTracking()
                 .Include(a => a.TipoManiana)
+                .Include(a => a.TipoLlegadaManiana)
                 .Include(a => a.TipoTarde)
                 .Where(a => estudianteIds.Contains(a.EstudianteId));
 
@@ -75,32 +76,80 @@ namespace TesisGestorApi.Controllers
                     .Where(a => a.EstudianteId == est.IdEstudiante)
                     .ToList();
 
-                // Presencias: days with a registration that is NOT a full absence
-                var presencias = asistenciasEst
-                    .Count(a => a.TipoManiana != null &&
-                                !string.Equals(a.TipoManiana.Codigo, "A", StringComparison.OrdinalIgnoreCase));
+                // Presencias: días en que el alumno llegó (código de llegada != "A").
+                // Se usa TipoLlegadaManiana para no confundir el retiro con ausencia.
+                var presencias = asistenciasEst.Count(a =>
+                {
+                    var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    return llegada != null &&
+                           !string.Equals(llegada.Codigo, "A", StringComparison.OrdinalIgnoreCase);
+                });
 
                 // Inasistencias: sum of ValorTotalInasistencia in the period
                 var inasistencias = asistenciasEst.Sum(a => a.ValorTotalInasistencia);
 
-                // Llegadas tarde: LLT o LLTE (parciales, no implican inasistencia completa por sí solas)
-                var nLLT = asistenciasEst
-                    .Count(a => a.TipoManiana != null &&
-                                string.Equals(a.TipoManiana.Codigo, "LLT", StringComparison.OrdinalIgnoreCase));
-                var nLLTE = asistenciasEst
-                    .Count(a => a.TipoManiana != null &&
-                                string.Equals(a.TipoManiana.Codigo, "LLTE", StringComparison.OrdinalIgnoreCase));
+                // Llegadas tarde: LLT o LLTE según el código de llegada (puede haber retiro adicional)
+                var nLLT = asistenciasEst.Count(a =>
+                {
+                    var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    return string.Equals(llegada?.Codigo, "LLT", StringComparison.OrdinalIgnoreCase);
+                });
+                var nLLTE = asistenciasEst.Count(a =>
+                {
+                    var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    return string.Equals(llegada?.Codigo, "LLTE", StringComparison.OrdinalIgnoreCase);
+                });
                 var llegadasTarde = nLLT + nLLTE;
 
                 // Ausente por LLT: inasistencias enteras acumuladas por llegadas tardes
                 // LLT = 0.25 falta, LLTE = 0.50 falta → cada 1.0 acumulada = 1 inasistencia completa
                 var ausentePorLLT = (int)Math.Floor(nLLT * 0.25 + nLLTE * 0.5);
 
-                // Retiros anticipados: RA or RAE explicitly registered
-                var retirosAnticipados = asistenciasEst
-                    .Count(a => a.TipoManiana != null &&
-                                (string.Equals(a.TipoManiana.Codigo, "RA", StringComparison.OrdinalIgnoreCase) ||
-                                 string.Equals(a.TipoManiana.Codigo, "RAE", StringComparison.OrdinalIgnoreCase)));
+                // Retiros Anticipados (RA) — solo RA, no RAE, en cualquier turno
+                var retirosAnticipados = asistenciasEst.Count(a =>
+                    string.Equals(a.TipoManiana?.Codigo, "RA", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(a.TipoTarde?.Codigo,   "RA", StringComparison.OrdinalIgnoreCase));
+
+                // Retiros Express (RE) en cualquier turno
+                var retirosExpress = asistenciasEst.Count(a =>
+                    string.Equals(a.TipoManiana?.Codigo, "RE", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(a.TipoTarde?.Codigo,   "RE", StringComparison.OrdinalIgnoreCase));
+
+                // Retiros Anticipados Extendidos (RAE) en cualquier turno
+                var retirosAnticipadosExtendidos = asistenciasEst.Count(a =>
+                    string.Equals(a.TipoManiana?.Codigo, "RAE", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(a.TipoTarde?.Codigo,   "RAE", StringComparison.OrdinalIgnoreCase));
+
+                // Ausentes No Computables (ANC) en cualquier turno
+                var ausentesNoComputables = asistenciasEst.Count(a =>
+                    string.Equals(a.TipoManiana?.Codigo, "ANC", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(a.TipoTarde?.Codigo,   "ANC", StringComparison.OrdinalIgnoreCase));
+
+                // Inasistencias por retiro anticipado:
+                // RA (cualquier turno) = 0,5 · RAE turno mañana = 1,0 · RAE turno tarde = 0,5
+                var ausentePorRA = asistenciasEst.Sum(a =>
+                {
+                    decimal v = 0m;
+                    var codigoM = a.TipoManiana?.Codigo?.ToUpper();
+                    var codigoT = a.TipoTarde?.Codigo?.ToUpper();
+                    if (codigoM == "RA")  v += 0.5m;
+                    if (codigoM == "RAE") v += 1.0m;
+                    if (codigoT == "RA")  v += 0.5m;
+                    if (codigoT == "RAE") v += 0.5m;
+                    return v;
+                });
+
+                // Ausencias puras (código A): suma de contribuciones por turno con código "A".
+                // Mañana: TipoLlegadaManiana ?? TipoManiana == "A" → 1.0
+                // Tarde:  TipoTarde == "A" → 0.5
+                var ausenciasPuras = asistenciasEst.Sum(a =>
+                {
+                    var tipoLlegadaM = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    decimal v = 0m;
+                    if (string.Equals(tipoLlegadaM?.Codigo, "A", StringComparison.OrdinalIgnoreCase)) v += 1.0m;
+                    if (string.Equals(a.TipoTarde?.Codigo,  "A", StringComparison.OrdinalIgnoreCase)) v += 0.5m;
+                    return v;
+                });
 
                 var porcentaje = totalDiasDictados > 0
                     ? Math.Round((decimal)presencias / totalDiasDictados * 100, 0)
@@ -117,6 +166,11 @@ namespace TesisGestorApi.Controllers
                     LlegadasTarde = llegadasTarde,
                     AusentePorLLT = ausentePorLLT,
                     RetirosAnticipados = retirosAnticipados,
+                    RetirosExpress = retirosExpress,
+                    RetirosAnticipadosExtendidos = retirosAnticipadosExtendidos,
+                    AusentePorRA = ausentePorRA,
+                    AusenciasPuras = ausenciasPuras,
+                    AusentesNoComputables = ausentesNoComputables,
                     PorcentajeAsistencia = porcentaje,
                     TeaGeneral = est.TeaGeneral
                 };
@@ -261,9 +315,18 @@ namespace TesisGestorApi.Controllers
                 ? await _db.Asistencias
                     .AsNoTracking()
                     .Include(a => a.TipoManiana)
+                    .Include(a => a.TipoLlegadaManiana)
                     .Where(a => a.EstudianteId == estudianteId && fechasClases.Contains(a.Fecha))
                     .ToListAsync(ct)
                 : new List<Entities.Asistencia>();
+
+            var asisIds = asistenciasGenerales.Select(a => a.Id).ToList();
+            var retiros = asisIds.Any()
+                ? await _db.RetirosAnticipados
+                    .AsNoTracking()
+                    .Where(r => asisIds.Contains(r.IdAsistencia))
+                    .ToListAsync(ct)
+                : new List<Entities.RetiroAnticipado>();
 
             var resultado = clases.Select(clase =>
             {
@@ -271,6 +334,9 @@ namespace TesisGestorApi.Controllers
                     .FirstOrDefault(ae => ae.IdClaseDictada == clase.IdClaseDictada);
                 var asisGeneral = asistenciasGenerales
                     .FirstOrDefault(a => a.Fecha == clase.Fecha);
+                var retiro = asisGeneral is not null
+                    ? retiros.FirstOrDefault(r => r.IdAsistencia == asisGeneral.Id)
+                    : null;
 
                 return new DetalleDocenteRegistroDto
                 {
@@ -278,8 +344,16 @@ namespace TesisGestorApi.Controllers
                     Dictada = clase.Dictada,
                     Presente = asisEspacio?.Presente,
                     Codigo = asisGeneral?.TipoManiana?.Codigo,
+                    CodigoLlegada = asisGeneral?.TipoLlegadaManiana?.Codigo
+                                    ?? asisGeneral?.TipoManiana?.Codigo,
                     HoraEntrada = asisGeneral?.HoraEntradaManana.HasValue == true
                         ? asisGeneral.HoraEntradaManana!.Value.ToString(@"hh\:mm")
+                        : null,
+                    HoraSalida = asisGeneral?.HoraSalidaManana.HasValue == true
+                        ? asisGeneral.HoraSalidaManana!.Value.ToString(@"hh\:mm")
+                        : null,
+                    HoraReingreso = retiro?.HorarioReingreso.HasValue == true
+                        ? retiro.HorarioReingreso!.Value.ToString(@"HH\:mm")
                         : null
                 };
             }).ToList();
@@ -298,6 +372,7 @@ namespace TesisGestorApi.Controllers
             var query = _db.Asistencias
                 .AsNoTracking()
                 .Include(a => a.TipoManiana)
+                .Include(a => a.TipoLlegadaManiana)
                 .Include(a => a.TipoTarde)
                 .Where(a => a.EstudianteId == estudianteId);
 
@@ -306,22 +381,38 @@ namespace TesisGestorApi.Controllers
             if (hasta.HasValue)
                 query = query.Where(a => a.Fecha <= hasta.Value);
 
-            var registros = await query
-                .OrderByDescending(a => a.Fecha)
-                .Select(a => new DetalleAsistenciaEstudianteDto
+            var raw = await query.OrderByDescending(a => a.Fecha).ToListAsync(ct);
+
+            var registros = raw.Select(a =>
+            {
+                // Código de llegada: usar TipoLlegadaManiana si existe, si no TipoManiana
+                var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                var codigoLlegadaM = llegada?.Codigo ?? "-";
+
+                // Hay retiro separado si TipoManiana difiere del código de llegada
+                var tieneRetiroM = a.TipoLlegadaManianaId.HasValue
+                                && a.TipoManianaId.HasValue
+                                && a.TipoLlegadaManianaId != a.TipoManianaId;
+                var codigoRetiroM = tieneRetiroM ? a.TipoManiana?.Codigo : null;
+
+                return new DetalleAsistenciaEstudianteDto
                 {
                     Fecha = a.Fecha,
-                    CodigoManana = a.TipoManiana != null ? a.TipoManiana.Codigo : "-",
-                    CodigoTarde = a.TipoTarde != null ? a.TipoTarde.Codigo : "-",
+                    CodigoManana = codigoLlegadaM,
+                    CodigoRetiroManana = codigoRetiroM,
+                    CodigoTarde = a.TipoTarde?.Codigo ?? "-",
                     ValorTotal = a.ValorTotalInasistencia,
                     HoraEntradaManana = a.HoraEntradaManana.HasValue
                         ? a.HoraEntradaManana.Value.ToString(@"hh\:mm")
                         : null,
                     HoraSalidaManana = a.HoraSalidaManana.HasValue
                         ? a.HoraSalidaManana.Value.ToString(@"hh\:mm")
+                        : null,
+                    HoraSalidaTarde = a.HoraSalidaTarde.HasValue
+                        ? a.HoraSalidaTarde.Value.ToString(@"hh\:mm")
                         : null
-                })
-                .ToListAsync(ct);
+                };
+            }).ToList();
 
             return Ok(registros);
         }
