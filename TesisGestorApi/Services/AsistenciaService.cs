@@ -351,7 +351,7 @@ namespace TesisGestorApi.Services
         // Cada slot dictado recibe su propio AsistenciaPorEspacio con el mismo resultado de presente/ausente.
         // turnosPorEstudiante: para cada estudiante, qué turno(s) fueron explícitamente registrados en este request.
         // Si es null, no se aplica filtro por turno (solo se salta si tipoTurnoEc == null).
-        public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales, Dictionary<Guid, HashSet<string>>? turnosPorEstudiante = null)
+        public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales, Dictionary<Guid, HashSet<string>>? turnosPorEstudiante = null, bool respectarManuales = false)
         {
             var estudiantesIds = asistenciasGenerales.Select(a => a.EstudianteId).Distinct().ToList();
             var fechas = asistenciasGenerales.Select(a => a.Fecha).Distinct().ToList();
@@ -416,7 +416,8 @@ namespace TesisGestorApi.Services
                                 var stale = await _context.AsistenciasPorEspacio
                                     .FirstOrDefaultAsync(ae => ae.IdClaseDictada == cdStale.IdClaseDictada
                                                             && ae.IdEstudiante   == asistencia.EstudianteId);
-                                if (stale != null) _context.AsistenciasPorEspacio.Remove(stale);
+                                if (stale != null && !(respectarManuales && stale.Motivo == "Ausente Manual"))
+                                    _context.AsistenciasPorEspacio.Remove(stale);
                             }
                         }
                         continue;
@@ -453,7 +454,8 @@ namespace TesisGestorApi.Services
                             if (!cdAnc.Dictada) continue;
                             var existenteAnc = await _context.AsistenciasPorEspacio
                                 .FirstOrDefaultAsync(ae => ae.IdClaseDictada == cdAnc.IdClaseDictada && ae.IdEstudiante == asistencia.EstudianteId);
-                            if (existenteAnc != null) _context.AsistenciasPorEspacio.Remove(existenteAnc);
+                            if (existenteAnc != null && !(respectarManuales && existenteAnc.Motivo == "Ausente Manual"))
+                                _context.AsistenciasPorEspacio.Remove(existenteAnc);
                         }
                         continue;
                     }
@@ -548,6 +550,7 @@ namespace TesisGestorApi.Services
                                                     && ae.IdEstudiante   == asistencia.EstudianteId);
                         if (ape != null)
                         {
+                            if (respectarManuales && ape.Motivo == "Ausente Manual") continue;
                             ape.Presente = presenteMateria;
                             ape.Motivo   = motivoMateria;
                         }
@@ -626,7 +629,8 @@ namespace TesisGestorApi.Services
 
                 if (estadoAnterior == true && dto.Dictada == false)
                 {
-                    if (clase.Asistencias.Any()) _context.AsistenciasPorEspacio.RemoveRange(clase.Asistencias);
+                    var apesABorrar = clase.Asistencias.Where(a => a.Motivo != "Ausente Manual").ToList();
+                    if (apesABorrar.Any()) _context.AsistenciasPorEspacio.RemoveRange(apesABorrar);
                     await _context.SaveChangesAsync();
                     if (horario != null) await RecalcularRetiroEstudiantesAsync(horario.IdCurso, dto.Fecha);
                     await RegenerarAsistenciasParaClase(clase);
@@ -723,7 +727,7 @@ namespace TesisGestorApi.Services
             var turnosPorEstudiante = asistenciasGenerales
                 .ToDictionary(a => a.EstudianteId, _ => new HashSet<string> { turnoEC });
 
-            await ProcesarAsistenciaEspacios(asistenciasGenerales, turnosPorEstudiante);
+            await ProcesarAsistenciaEspacios(asistenciasGenerales, turnosPorEstudiante, respectarManuales: true);
 
             // Re-aplicar las marcas de retiro anticipado que ProcesarAsistenciaEspacios pudo haber sobreescrito
             await ReaplicarRetiroECTurnoAsync(idsAlumnos, clase.Fecha, turnoEC);

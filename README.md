@@ -23,3 +23,8 @@ $env:Email__From = "tu-cuenta@gmail.com"
 ```
 
 La API toma estos valores con la convención `Email:*` de ASP.NET Core.
+
+Comando para levantar BACKEND por perfil
+
+dotnet run --launch-profile https
+dotnet run --launch-profile http

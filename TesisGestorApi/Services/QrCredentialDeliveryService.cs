@@ -17,6 +17,10 @@ namespace TesisGestorApi.Services
         private const string EstadoSinQr = "SIN_QR";
         private const string EstadoSinTutor = "SIN_TUTOR_PRINCIPAL";
         private const string EstadoEmailInvalido = "EMAIL_INVALIDO";
+        private const string SortByNombre = "NOMBRE";
+        private const string SortByFechaQr = "FECHA_QR";
+        private const string SortDirAsc = "ASC";
+        private const string SortDirDesc = "DESC";
 
         private readonly ApplicationDbContext _db;
         private readonly IServiceScopeFactory _scopeFactory;
@@ -98,6 +102,19 @@ namespace TesisGestorApi.Services
 
                     foreach (var candidate in candidates)
                     {
+                        await WaitIfPausedAsync(job.JobId);
+
+                        if (TryHandleCancellation(job.JobId, out var cancelMessage))
+                        {
+                            _progress.Update(job.JobId, p =>
+                            {
+                                p.Estado = "CANCELLED";
+                                p.Fin = DateTime.UtcNow;
+                                p.UltimoMensaje = cancelMessage;
+                            });
+                            return;
+                        }
+
                         if (!liveCandidates.TryGetValue(candidate.IdEstudiante, out var liveCandidate))
                         {
                             _progress.Update(job.JobId, p =>
@@ -227,8 +244,26 @@ namespace TesisGestorApi.Services
                         }
                     }
 
+                    await WaitIfPausedAsync(job.JobId);
+
+                    if (TryHandleCancellation(job.JobId, out var cancelMessageFinal))
+                    {
+                        _progress.Update(job.JobId, p =>
+                        {
+                            p.Estado = "CANCELLED";
+                            p.Fin = DateTime.UtcNow;
+                            p.UltimoMensaje = cancelMessageFinal;
+                        });
+                        return;
+                    }
+
                     _progress.Update(job.JobId, p =>
                     {
+                        if (p.Estado is "CANCELLED" or "FAILED")
+                        {
+                            return;
+                        }
+
                         p.Estado = "COMPLETED";
                         p.Fin = DateTime.UtcNow;
 
@@ -361,12 +396,57 @@ namespace TesisGestorApi.Services
             };
         }
 
+        public async Task<QrCredentialDeliveryProgressDto> PauseDeliveryJobAsync(Guid jobId, CancellationToken ct = default)
+        {
+            if (!_progress.TryGetState(jobId, out var state))
+                throw new InvalidOperationException("No existe un proceso de envío con el identificador indicado.");
+
+            lock (state.SyncRoot)
+            {
+                if (state.Progress.Estado is "COMPLETED" or "FAILED" or "CANCELLED")
+                    return CloneProgress(state.Progress);
+            }
+
+            _progress.RequestPause(jobId, out var progress);
+            await Task.CompletedTask;
+            return progress;
+        }
+
+        public async Task<QrCredentialDeliveryProgressDto> ResumeDeliveryJobAsync(Guid jobId, CancellationToken ct = default)
+        {
+            if (!_progress.TryGetState(jobId, out var state))
+                throw new InvalidOperationException("No existe un proceso de envío con el identificador indicado.");
+
+            lock (state.SyncRoot)
+            {
+                if (state.Progress.Estado is "COMPLETED" or "FAILED" or "CANCELLED")
+                    return CloneProgress(state.Progress);
+            }
+
+            _progress.Resume(jobId, out var progress);
+            await Task.CompletedTask;
+            return progress;
+        }
+
+        public Task<QrCredentialDeliveryProgressDto> CancelDeliveryJobAsync(Guid jobId, CancellationToken ct = default)
+        {
+            if (jobId == Guid.Empty)
+                throw new InvalidOperationException("JobId inválido.");
+
+            if (!_progress.RequestCancellation(jobId, out var progress))
+                throw new InvalidOperationException("No existe un proceso de envío con el identificador indicado.");
+
+            return Task.FromResult(progress);
+        }
+
         public async Task<QrCredentialDeliveryStudentsPageDto> GetStudentsPageAsync(
             Guid cursoId,
             string? estado,
             string? busqueda,
             int page,
             int pageSize,
+            string? sortBy,
+            string? sortDir,
             CancellationToken ct = default)
         {
             if (page < 1) page = 1;
@@ -393,8 +473,10 @@ namespace TesisGestorApi.Services
                     || (r.TutorEmail?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
             }
 
-            var ordered = rows
-                .OrderBy(r => r.NombreCompleto)
+            var normalizedSortBy = NormalizeSortBy(sortBy);
+            var normalizedSortDir = NormalizeSortDir(sortDir);
+
+            var ordered = ApplySorting(rows, normalizedSortBy, normalizedSortDir)
                 .ToList();
 
             var totalItems = ordered.Count;
@@ -468,11 +550,140 @@ namespace TesisGestorApi.Services
             }
         }
 
+        private bool TryHandleCancellation(Guid jobId, out string message)
+        {
+            message = string.Empty;
+
+            if (!_progress.TryGetState(jobId, out var state))
+                return false;
+
+            bool cancelRequested;
+            int enviados;
+            int total;
+            int procesados;
+            int errores;
+
+            lock (state.SyncRoot)
+            {
+                cancelRequested = state.CancellationRequested;
+                enviados = state.Progress.Enviados;
+                total = state.Progress.Total;
+                procesados = state.Progress.Procesados;
+                errores = state.Progress.Errores;
+            }
+
+            if (!cancelRequested)
+                return false;
+
+            message = BuildCancellationMessage(enviados, total, procesados, errores);
+            return true;
+        }
+
+        private async Task WaitIfPausedAsync(Guid jobId)
+        {
+            Task? waitTask = null;
+
+            if (!_progress.TryGetState(jobId, out var state))
+                return;
+
+            lock (state.SyncRoot)
+            {
+                if (state.PauseRequested && state.Progress.Estado == "PAUSING")
+                {
+                    _progress.Pause(jobId, out _);
+                }
+
+                if (state.Progress.Estado == "PAUSED")
+                {
+                    waitTask = state.PauseReleaseSource?.Task;
+                }
+            }
+
+            if (waitTask is not null)
+            {
+                await waitTask;
+            }
+        }
+
+        private static QrCredentialDeliveryProgressDto CloneProgress(QrCredentialDeliveryProgressDto progress)
+        {
+            return new QrCredentialDeliveryProgressDto
+            {
+                JobId = progress.JobId,
+                Estado = progress.Estado,
+                Total = progress.Total,
+                Procesados = progress.Procesados,
+                Enviados = progress.Enviados,
+                Omitidos = progress.Omitidos,
+                Errores = progress.Errores,
+                UltimoDestino = progress.UltimoDestino,
+                UltimoEstudiante = progress.UltimoEstudiante,
+                UltimoMensaje = progress.UltimoMensaje,
+                DetallesErrores = progress.DetallesErrores.ToList(),
+                Inicio = progress.Inicio,
+                Fin = progress.Fin
+            };
+        }
+
+        private static string BuildCancellationMessage(int enviados, int total, int procesados, int errores)
+        {
+            var pendientesCancelados = Math.Max(total - procesados, 0);
+            var mensajeCancelacion = pendientesCancelados > 0
+                ? $"Proceso cancelado por el usuario. Se enviaron {enviados} credencial(es) y se cancelaron {pendientesCancelados} envío(s) pendiente(s)."
+                : "Cancelación solicitada, pero no quedaban envíos pendientes por detener.";
+
+            if (errores > 0)
+            {
+                mensajeCancelacion += $" Se registraron {errores} error(es) durante el proceso.";
+            }
+
+            return mensajeCancelacion;
+        }
+
         private static IEnumerable<DeliveryStudentRow> SelectCandidates(IEnumerable<DeliveryStudentRow> rows, string scope)
         {
             return scope == ScopeTodos
                 ? rows.Where(r => r.Estado is EstadoEnviado or EstadoPendiente)
                 : rows.Where(r => r.Estado == EstadoPendiente);
+        }
+
+        private static string NormalizeSortBy(string? sortBy)
+        {
+            var normalized = (sortBy ?? SortByNombre).Trim().ToUpperInvariant();
+            return normalized switch
+            {
+                SortByFechaQr => SortByFechaQr,
+                _ => SortByNombre
+            };
+        }
+
+        private static string NormalizeSortDir(string? sortDir)
+        {
+            var normalized = (sortDir ?? SortDirAsc).Trim().ToUpperInvariant();
+            return normalized == SortDirDesc ? SortDirDesc : SortDirAsc;
+        }
+
+        private static IEnumerable<DeliveryStudentRow> ApplySorting(
+            IEnumerable<DeliveryStudentRow> rows,
+            string sortBy,
+            string sortDir)
+        {
+            var isDesc = sortDir == SortDirDesc;
+
+            if (sortBy == SortByFechaQr)
+            {
+                return isDesc
+                    ? rows.OrderByDescending(r => r.FechaGeneracionQr.HasValue)
+                          .ThenByDescending(r => r.FechaGeneracionQr)
+                          .ThenBy(r => r.NombreCompleto)
+                    : rows.OrderByDescending(r => r.FechaGeneracionQr.HasValue)
+                          .ThenBy(r => r.FechaGeneracionQr)
+                          .ThenBy(r => r.NombreCompleto);
+            }
+
+            return isDesc
+                ? rows.OrderByDescending(r => r.NombreCompleto)
+                : rows.OrderBy(r => r.NombreCompleto);
         }
 
         private static QrCredentialDeliverySummaryDto BuildSummary(DeliveryContext context, string scope)
