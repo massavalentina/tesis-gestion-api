@@ -272,8 +272,6 @@ namespace TesisGestorApi.Data
 
                 entity.HasIndex(n => new { n.IdEstudiante, n.AnioLectivo, n.Umbral })
                       .IsUnique();
-
-                entity.HasIndex(n => new { n.Estado, n.ProximoEnvioUtc });
             });
         }
     }
