@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
@@ -254,14 +256,11 @@ namespace TesisGestorApi.Controllers
         }
 
         // POST /api/ficha/curso/{idCurso}/notificar-tutores-desactualizados
-        // Envía un mail a todos los tutores principales del curso cuyos datos
-        // llevan más de 6 meses sin actualizarse. Reutiliza IEmailSender.
         [HttpPost("curso/{idCurso:guid}/notificar-tutores-desactualizados")]
         public async Task<IActionResult> NotificarTutoresCurso(
             Guid idCurso,
             CancellationToken ct = default)
         {
-            // Sin AsNoTracking para poder actualizar FechaUltimaNotificacion al enviar
             var estudiantes = await _db.Estudiantes
                 .Where(e => e.DetallesCursado.Any(dc => dc.IdCurso == idCurso && dc.Estado))
                 .Include(e => e.TutorEstudiantes)
@@ -269,60 +268,39 @@ namespace TesisGestorApi.Controllers
                 .ToListAsync(ct);
 
             var limite = DateTime.UtcNow.AddMonths(-6);
-            var nombreInstitucion = _config["Institucion:Nombre"] ?? "la institución";
+            var nombreInstitucion = _config["Institucion:Nombre"] ?? "Colegio Luis Manuel Robles";
+            var logoBytes = TryLoadLogo();
 
             int enviados = 0;
             int omitidos = 0;
 
             foreach (var estudiante in estudiantes)
             {
-                // Buscar el tutor principal del estudiante
                 var tutorLink = estudiante.TutorEstudiantes.FirstOrDefault(te => te.EsPrincipal);
                 if (tutorLink == null) { omitidos++; continue; }
 
                 var tutor = tutorLink.Tutor;
 
-                // Omitir si los datos del tutor son recientes (< 6 meses)
                 if (tutor.FechaUltimaActualizacion >= limite) { omitidos++; continue; }
-
-                // Omitir si ya se envió una notificación en los últimos 6 meses
                 if (tutor.FechaUltimaNotificacion.HasValue && tutor.FechaUltimaNotificacion >= limite)
                 { omitidos++; continue; }
 
-                var nombreAlumno = $"{estudiante.Nombre} {estudiante.Apellido}";
+                var nombreAlumno = $"{estudiante.Apellido}, {estudiante.Nombre}";
                 var nombreTutor = $"{tutor.Nombre} {tutor.Apellido}";
 
-                // Mismo cuerpo de mail que el endpoint individual
-                var htmlBody = $@"<p>Estimado/a {nombreTutor},</p>
-<p>Le informamos que los datos de contacto registrados para el/la estudiante
-<strong>{nombreAlumno}</strong> en el <strong>{nombreInstitucion}</strong> no han sido actualizados
-en los últimos 6 meses.</p>
-<p>Le solicitamos que se comunique con la institución o concurra personalmente
-para verificar y actualizar la siguiente información:</p>
-<ul>
-  <li>Teléfono de contacto</li>
-  <li>Correo electrónico</li>
-  <li>Disponibilidad horaria</li>
-</ul>
-<p>Si alguno de estos datos ha cambiado recientemente, le pedimos que nos lo
-informe para mantener el registro actualizado. En caso de que toda la
-información sea correcta, no es necesario que responda este mensaje.</p>
-<p>Mantener estos datos actualizados es fundamental para garantizar una
-comunicación fluida ante cualquier situación.</p>
-<p>Muchas gracias.<br/><strong>{nombreInstitucion}</strong></p>";
+                var (htmlBody, inlineResources) = BuildNotificacionHtml(nombreTutor, nombreAlumno, nombreInstitucion, logoBytes);
 
                 await _emailSender.SendAsync(
                     to: tutor.Correo,
-                    subject: $"Actualización de datos de contacto – {nombreAlumno}",
+                    subject: $"Actualización de datos de contacto – {estudiante.Apellido}, {estudiante.Nombre}",
                     htmlBody: htmlBody,
-                    ct: ct);
+                    ct: ct,
+                    inlineResources: inlineResources);
 
-                // Registrar la fecha de envío para limitar el reenvío
                 tutor.FechaUltimaNotificacion = DateTime.UtcNow;
                 enviados++;
             }
 
-            // Persistir todas las fechas de notificación de una sola vez
             if (enviados > 0)
                 await _db.SaveChangesAsync(ct);
 
@@ -339,14 +317,11 @@ comunicación fluida ante cualquier situación.</p>
         }
 
         // POST /api/ficha/estudiante/{idEstudiante}/notificar-tutor-desactualizado
-        // Envía un mail al tutor principal si sus datos llevan más de 6 meses sin actualizarse.
-        // Reutiliza el IEmailSender ya configurado en el proyecto.
         [HttpPost("estudiante/{idEstudiante:guid}/notificar-tutor-desactualizado")]
         public async Task<IActionResult> NotificarTutorDesactualizado(
             Guid idEstudiante,
             CancellationToken ct = default)
         {
-            // Sin AsNoTracking para poder actualizar FechaUltimaNotificacion al enviar
             var estudiante = await _db.Estudiantes
                 .Include(e => e.TutorEstudiantes)
                     .ThenInclude(te => te.Tutor)
@@ -355,7 +330,6 @@ comunicación fluida ante cualquier situación.</p>
             if (estudiante == null)
                 return NotFound($"No se encontró el estudiante con ID {idEstudiante}.");
 
-            // Buscar el tutor principal
             var tutorLink = estudiante.TutorEstudiantes.FirstOrDefault(te => te.EsPrincipal);
             if (tutorLink == null)
                 return BadRequest(new NotificacionTutorResponseDto
@@ -367,7 +341,6 @@ comunicación fluida ante cualquier situación.</p>
             var tutor = tutorLink.Tutor;
             var limiteDesactualizacion = DateTime.UtcNow.AddMonths(-6);
 
-            // Verificar que los datos del tutor estén desactualizados (> 6 meses)
             if (tutor.FechaUltimaActualizacion >= limiteDesactualizacion)
                 return BadRequest(new NotificacionTutorResponseDto
                 {
@@ -375,7 +348,6 @@ comunicación fluida ante cualquier situación.</p>
                     Mensaje = "El tutor principal fue actualizado recientemente. No es necesario enviar notificación."
                 });
 
-            // Verificar que no se haya enviado una notificación en los últimos 6 meses
             if (tutor.FechaUltimaNotificacion.HasValue && tutor.FechaUltimaNotificacion >= limiteDesactualizacion)
                 return BadRequest(new NotificacionTutorResponseDto
                 {
@@ -383,39 +355,21 @@ comunicación fluida ante cualquier situación.</p>
                     Mensaje = "Ya se envió una notificación de actualización en los últimos 6 meses."
                 });
 
-            // Leer el nombre de la institución desde la configuración; fallback genérico si no está definido
-            var nombreInstitucion = _config["Institucion:Nombre"] ?? "la institución";
+            var nombreInstitucion = _config["Institucion:Nombre"] ?? "Colegio Luis Manuel Robles";
+            var logoBytes = TryLoadLogo();
 
-            var nombreAlumno = $"{estudiante.Nombre} {estudiante.Apellido}";
+            var nombreAlumno = $"{estudiante.Apellido}, {estudiante.Nombre}";
             var nombreTutor = $"{tutor.Nombre} {tutor.Apellido}";
 
-            // Construir el cuerpo del mail en HTML conservando exactamente el texto solicitado
-            var htmlBody = $@"<p>Estimado/a {nombreTutor},</p>
-<p>Le informamos que los datos de contacto registrados para el/la estudiante
-<strong>{nombreAlumno}</strong> en el <strong>{nombreInstitucion}</strong> no han sido actualizados
-en los últimos 6 meses.</p>
-<p>Le solicitamos que se comunique con la institución o concurra personalmente
-para verificar y actualizar la siguiente información:</p>
-<ul>
-  <li>Teléfono de contacto</li>
-  <li>Correo electrónico</li>
-  <li>Disponibilidad horaria</li>
-</ul>
-<p>Si alguno de estos datos ha cambiado recientemente, le pedimos que nos lo
-informe para mantener el registro actualizado. En caso de que toda la
-información sea correcta, no es necesario que responda este mensaje.</p>
-<p>Mantener estos datos actualizados es fundamental para garantizar una
-comunicación fluida ante cualquier situación.</p>
-<p>Muchas gracias.<br/><strong>{nombreInstitucion}</strong></p>";
+            var (htmlBody, inlineResources) = BuildNotificacionHtml(nombreTutor, nombreAlumno, nombreInstitucion, logoBytes);
 
-            // Enviar el mail usando el servicio de SMTP ya configurado en el proyecto
             await _emailSender.SendAsync(
                 to: tutor.Correo,
-                subject: $"Actualización de datos de contacto – {nombreAlumno}",
+                subject: $"Actualización de datos de contacto – {estudiante.Apellido}, {estudiante.Nombre}",
                 htmlBody: htmlBody,
-                ct: ct);
+                ct: ct,
+                inlineResources: inlineResources);
 
-            // Registrar la fecha de envío para limitar el reenvío a una vez cada 6 meses
             tutor.FechaUltimaNotificacion = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
 
@@ -424,6 +378,97 @@ comunicación fluida ante cualquier situación.</p>
                 Enviado = true,
                 Mensaje = $"Notificación enviada a {tutor.Correo}."
             });
+        }
+
+        // ── Helpers para el email de notificación ──────────────────────────────
+
+        private const string LogoContentId = "logo-institucional-notif";
+        private static readonly Lazy<byte[]?> _logoBytes = new(LoadLogo);
+
+        private static byte[]? TryLoadLogo() => _logoBytes.Value;
+
+        private static byte[]? LoadLogo()
+        {
+            var candidates = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "utils", "robles.png"),
+                Path.Combine(Directory.GetCurrentDirectory(), "utils", "robles.png")
+            };
+
+            foreach (var path in candidates)
+            {
+                try
+                {
+                    var full = Path.GetFullPath(path);
+                    if (System.IO.File.Exists(full)) return System.IO.File.ReadAllBytes(full);
+                }
+                catch { /* si no hay logo, el mail se envía sin imagen */ }
+            }
+
+            return null;
+        }
+
+        private static (string html, IEnumerable<EmailInlineResourceDto>? inlineResources) BuildNotificacionHtml(
+            string nombreTutor,
+            string nombreAlumno,
+            string nombreInstitucion,
+            byte[]? logoBytes)
+        {
+            var tutorHtml = WebUtility.HtmlEncode(nombreTutor);
+            var alumnoHtml = WebUtility.HtmlEncode(nombreAlumno);
+            var instHtml  = WebUtility.HtmlEncode(nombreInstitucion);
+            var anio      = DateTime.UtcNow.Year;
+
+            var hasLogo   = logoBytes is { Length: > 0 };
+            var logoBlock = hasLogo
+                ? $"<div style=\"text-align:center;padding:12px 0 8px 0;\"><img src=\"cid:{LogoContentId}\" alt=\"Logo institucional\" style=\"height:58px;width:auto;display:inline-block;\" /></div>"
+                : string.Empty;
+
+            var sb = new StringBuilder();
+            sb.Append("<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\" /></head>");
+            sb.Append("<body style=\"margin:0;padding:14px 0 20px 0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#1f1f1f;font-style:italic;font-size:9pt;\">");
+            sb.Append("<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\"><tr><td align=\"center\">");
+            sb.Append("<table width=\"640\" cellpadding=\"0\" cellspacing=\"0\" role=\"presentation\" style=\"max-width:640px;background:#ffffff;padding:0 56px 14px 56px;\">");
+            sb.Append("<tr><td>");
+
+            sb.Append(logoBlock);
+            sb.Append("<div style=\"border-top:1px solid #b5b5b5;margin:0 0 22px 0;\"></div>");
+
+            sb.Append($"<p style=\"margin:0 0 14px 0;font-size:9pt;line-height:1.38;\">Estimado/a <strong>{tutorHtml}</strong>:</p>");
+
+            sb.Append($"<p style=\"margin:0 0 14px 0;font-size:9pt;line-height:1.38;\">Nos comunicamos desde el {instHtml} para informarle que los datos correspondientes a: <strong style=\"color:#1565c0;\">Teléfono de contacto, Domicilio y Disponibilidad horaria</strong> proporcionados al completarse el registro de tutor responsable del/la estudiante <strong>{alumnoHtml}</strong> se encuentran fuera de vigencia.</p>");
+
+            sb.Append("<p style=\"margin:0 0 14px 0;font-size:9pt;line-height:1.38;\">Solicitamos que a partir de este aviso, responda este correo con la información solicitada actualizada, se comunique por llamada telefónica o se acerque presencialmente a la institución (Padre Luis Monti 1859, X5004ENI Córdoba) para realizar la actualización.</p>");
+
+            sb.Append("<p style=\"margin:0 0 14px 0;font-size:9pt;line-height:1.38;\">Recordamos que esta información es de <strong>estricta importancia</strong> para nosotros ya que nos ayuda a seguir velando por el cuidado de nuestros estudiantes.</p>");
+
+            sb.Append("<p style=\"margin:0 0 14px 0;font-size:9pt;line-height:1.38;\">Si considera que se trata de un error, desestime este correo.</p>");
+
+            sb.Append("<p style=\"margin:0 0 22px 0;font-size:9pt;line-height:1.38;\">Muchas gracias por su compromiso.</p>");
+
+            sb.Append("<p style=\"margin:0;font-size:9pt;line-height:1.34;\">Atentamente,</p>");
+            sb.Append($"<p style=\"margin:0 0 2px 0;font-size:9pt;line-height:1.34;\">{instHtml}</p>");
+
+            sb.Append("<div style=\"border-top:1px solid #b5b5b5;margin:16px 0 12px 0;\"></div>");
+            sb.Append("<p style=\"margin:0;text-align:center;font-size:8pt;line-height:1.35;color:#6e6e6e;\">Secretaría de la institución Colegio Luis Manuel Robles, Padre Luis Monti 1859, X5004ENI Córdoba &ndash; 03514517213 &ndash; <u>colegiorobles.edu.ar</u></p>");
+            sb.Append($"<p style=\"margin:10px 0 0 0;text-align:center;font-size:8pt;line-height:1.3;color:#8a8a8a;\">Desde &copy; PaletApp {anio}</p>");
+
+            sb.Append("</td></tr></table>");
+            sb.Append("</td></tr></table></body></html>");
+
+            IEnumerable<EmailInlineResourceDto>? inlineResources = hasLogo
+                ? new[]
+                {
+                    new EmailInlineResourceDto
+                    {
+                        ContentId  = LogoContentId,
+                        ContentType = "image/png",
+                        Content    = logoBytes!
+                    }
+                }
+                : null;
+
+            return (sb.ToString(), inlineResources);
         }
     }
 
