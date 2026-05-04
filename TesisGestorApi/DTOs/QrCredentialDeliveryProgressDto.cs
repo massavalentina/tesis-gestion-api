@@ -3,7 +3,7 @@ namespace TesisGestorApi.DTOs
     public class QrCredentialDeliveryProgressDto
     {
         public Guid JobId { get; set; }
-        public string Estado { get; set; } = "RUNNING"; // RUNNING | COMPLETED | FAILED
+        public string Estado { get; set; } = "RUNNING"; // RUNNING | PAUSING | PAUSED | CANCELLING | CANCELLED | COMPLETED | FAILED
 
         public int Total { get; set; }
         public int Procesados { get; set; }

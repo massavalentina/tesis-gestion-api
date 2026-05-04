@@ -10,12 +10,18 @@ namespace TesisGestorApi.Interfaces
             Guid estudianteId,
             QrCredentialDeliverySingleRequestDto req,
             CancellationToken ct = default);
+        Task<QrCredentialDeliveryProgressDto> PauseDeliveryJobAsync(Guid jobId, CancellationToken ct = default);
+        Task<QrCredentialDeliveryProgressDto> ResumeDeliveryJobAsync(Guid jobId, CancellationToken ct = default);
+        Task<QrCredentialDeliveryProgressDto> CancelDeliveryJobAsync(Guid jobId, CancellationToken ct = default);
+        
         Task<QrCredentialDeliveryStudentsPageDto> GetStudentsPageAsync(
             Guid cursoId,
             string? estado,
             string? busqueda,
             int page,
             int pageSize,
+            string? sortBy,
+            string? sortDir,
             CancellationToken ct = default);
 
         Task<(byte[] Bytes, string FileName)> GetStudentQrImageAsync(Guid estudianteId, CancellationToken ct = default);
