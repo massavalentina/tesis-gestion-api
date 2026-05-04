@@ -32,8 +32,14 @@ export DATABASE_URL="postgresql://usuario:password@localhost:5432/mi_db"
 ## Paso 1: ejecutar seed base
 Desde cualquier carpeta:
 
+LINUX EJEMPLO:
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /home/lenovo/Desktop/untitled-/tesis-gestion-api/TesisGestorApi/Data/Seeds/seed_base_2026.sql
+```
+
+WINDOWS EJEMPLO:
+```bash
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" "postgresql://postgres:postgres@localhost:5432/DbPrueba" -v ON_ERROR_STOP=1 -f "C:/Users/fhiac/Documents/GitHub/tesis-gestion-api/TesisGestorApi/Data/Seeds/seed_base_2026.sql"
 ```
 
 Notas:
