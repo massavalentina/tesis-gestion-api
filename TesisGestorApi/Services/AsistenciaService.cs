@@ -5,7 +5,6 @@ using TesisGestorApi.Dtos;
 using TesisGestorApi.Exceptions;
 using TesisGestorApi.Interfaces;
 using TesisGestorApi.Entities;
-using TesisGestorApi.Dtos;
 
 namespace TesisGestorApi.Services
 {
@@ -1109,7 +1108,7 @@ namespace TesisGestorApi.Services
             var nowLocal = DateTime.Now;
             var hoy = DateOnly.FromDateTime(nowLocal);
             var hora = request.Hora ?? nowLocal.TimeOfDay;
-            var turnoNormalizado = NormalizarTurno(request.Turno);
+            var turnoNormalizado = NormalizarTurno(request.Turno ?? string.Empty);
 
             var lista = request.EstudianteIds
                 .Distinct()
@@ -1361,4 +1360,3 @@ namespace TesisGestorApi.Services
 
     }
 }
-
