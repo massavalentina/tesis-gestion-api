@@ -25,7 +25,6 @@ builder.Services.AddScoped<IQrCredentialEmailTemplateService, QrCredentialEmailT
 builder.Services.AddSingleton<QrCredentialGenerationProgressStore>();
 builder.Services.AddSingleton<QrCredentialDeliveryProgressStore>();
 
-builder.Services.AddHostedService<AsistenciaUmbralEmailWorker>();
 
 // Controllers
 builder.Services.AddControllers();

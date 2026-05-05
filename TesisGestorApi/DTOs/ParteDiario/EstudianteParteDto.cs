@@ -20,5 +20,7 @@ namespace TesisGestorApi.DTOs.ParteDiario
 
         /// <summary>Retiro activo del día (null si no tiene retiro registrado).</summary>
         public RetiroActivoDto? RetiroActivo { get; set; }
+
+        public bool TeaGeneral { get; set; }
     }
 }

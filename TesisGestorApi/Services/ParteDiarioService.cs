@@ -32,7 +32,7 @@ namespace TesisGestorApi.Services
             var estudiantes = await _context.DetallesCursado
                 .AsNoTracking()
                 .Where(dc => dc.IdCurso == cursoId && dc.Estado)
-                .Select(dc => new { dc.IdEstudiante, dc.Estudiante.Nombre, dc.Estudiante.Apellido, dc.Estudiante.Documento })
+                .Select(dc => new { dc.IdEstudiante, dc.Estudiante.Nombre, dc.Estudiante.Apellido, dc.Estudiante.Documento, dc.Estudiante.TeaGeneral })
                 .ToListAsync();
 
             var idsEstudiantes = estudiantes.Select(e => e.IdEstudiante).ToList();
@@ -84,9 +84,9 @@ namespace TesisGestorApi.Services
             var horariosMañana = horarios.Where(h => h.HorarioEntrada < LimiteTarde).ToList();
             var horariosTarde  = horarios.Where(h => h.HorarioEntrada >= LimiteTarde).ToList();
 
-            var turnoManana = BuildTurno(estudiantes.Select(e => (e.IdEstudiante, e.Nombre, e.Apellido, e.Documento)).ToList(),
+            var turnoManana = BuildTurno(estudiantes.Select(e => (e.IdEstudiante, e.Nombre, e.Apellido, e.Documento, e.TeaGeneral)).ToList(),
                                          asistenciaDict, retirosDict, horariosMañana, clasesDict, esMañana: true);
-            var turnoTarde  = BuildTurno(estudiantes.Select(e => (e.IdEstudiante, e.Nombre, e.Apellido, e.Documento)).ToList(),
+            var turnoTarde  = BuildTurno(estudiantes.Select(e => (e.IdEstudiante, e.Nombre, e.Apellido, e.Documento, e.TeaGeneral)).ToList(),
                                          asistenciaDict, retirosDict, horariosTarde,  clasesDict, esMañana: false);
 
             turnoManana.Disponible = horariosMañana.Any();
@@ -96,7 +96,7 @@ namespace TesisGestorApi.Services
         }
 
         private static TurnoParteDto BuildTurno(
-            List<(Guid IdEstudiante, string Nombre, string Apellido, string Documento)> estudiantes,
+            List<(Guid IdEstudiante, string Nombre, string Apellido, string Documento, bool TeaGeneral)> estudiantes,
             Dictionary<Guid, Asistencia> asistenciaDict,
             Dictionary<(Guid IdAsistencia, string Turno), RetiroAnticipado> retirosDict,
             List<Horario> horarios,
@@ -190,6 +190,7 @@ namespace TesisGestorApi.Services
                     HoraEntrada         = entrada?.ToString(@"hh\:mm"),
                     HoraSalida          = salida?.ToString(@"hh\:mm"),
                     RetiroActivo        = retiroDto,
+                    TeaGeneral          = est.TeaGeneral,
                 });
             }
 
