@@ -1,6 +1,7 @@
 -- Backfill rerunnable para FotoEstudiante.
 -- Ejecutar después de aplicar la migración AddFotoEstudiante.
 -- Puede ejecutarse también después de seed_base_2026.sql para completar alumnos nuevos.
+-- Se puede ejecutar las veces que se quiera
 
 WITH imagenes AS (
     SELECT ARRAY[
