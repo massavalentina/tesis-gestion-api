@@ -24,6 +24,9 @@ public class EstudianteAsistenciaDto
 
     [JsonPropertyName("course")]
     public string Curso { get; set; } = null!;
+
+    [JsonPropertyName("profileImagePath")]
+    public string? FotoEstudiante { get; set; }
 }
 
 public class AsistenciaEscaneoDto

@@ -121,7 +121,8 @@ namespace TesisGestorApi.Services
                     Id = credencial.Estudiante.IdEstudiante,
                     Nombre = credencial.Estudiante.Nombre,
                     Apellido = credencial.Estudiante.Apellido,
-                    Curso = cursadoActivo.Curso.Codigo
+                    Curso = cursadoActivo.Curso.Codigo,
+                    FotoEstudiante = credencial.Estudiante.FotoEstudiante
                 },
                 Attendance = new AsistenciaEscaneoDto
                 {
