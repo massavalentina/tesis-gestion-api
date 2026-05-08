@@ -12,6 +12,8 @@ namespace TesisGestorApi.Entities
 
         public ICollection<UsuarioRol> UsuarioRoles { get; set; } //Puede tener varios
             = new List<UsuarioRol>();
+
+        public ICollection<RolPermiso> RolPermisos { get; set; } = new List<RolPermiso>();
     }
 
 }

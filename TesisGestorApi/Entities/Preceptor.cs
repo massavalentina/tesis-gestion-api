@@ -10,6 +10,7 @@ namespace TesisGestorApi.Entities
         public string Nombre { get; set; } = null!;
         public string Apellido { get; set; } = null!;
         public string Documento { get; set; } = null!;
+        public bool EsDelegado { get; set; }
 
         public Guid IdCurso { get; set; }
         public Curso Curso { get; set; } = null!;

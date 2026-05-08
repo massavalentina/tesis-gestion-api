@@ -47,6 +47,10 @@ namespace TesisGestorApi.Data
         public DbSet<Rol> Roles { get; set; }
         public DbSet<UsuarioRol> UsuariosRoles { get; set; }
 
+        // ===== Permisos =====
+        public DbSet<Permiso> Permisos { get; set; }
+        public DbSet<RolPermiso> RolPermisos { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -67,6 +71,21 @@ namespace TesisGestorApi.Data
                 .WithMany(r => r.UsuarioRoles)
                 .HasForeignKey(ur => ur.IdRol)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<RolPermiso>(entity =>
+            {
+                entity.HasOne(rp => rp.Rol)
+                      .WithMany(r => r.RolPermisos)
+                      .HasForeignKey(rp => rp.IdRol)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(rp => rp.Permiso)
+                      .WithMany(p => p.RolPermisos)
+                      .HasForeignKey(rp => rp.IdPermiso)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(rp => new { rp.IdRol, rp.IdPermiso }).IsUnique();
+            });
 
             modelBuilder.Entity<Docente>()
                 .HasOne(d => d.Usuario)

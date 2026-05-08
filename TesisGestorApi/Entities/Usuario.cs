@@ -13,8 +13,11 @@ namespace TesisGestorApi.Entities
         public bool Verificado { get; set; }
         public DateTime FechaCreacion { get; set; }
 
+        public string? RefreshToken { get; set; }
+        public DateTime? RefreshTokenVencimiento { get; set; }
+
         // Roles (permisos)
-        public ICollection<UsuarioRol> UsuarioRoles { get; set; } 
+        public ICollection<UsuarioRol> UsuarioRoles { get; set; }
             = new List<UsuarioRol>();
 
         // Pueden ser o no x roles.

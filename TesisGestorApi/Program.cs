@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using TesisGestorApi.Data;
 using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
@@ -15,7 +18,6 @@ builder.Services.AddScoped<IAsistenciaUmbralService, AsistenciaUmbralService>();
 builder.Services.AddScoped<IScannerService, ScannerService>();
 builder.Services.AddScoped<IRetiroService, RetiroService>();
 
-
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IQrCredentialGenerationService, QrCredentialGenerationService>();
 builder.Services.AddScoped<IQrCredentialDeliveryService, QrCredentialDeliveryService>();
@@ -25,6 +27,26 @@ builder.Services.AddScoped<IQrCredentialEmailTemplateService, QrCredentialEmailT
 builder.Services.AddSingleton<QrCredentialGenerationProgressStore>();
 builder.Services.AddSingleton<QrCredentialDeliveryProgressStore>();
 
+builder.Services.AddScoped<IUsuariosRolesService, UsuariosRolesService>();
+
+// Auth
+builder.Services.AddScoped<ITokenService, TokenService>();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Emisor"],
+            ValidAudience = builder.Configuration["Jwt:Audiencia"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Clave"]!))
+        };
+    });
 
 // Controllers
 builder.Services.AddControllers();
@@ -62,6 +84,7 @@ app.UseSwaggerUI();
 
 // Middleware
 app.UseCors();
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
