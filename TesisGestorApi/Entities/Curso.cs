@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace TesisGestorApi.Entities
 {
@@ -7,7 +7,7 @@ namespace TesisGestorApi.Entities
         [Key]
         public Guid IdCurso { get; set; }
 
-        public string Codigo { get; set; } = null!;  //Union entre Año y Division
+        public string Codigo { get; set; } = null!;
         public bool Estado { get; set; }
         public DateTime AñoLectivo { get; set; }
 
@@ -17,21 +17,17 @@ namespace TesisGestorApi.Entities
         public Guid IdDivision { get; set; }
         public Division Division { get; set; } = null!;
 
-        
-        public ICollection<DetalleCursado> DetallesCursado { get; set; } // Estudiantes de ese curso
+        // Preceptor asignado (nullable)
+        public Guid? IdPreceptor { get; set; }
+        public Preceptor? Preceptor { get; set; }
+
+        public ICollection<DetalleCursado> DetallesCursado { get; set; }
             = new List<DetalleCursado>();
 
-       
-        public ICollection<EspacioCurricular> EspaciosCurriculares { get; set; }  // Materias del curso
+        public ICollection<EspacioCurricular> EspaciosCurriculares { get; set; }
             = new List<EspacioCurricular>();
 
-        
-        public ICollection<Horario> Horarios { get; set; } // Horarios del curso
+        public ICollection<Horario> Horarios { get; set; }
             = new List<Horario>();
-
-        
-        public ICollection<Preceptor> Preceptores { get; set; } // Preceptores asignados
-            = new List<Preceptor>();
     }
-
 }

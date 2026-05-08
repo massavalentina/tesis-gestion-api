@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260505235438_AddFotoEstudiante")]
+    partial class AddFotoEstudiante
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -360,16 +363,11 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdDivision")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("IdPreceptor")
-                        .HasColumnType("uuid");
-
                     b.HasKey("IdCurso");
 
                     b.HasIndex("IdAnio");
 
                     b.HasIndex("IdDivision");
-
-                    b.HasIndex("IdPreceptor");
 
                     b.ToTable("Cursos");
                 });
@@ -418,8 +416,24 @@ namespace TesisGestorApi.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Apellido")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Documento")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid>("IdUsuario")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.HasKey("IdDocente");
 
@@ -441,7 +455,7 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdCurso")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("IdDocente")
+                    b.Property<Guid>("IdDocente")
                         .HasColumnType("uuid");
 
                     b.HasKey("IdEC");
@@ -523,84 +537,41 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Horarios");
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.Permiso", b =>
-                {
-                    b.Property<Guid>("IdPermiso")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Accion")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Codigo")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Descripcion")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Modulo")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Nombre")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("IdPermiso");
-
-                    b.ToTable("Permisos");
-                });
-
             modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
                 {
                     b.Property<Guid>("IdPreceptor")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Apellido")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CursoIdCurso")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Documento")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("IdCurso")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("IdUsuario")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("IdPreceptor");
+
+                    b.HasIndex("CursoIdCurso");
 
                     b.HasIndex("IdUsuario")
                         .IsUnique();
 
                     b.ToTable("Preceptores");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.RefreshToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("Expiracion")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("FechaCreacion")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("IdUsuario")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("Revocado")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Token")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IdUsuario");
-
-                    b.HasIndex("Token")
-                        .IsUnique();
-
-                    b.ToTable("RefreshTokens");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.RetiroAnticipado", b =>
@@ -690,28 +661,6 @@ namespace TesisGestorApi.Migrations
                     b.HasKey("IdRol");
 
                     b.ToTable("Roles");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.RolPermiso", b =>
-                {
-                    b.Property<Guid>("IdRolPermiso")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("IdPermiso")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("IdRol")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("IdRolPermiso");
-
-                    b.HasIndex("IdPermiso");
-
-                    b.HasIndex("IdRol", "IdPermiso")
-                        .IsUnique();
-
-                    b.ToTable("RolPermisos");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.TipoAsistencia", b =>
@@ -814,54 +763,21 @@ namespace TesisGestorApi.Migrations
                     b.Property<bool>("Activo")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("Apellido")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("BloqueadoHasta")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Contraseña")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Documento")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<DateTime>("FechaCreacion")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("FechaVencimientoContrasena")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("IntentosFailidos")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Nombre")
+                    b.Property<string>("Mail")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<bool>("RequiereCambioContrasena")
+                    b.Property<bool>("Verificado")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("Telefono")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("UltimoLogin")
-                        .HasColumnType("timestamp with time zone");
-
                     b.HasKey("IdUsuario");
-
-                    b.HasIndex("Documento")
-                        .IsUnique();
-
-                    b.HasIndex("Email")
-                        .IsUnique();
 
                     b.ToTable("Usuarios");
                 });
@@ -1021,16 +937,9 @@ namespace TesisGestorApi.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("TesisGestorApi.Entities.Preceptor", "Preceptor")
-                        .WithMany("Cursos")
-                        .HasForeignKey("IdPreceptor")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.Navigation("Anio");
 
                     b.Navigation("Division");
-
-                    b.Navigation("Preceptor");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.DetalleCursado", b =>
@@ -1080,7 +989,8 @@ namespace TesisGestorApi.Migrations
                     b.HasOne("TesisGestorApi.Entities.Docente", "Docente")
                         .WithMany("EspaciosCurriculares")
                         .HasForeignKey("IdDocente")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("Curricula");
 
@@ -1110,22 +1020,19 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
                 {
+                    b.HasOne("TesisGestorApi.Entities.Curso", "Curso")
+                        .WithMany("Preceptores")
+                        .HasForeignKey("CursoIdCurso")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
                         .WithOne("Preceptor")
                         .HasForeignKey("TesisGestorApi.Entities.Preceptor", "IdUsuario")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Usuario");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.RefreshToken", b =>
-                {
-                    b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
-                        .WithMany()
-                        .HasForeignKey("IdUsuario")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Navigation("Curso");
 
                     b.Navigation("Usuario");
                 });
@@ -1158,25 +1065,6 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Estudiante");
 
                     b.Navigation("Tutor");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.RolPermiso", b =>
-                {
-                    b.HasOne("TesisGestorApi.Entities.Permiso", "Permiso")
-                        .WithMany("RolPermisos")
-                        .HasForeignKey("IdPermiso")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TesisGestorApi.Entities.Rol", "Rol")
-                        .WithMany("RolPermisos")
-                        .HasForeignKey("IdRol")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Permiso");
-
-                    b.Navigation("Rol");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.TutorEstudiante", b =>
@@ -1244,6 +1132,8 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("EspaciosCurriculares");
 
                     b.Navigation("Horarios");
+
+                    b.Navigation("Preceptores");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.Division", b =>
@@ -1281,19 +1171,8 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("ClasesDictadas");
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.Permiso", b =>
-                {
-                    b.Navigation("RolPermisos");
-
-            modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
-                {
-                    b.Navigation("Cursos");
-                });
-
             modelBuilder.Entity("TesisGestorApi.Entities.Rol", b =>
                 {
-                    b.Navigation("RolPermisos");
-
                     b.Navigation("UsuarioRoles");
                 });
 

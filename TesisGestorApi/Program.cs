@@ -12,6 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
     opciones.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+builder.Services.AddScoped<IUsuarioService, UsuarioService>();
+//builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IParteDiarioService, ParteDiarioService>();
 builder.Services.AddScoped<IAsistenciaService, AsistenciaService>();
 builder.Services.AddScoped<IAsistenciaUmbralService, AsistenciaUmbralService>();
@@ -48,6 +50,25 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+// JWT Authentication
+//var jwtSection = builder.Configuration.GetSection("Jwt");
+//var secretKey  = Encoding.UTF8.GetBytes(jwtSection["SecretKey"]!);
+
+//builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+//    .AddJwtBearer(options =>
+//    {
+//        options.TokenValidationParameters = new TokenValidationParameters
+//        {
+//            ValidateIssuerSigningKey = true,
+//            IssuerSigningKey         = new SymmetricSecurityKey(secretKey),
+//            ValidateIssuer           = true,
+//            ValidIssuer              = jwtSection["Issuer"],
+//            ValidateAudience         = true,
+//            ValidAudience            = jwtSection["Audience"],
+//            ClockSkew                = TimeSpan.Zero,
+//        };
+//    });
+
 // Controllers
 builder.Services.AddControllers();
 
@@ -68,14 +89,12 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Migraciones automáticas fuera de Development
-if (!app.Environment.IsDevelopment())
+// Migraciones automáticas y seed (en todos los entornos)
+using (var scope = app.Services.CreateScope())
 {
-    using (var scope = app.Services.CreateScope())
-    {
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        db.Database.Migrate();
-    }
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
+    //await DbSeeder.SeedAdminAsync(db);
 }
 
 // Swagger

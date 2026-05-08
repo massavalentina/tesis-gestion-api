@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260507202342_AddAuthFields")]
+    partial class AddAuthFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -214,16 +217,35 @@ namespace TesisGestorApi.Migrations
                     b.Property<int>("AnioLectivo")
                         .HasColumnType("integer");
 
+                    b.Property<int>("CantidadEnviados")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreadoUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<Guid>("IdEstudiante")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ProximoEnvioUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UltimoEnvioUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UltimoError")
+                        .HasColumnType("text");
 
                     b.Property<int>("Umbral")
                         .HasColumnType("integer");
 
                     b.HasKey("IdNotif");
+
+                    b.HasIndex("Estado", "ProximoEnvioUtc");
 
                     b.HasIndex("IdEstudiante", "AnioLectivo", "Umbral")
                         .IsUnique();
@@ -475,9 +497,6 @@ namespace TesisGestorApi.Migrations
                     b.Property<DateTime>("FechaNacimiento")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("FotoEstudiante")
-                        .HasColumnType("text");
-
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasColumnType("text");
@@ -521,37 +540,6 @@ namespace TesisGestorApi.Migrations
                     b.HasIndex("IdEC");
 
                     b.ToTable("Horarios");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.Permiso", b =>
-                {
-                    b.Property<Guid>("IdPermiso")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Accion")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Codigo")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Descripcion")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Modulo")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Nombre")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("IdPermiso");
-
-                    b.ToTable("Permisos");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
@@ -690,28 +678,6 @@ namespace TesisGestorApi.Migrations
                     b.HasKey("IdRol");
 
                     b.ToTable("Roles");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.RolPermiso", b =>
-                {
-                    b.Property<Guid>("IdRolPermiso")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("IdPermiso")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("IdRol")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("IdRolPermiso");
-
-                    b.HasIndex("IdPermiso");
-
-                    b.HasIndex("IdRol", "IdPermiso")
-                        .IsUnique();
-
-                    b.ToTable("RolPermisos");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.TipoAsistencia", b =>
@@ -1160,25 +1126,6 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Tutor");
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.RolPermiso", b =>
-                {
-                    b.HasOne("TesisGestorApi.Entities.Permiso", "Permiso")
-                        .WithMany("RolPermisos")
-                        .HasForeignKey("IdPermiso")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TesisGestorApi.Entities.Rol", "Rol")
-                        .WithMany("RolPermisos")
-                        .HasForeignKey("IdRol")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Permiso");
-
-                    b.Navigation("Rol");
-                });
-
             modelBuilder.Entity("TesisGestorApi.Entities.TutorEstudiante", b =>
                 {
                     b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
@@ -1281,10 +1228,6 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("ClasesDictadas");
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.Permiso", b =>
-                {
-                    b.Navigation("RolPermisos");
-
             modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
                 {
                     b.Navigation("Cursos");
@@ -1292,8 +1235,6 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("TesisGestorApi.Entities.Rol", b =>
                 {
-                    b.Navigation("RolPermisos");
-
                     b.Navigation("UsuarioRoles");
                 });
 

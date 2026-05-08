@@ -24,6 +24,9 @@ public class EstudianteAsistenciaDto
 
     [JsonPropertyName("course")]
     public string Curso { get; set; } = null!;
+
+    [JsonPropertyName("profileImagePath")]
+    public string? FotoEstudiante { get; set; }
 }
 
 public class AsistenciaEscaneoDto
@@ -33,6 +36,12 @@ public class AsistenciaEscaneoDto
 
     [JsonPropertyName("attendanceType")]
     public string TipoAsistencia { get; set; } = null!;
+
+    [JsonPropertyName("attendanceTypeCode")]
+    public string? TipoAsistenciaCodigo { get; set; }
+
+    [JsonPropertyName("alreadyRegisteredTurno")]
+    public bool YaRegistradoEnTurno { get; set; }
 
     [JsonPropertyName("turno")]
     public string Turno { get; set; } = null!;

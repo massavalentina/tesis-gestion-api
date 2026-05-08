@@ -26,11 +26,7 @@ namespace TesisGestorApi.Controllers
             }
             catch (AsistenciaException ex)
             {
-                return Conflict(new
-                {
-                    code = ex.Code,
-                    message = ex.Message
-                });
+                return Conflict(CrearErrorRespuesta(ex));
             }
         }
 
@@ -45,17 +41,13 @@ namespace TesisGestorApi.Controllers
             }
             catch (AsistenciaException ex)
             {
-                return Conflict(new
-                {
-                    code = ex.Code,
-                    message = ex.Message
-                });
+                return Conflict(CrearErrorRespuesta(ex));
             }
         }
 
-        [HttpGet("cursosscanner")]
-        public async Task<IActionResult> GetCursos()
-            => Ok(await _scannerService.ObtenerCursosScannerAsync());
+        [HttpGet("session-turno")]
+        public IActionResult GetTurnoSesion([FromQuery] string? turno)
+            => Ok(_scannerService.ObtenerTurnoSesion(turno));
 
         [HttpGet("turnos")]
         public IActionResult GetTurnos()
@@ -65,6 +57,10 @@ namespace TesisGestorApi.Controllers
         public async Task<IActionResult> GetTiposAsistencia()
             => Ok(await _scannerService.ObtenerTiposAsistenciaAsync());
 
+        private static object CrearErrorRespuesta(AsistenciaException ex)
+            => ex.Details is null
+                ? new { code = ex.Code, message = ex.Message }
+                : new { code = ex.Code, message = ex.Message, details = ex.Details };
 
     }
 }

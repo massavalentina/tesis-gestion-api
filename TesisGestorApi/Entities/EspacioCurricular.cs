@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace TesisGestorApi.Entities
 {
@@ -9,8 +9,10 @@ namespace TesisGestorApi.Entities
 
         public Guid IdCurso { get; set; }
         public Curso Curso { get; set; } = null!;
-        public Guid IdDocente { get; set; }
-        public Docente Docente { get; set; } = null!;
+
+        // Docente titular (nullable: puede no tener uno asignado aún)
+        public Guid? IdDocente { get; set; }
+        public Docente? Docente { get; set; }
 
         public Guid IdCurricula { get; set; }
         public Curricula Curricula { get; set; } = null!;
@@ -18,6 +20,4 @@ namespace TesisGestorApi.Entities
         public ICollection<Horario> Horarios { get; set; } = new List<Horario>();
         public ICollection<ClaseDictada> ClasesDictadas { get; set; } = new List<ClaseDictada>();
     }
-
-
 }
