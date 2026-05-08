@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace TesisGestorApi.Entities
 {
@@ -7,18 +7,10 @@ namespace TesisGestorApi.Entities
         [Key]
         public Guid IdDocente { get; set; }
 
-        public string Nombre { get; set; } = null!;
-        public string Apellido { get; set; } = null!;
-        public string Email { get; set; } = null!;
-        public string Documento { get; set; } = null!;
-
-        
         public Guid IdUsuario { get; set; }
-        public Usuario Usuario { get; set; }
+        public Usuario Usuario { get; set; } = null!;
 
-        
         public ICollection<EspacioCurricular> EspaciosCurriculares { get; set; }
             = new List<EspacioCurricular>();
     }
-
 }

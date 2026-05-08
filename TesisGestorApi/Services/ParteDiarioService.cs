@@ -65,6 +65,7 @@ namespace TesisGestorApi.Services
                     .ThenInclude(ec => ec.Curricula)
                 .Include(h => h.EspacioCurricular)
                     .ThenInclude(ec => ec.Docente)
+                        .ThenInclude(d => d!.Usuario)
                 .Where(h => h.IdCurso == cursoId && h.DíaSemana == diaSemana)
                 .OrderBy(h => h.HorarioEntrada)
                 .ToListAsync();
@@ -213,7 +214,9 @@ namespace TesisGestorApi.Services
                     IdEC                = h.IdEC,
                     IdClaseDictada      = clase?.IdClaseDictada,
                     Materia             = h.EspacioCurricular.Curricula.Nombre,
-                    Docente             = $"{h.EspacioCurricular.Docente.Apellido}, {h.EspacioCurricular.Docente.Nombre}",
+                    Docente             = h.EspacioCurricular.Docente != null
+                                          ? $"{h.EspacioCurricular.Docente.Usuario.Apellido}, {h.EspacioCurricular.Docente.Usuario.Nombre}"
+                                          : "—",
                     HoraEntrada         = entradaEf.ToString(@"hh\:mm"),
                     HoraSalida          = salidaEf.ToString(@"hh\:mm"),
                     HoraEntradaOriginal = tieneOverride ? h.HorarioEntrada.ToString(@"hh\:mm") : null,

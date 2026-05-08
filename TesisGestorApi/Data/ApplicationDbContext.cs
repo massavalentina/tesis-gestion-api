@@ -43,6 +43,7 @@ namespace TesisGestorApi.Data
 
         // ===== Seguridad / Otros =====
         public DbSet<Usuario> Usuarios { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<CredencialQR> CredencialesQR { get; set; }
         public DbSet<Rol> Roles { get; set; }
         public DbSet<UsuarioRol> UsuariosRoles { get; set; }
@@ -67,6 +68,22 @@ namespace TesisGestorApi.Data
                 .WithMany(r => r.UsuarioRoles)
                 .HasForeignKey(ur => ur.IdRol)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Usuario>()
+                .HasIndex(u => u.Email).IsUnique();
+
+            modelBuilder.Entity<Usuario>()
+                .HasIndex(u => u.Documento).IsUnique();
+
+            modelBuilder.Entity<RefreshToken>()
+                .HasOne(rt => rt.Usuario)
+                .WithMany()
+                .HasForeignKey(rt => rt.IdUsuario)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<RefreshToken>()
+                .HasIndex(rt => rt.Token)
+                .IsUnique();
 
             modelBuilder.Entity<Docente>()
                 .HasOne(d => d.Usuario)
@@ -138,8 +155,17 @@ namespace TesisGestorApi.Data
                 entity.HasOne(e => e.Docente)
                       .WithMany(d => d.EspaciosCurriculares)
                       .HasForeignKey(e => e.IdDocente)
-                      .OnDelete(DeleteBehavior.Restrict);
+                      .IsRequired(false)
+                      .OnDelete(DeleteBehavior.SetNull);
             });
+
+            // Preceptor 1:N Curso — el FK nullable vive en Curso
+            modelBuilder.Entity<Curso>()
+                .HasOne(c => c.Preceptor)
+                .WithMany(p => p.Cursos)
+                .HasForeignKey(c => c.IdPreceptor)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
 
             modelBuilder.Entity<Horario>(entity =>
             {

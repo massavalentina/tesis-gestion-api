@@ -79,9 +79,26 @@ SET
     "ValorBase"   = EXCLUDED."ValorBase";
 
 -- =========================================================
--- 2) SEGURIDAD MINIMA PARA DOCENTES DE PRUEBA
+-- 2) ROLES
 -- =========================================================
 
+INSERT INTO public."Roles" ("IdRol", "Nombre")
+VALUES
+    ('11111111-1111-1111-1111-111111111111', 'Admin'),
+    ('22222222-2222-2222-2222-222222222222', 'Docente'),
+    ('33333333-3333-3333-3333-333333333333', 'Preceptor'),
+    ('44444444-4444-4444-4444-444444444444', 'Equipo Directivo'),
+    ('55555555-5555-5555-5555-555555555555', 'Secretario')
+ON CONFLICT ("IdRol") DO UPDATE
+SET "Nombre" = EXCLUDED."Nombre";
+
+-- =========================================================
+-- 3) USUARIOS + ROLES DE PRUEBA
+-- =========================================================
+
+-- Usuarios docentes
+-- Nota: "Contraseña" es un hash BCrypt placeholder. Los usuarios seed no pueden
+-- iniciar sesión hasta que se genere un hash real con BCrypt.HashPassword("123456", 12).
 WITH docentes_seed AS (
     SELECT *
     FROM (VALUES
@@ -90,76 +107,107 @@ WITH docentes_seed AS (
         ('docente.seed.03@example.test', 'Docente', 'Tres',  'DOC-0003'),
         ('docente.seed.04@example.test', 'Docente', 'Cuatro','DOC-0004'),
         ('docente.seed.05@example.test', 'Docente', 'Cinco', 'DOC-0005')
-    ) d(mail, nombre, apellido, documento)
+    ) d(email, nombre, apellido, documento)
 )
-INSERT INTO public."Usuarios" ("IdUsuario", "Contraseña", "Mail", "Activo", "Verificado", "FechaCreacion")
+INSERT INTO public."Usuarios" ("IdUsuario", "Contraseña", "Nombre", "Apellido", "Email", "Documento", "Activo", "FechaCreacion")
 SELECT
-    public.seed_uuid('usuario|' || d.mail),
-    '123456',
-    d.mail,
-    true,
+    public.seed_uuid('usuario|' || d.email),
+    '$2a$12$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    d.nombre,
+    d.apellido,
+    d.email,
+    d.documento,
     true,
     '2026-01-01 00:00:00+00'::timestamptz
 FROM docentes_seed d
 ON CONFLICT ("IdUsuario") DO UPDATE
 SET
-    "Mail"        = EXCLUDED."Mail",
-    "Activo"      = EXCLUDED."Activo",
-    "Verificado"  = EXCLUDED."Verificado",
-    "FechaCreacion" = EXCLUDED."FechaCreacion";
+    "Nombre"          = EXCLUDED."Nombre",
+    "Apellido"        = EXCLUDED."Apellido",
+    "Email"           = EXCLUDED."Email",
+    "Documento"       = EXCLUDED."Documento",
+    "Activo"          = EXCLUDED."Activo",
+    "FechaCreacion"   = EXCLUDED."FechaCreacion";
 
+-- Asignar rol Docente
+WITH docentes_seed AS (
+    SELECT email FROM (VALUES
+        ('docente.seed.01@example.test'),
+        ('docente.seed.02@example.test'),
+        ('docente.seed.03@example.test'),
+        ('docente.seed.04@example.test'),
+        ('docente.seed.05@example.test')
+    ) d(email)
+)
+INSERT INTO public."UsuariosRoles" ("IdUsuario", "IdRol")
+SELECT public.seed_uuid('usuario|' || email), '22222222-2222-2222-2222-222222222222'
+FROM docentes_seed
+ON CONFLICT DO NOTHING;
+
+-- Usuarios preceptores
 WITH preceptores_seed AS (
     SELECT *
     FROM (VALUES
-        ('preceptor.seed.01@example.test', 'Preceptor', 'Uno', 'PREC-0001', '1A-2026'),
-        ('preceptor.seed.02@example.test', 'Preceptor', 'Dos', 'PREC-0002', '1B-2026')
-    ) p(mail, nombre, apellido, documento, curso_codigo)
+        ('preceptor.seed.01@example.test', 'Preceptor', 'Uno', 'PREC-0001'),
+        ('preceptor.seed.02@example.test', 'Preceptor', 'Dos', 'PREC-0002')
+    ) p(email, nombre, apellido, documento)
 )
-INSERT INTO public."Usuarios" ("IdUsuario", "Contraseña", "Mail", "Activo", "Verificado", "FechaCreacion")
+INSERT INTO public."Usuarios" ("IdUsuario", "Contraseña", "Nombre", "Apellido", "Email", "Documento", "Activo", "FechaCreacion")
 SELECT
-    public.seed_uuid('usuario|' || p.mail),
-    '123456',
-    p.mail,
-    true,
+    public.seed_uuid('usuario|' || p.email),
+    '$2a$12$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    p.nombre,
+    p.apellido,
+    p.email,
+    p.documento,
     true,
     '2026-01-01 00:00:00+00'::timestamptz
 FROM preceptores_seed p
 ON CONFLICT ("IdUsuario") DO UPDATE
 SET
-    "Mail"        = EXCLUDED."Mail",
-    "Activo"      = EXCLUDED."Activo",
-    "Verificado"  = EXCLUDED."Verificado",
-    "FechaCreacion" = EXCLUDED."FechaCreacion";
+    "Nombre"          = EXCLUDED."Nombre",
+    "Apellido"        = EXCLUDED."Apellido",
+    "Email"           = EXCLUDED."Email",
+    "Documento"       = EXCLUDED."Documento",
+    "Activo"          = EXCLUDED."Activo",
+    "FechaCreacion"   = EXCLUDED."FechaCreacion";
+
+-- Asignar rol Preceptor
+WITH preceptores_seed AS (
+    SELECT email FROM (VALUES
+        ('preceptor.seed.01@example.test'),
+        ('preceptor.seed.02@example.test')
+    ) p(email)
+)
+INSERT INTO public."UsuariosRoles" ("IdUsuario", "IdRol")
+SELECT public.seed_uuid('usuario|' || email), '33333333-3333-3333-3333-333333333333'
+FROM preceptores_seed
+ON CONFLICT DO NOTHING;
+
+-- =========================================================
+-- 4) DOCENTES (solo IdDocente + IdUsuario)
+-- =========================================================
 
 WITH docentes_seed AS (
     SELECT *
     FROM (VALUES
-        ('docente.seed.01@example.test', 'Docente', 'Uno',   'DOC-0001'),
-        ('docente.seed.02@example.test', 'Docente', 'Dos',   'DOC-0002'),
-        ('docente.seed.03@example.test', 'Docente', 'Tres',  'DOC-0003'),
-        ('docente.seed.04@example.test', 'Docente', 'Cuatro','DOC-0004'),
-        ('docente.seed.05@example.test', 'Docente', 'Cinco', 'DOC-0005')
-    ) d(mail, nombre, apellido, documento)
+        ('docente.seed.01@example.test'),
+        ('docente.seed.02@example.test'),
+        ('docente.seed.03@example.test'),
+        ('docente.seed.04@example.test'),
+        ('docente.seed.05@example.test')
+    ) d(email)
 )
-INSERT INTO public."Docentes" ("IdDocente", "IdUsuario", "Documento", "Nombre", "Apellido", "Email")
+INSERT INTO public."Docentes" ("IdDocente", "IdUsuario")
 SELECT
-    public.seed_uuid('docente|' || d.mail),
-    public.seed_uuid('usuario|' || d.mail),
-    d.documento,
-    d.nombre,
-    d.apellido,
-    d.mail
+    public.seed_uuid('docente|' || d.email),
+    public.seed_uuid('usuario|' || d.email)
 FROM docentes_seed d
 ON CONFLICT ("IdDocente") DO UPDATE
-SET
-    "IdUsuario" = EXCLUDED."IdUsuario",
-    "Documento" = EXCLUDED."Documento",
-    "Nombre"    = EXCLUDED."Nombre",
-    "Apellido"  = EXCLUDED."Apellido",
-    "Email"     = EXCLUDED."Email";
+SET "IdUsuario" = EXCLUDED."IdUsuario";
 
 -- =========================================================
--- 3) CURRICULAS BASE (Estado es TEXT)
+-- 5) CURRICULAS BASE
 -- =========================================================
 
 WITH curriculas AS (
@@ -205,7 +253,7 @@ SET
     "Estado"        = EXCLUDED."Estado";
 
 -- =========================================================
--- 4) CURSOS (21 = 7 anios x 3 divisiones)
+-- 6) CURSOS (21 = 7 anios x 3 divisiones)
 -- =========================================================
 
 WITH anios AS (
@@ -235,37 +283,36 @@ SET
     "Estado"      = EXCLUDED."Estado",
     "AñoLectivo"  = EXCLUDED."AñoLectivo";
 
--- Preceptores seed (2) con su usuario.
+-- =========================================================
+-- 7) PRECEPTORES (IdPreceptor + IdUsuario) y asignacion a cursos
+-- =========================================================
+
 WITH preceptores_seed AS (
     SELECT *
     FROM (VALUES
-        ('preceptor.seed.01@example.test', 'Preceptor', 'Uno', 'PREC-0001', '1A-2026'),
-        ('preceptor.seed.02@example.test', 'Preceptor', 'Dos', 'PREC-0002', '1B-2026')
-    ) p(mail, nombre, apellido, documento, curso_codigo)
+        ('preceptor.seed.01@example.test'),
+        ('preceptor.seed.02@example.test')
+    ) p(email)
 )
-INSERT INTO public."Preceptores" ("IdPreceptor", "Nombre", "Apellido", "Documento", "IdCurso", "CursoIdCurso", "IdUsuario")
+INSERT INTO public."Preceptores" ("IdPreceptor", "IdUsuario")
 SELECT
-    public.seed_uuid('preceptor|' || p.mail),
-    p.nombre,
-    p.apellido,
-    p.documento,
-    c."IdCurso",
-    c."IdCurso",
-    public.seed_uuid('usuario|' || p.mail)
+    public.seed_uuid('preceptor|' || p.email),
+    public.seed_uuid('usuario|' || p.email)
 FROM preceptores_seed p
-INNER JOIN public."Cursos" c
-    ON c."Codigo" = p.curso_codigo
 ON CONFLICT ("IdPreceptor") DO UPDATE
-SET
-    "Nombre"      = EXCLUDED."Nombre",
-    "Apellido"    = EXCLUDED."Apellido",
-    "Documento"   = EXCLUDED."Documento",
-    "IdCurso"     = EXCLUDED."IdCurso",
-    "CursoIdCurso" = EXCLUDED."CursoIdCurso",
-    "IdUsuario"   = EXCLUDED."IdUsuario";
+SET "IdUsuario" = EXCLUDED."IdUsuario";
+
+-- Asignar preceptores a sus cursos (FK ahora está en Cursos.IdPreceptor)
+UPDATE public."Cursos"
+SET "IdPreceptor" = public.seed_uuid('preceptor|preceptor.seed.01@example.test')
+WHERE "Codigo" = '1A-2026';
+
+UPDATE public."Cursos"
+SET "IdPreceptor" = public.seed_uuid('preceptor|preceptor.seed.02@example.test')
+WHERE "Codigo" = '1B-2026';
 
 -- =========================================================
--- 5) ESPACIOS CURRICULARES (docente asignado)
+-- 8) ESPACIOS CURRICULARES (docente asignado)
 -- =========================================================
 
 WITH materias_plan AS (
@@ -300,10 +347,11 @@ cursos AS (
 ),
 doc_pool AS (
     SELECT
-        array_agg(d."IdDocente" ORDER BY d."Email") AS ids,
+        array_agg(d."IdDocente" ORDER BY u."Email") AS ids,
         count(*)::int AS n
     FROM public."Docentes" d
-    WHERE d."Email" LIKE 'docente.seed.%@example.test'
+    INNER JOIN public."Usuarios" u ON u."IdUsuario" = d."IdUsuario"
+    WHERE u."Email" LIKE 'docente.seed.%@example.test'
 )
 INSERT INTO public."EspaciosCurriculares" ("IdEC", "IdCurso", "IdCurricula", "IdDocente")
 SELECT
@@ -321,7 +369,7 @@ SET
     "IdDocente"   = EXCLUDED."IdDocente";
 
 -- =========================================================
--- 6) HORARIOS POR CURSO (grilla particular por curso)
+-- 9) HORARIOS POR CURSO
 -- =========================================================
 
 WITH materias_plan AS (
@@ -424,14 +472,14 @@ INNER JOIN ec_map em
    AND em.ord = (((s.dia - 1) * 5 + s.slot + c.curso_pos - 2) % 16) + 1
 ON CONFLICT ("IdHorario") DO UPDATE
 SET
-    "DíaSemana"     = EXCLUDED."DíaSemana",
+    "DíaSemana"      = EXCLUDED."DíaSemana",
     "HorarioEntrada" = EXCLUDED."HorarioEntrada",
     "HorarioSalida"  = EXCLUDED."HorarioSalida",
     "IdCurso"        = EXCLUDED."IdCurso",
     "IdEC"           = EXCLUDED."IdEC";
 
 -- =========================================================
--- 7) ESTUDIANTES (30 por curso = 630)
+-- 10) ESTUDIANTES (30 por curso = 630)
 -- =========================================================
 
 WITH cursos AS (
@@ -490,16 +538,16 @@ FROM gen g
 CROSS JOIN cat
 ON CONFLICT ("IdEstudiante") DO UPDATE
 SET
-    "Nombre"         = EXCLUDED."Nombre",
-    "Apellido"       = EXCLUDED."Apellido",
-    "Documento"      = EXCLUDED."Documento",
+    "Nombre"          = EXCLUDED."Nombre",
+    "Apellido"        = EXCLUDED."Apellido",
+    "Documento"       = EXCLUDED."Documento",
     "FechaNacimiento" = EXCLUDED."FechaNacimiento",
-    "Domicilio"      = EXCLUDED."Domicilio",
-    "Sexo"           = EXCLUDED."Sexo",
-    "TeaGeneral"     = EXCLUDED."TeaGeneral";
+    "Domicilio"       = EXCLUDED."Domicilio",
+    "Sexo"            = EXCLUDED."Sexo",
+    "TeaGeneral"      = EXCLUDED."TeaGeneral";
 
 -- =========================================================
--- 8) DETALLES CURSADO (1 activo por estudiante)
+-- 11) DETALLES CURSADO (1 activo por estudiante)
 -- =========================================================
 
 WITH cursos AS (
@@ -532,7 +580,7 @@ SET
     "IdCurso"      = EXCLUDED."IdCurso";
 
 -- =========================================================
--- 9) TUTORES + VINCULO TUTOR/ESTUDIANTE
+-- 12) TUTORES + VINCULO TUTOR/ESTUDIANTE
 -- =========================================================
 
 WITH cursos AS (
@@ -586,15 +634,15 @@ FROM base b
 CROSS JOIN cat
 ON CONFLICT ("IdTutor") DO UPDATE
 SET
-    "Nombre"                  = EXCLUDED."Nombre",
-    "Apellido"                = EXCLUDED."Apellido",
-    "Documento"               = EXCLUDED."Documento",
-    "Telefono"                = EXCLUDED."Telefono",
-    "Correo"                  = EXCLUDED."Correo",
-    "RelacionEstudiante"      = EXCLUDED."RelacionEstudiante",
-    "FechaNacimiento"         = EXCLUDED."FechaNacimiento",
-    "Disponibilidad"          = EXCLUDED."Disponibilidad",
-    "Domicilio"               = EXCLUDED."Domicilio",
+    "Nombre"                   = EXCLUDED."Nombre",
+    "Apellido"                 = EXCLUDED."Apellido",
+    "Documento"                = EXCLUDED."Documento",
+    "Telefono"                 = EXCLUDED."Telefono",
+    "Correo"                   = EXCLUDED."Correo",
+    "RelacionEstudiante"       = EXCLUDED."RelacionEstudiante",
+    "FechaNacimiento"          = EXCLUDED."FechaNacimiento",
+    "Disponibilidad"           = EXCLUDED."Disponibilidad",
+    "Domicilio"                = EXCLUDED."Domicilio",
     "FechaUltimaActualizacion" = EXCLUDED."FechaUltimaActualizacion";
 
 WITH cursos AS (

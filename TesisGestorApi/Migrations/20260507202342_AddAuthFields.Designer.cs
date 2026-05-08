@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260507202342_AddAuthFields")]
+    partial class AddAuthFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -214,16 +217,35 @@ namespace TesisGestorApi.Migrations
                     b.Property<int>("AnioLectivo")
                         .HasColumnType("integer");
 
+                    b.Property<int>("CantidadEnviados")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreadoUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<Guid>("IdEstudiante")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ProximoEnvioUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UltimoEnvioUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UltimoError")
+                        .HasColumnType("text");
 
                     b.Property<int>("Umbral")
                         .HasColumnType("integer");
 
                     b.HasKey("IdNotif");
+
+                    b.HasIndex("Estado", "ProximoEnvioUtc");
 
                     b.HasIndex("IdEstudiante", "AnioLectivo", "Umbral")
                         .IsUnique();
@@ -474,9 +496,6 @@ namespace TesisGestorApi.Migrations
 
                     b.Property<DateTime>("FechaNacimiento")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FotoEstudiante")
-                        .HasColumnType("text");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
