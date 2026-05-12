@@ -21,15 +21,13 @@ namespace TesisGestorApi.Services
             // Se ordena UsuarioRoles antes del Select para que EF pueda traducirlo a SQL.
             return await _context.Usuarios
                 .AsNoTracking()
-                .OrderBy(u => u.Docente != null ? u.Docente.Apellido
-                            : u.Preceptor != null ? u.Preceptor.Apellido
-                            : u.Mail)
+                .OrderBy(u => u.Apellido)
                 .Select(u => new UsuarioConRolesDto(
                     u.IdUsuario,
-                    u.Mail,
-                    u.Docente != null ? u.Docente.Nombre : u.Preceptor != null ? u.Preceptor.Nombre : null,
-                    u.Docente != null ? u.Docente.Apellido : u.Preceptor != null ? u.Preceptor.Apellido : null,
-                    u.Docente != null ? u.Docente.Documento : u.Preceptor != null ? u.Preceptor.Documento : null,
+                    u.Email,
+                    u.Nombre,
+                    u.Apellido,
+                    u.Documento,
                     u.Preceptor != null ? (bool?)u.Preceptor.EsDelegado : null,
                     u.UsuarioRoles
                         .OrderBy(ur => ur.Rol.Nombre)
@@ -53,13 +51,28 @@ namespace TesisGestorApi.Services
             var yaExiste = await _context.UsuariosRoles
                 .AnyAsync(ur => ur.IdUsuario == idUsuario && ur.IdRol == idRol, ct);
 
-            if (yaExiste) return;
-
-            _context.UsuariosRoles.Add(new UsuarioRol
+            if (!yaExiste)
             {
-                IdUsuario = idUsuario,
-                IdRol = idRol
-            });
+                _context.UsuariosRoles.Add(new UsuarioRol { IdUsuario = idUsuario, IdRol = idRol });
+            }
+
+            var nombreRol = await _context.Roles
+                .Where(r => r.IdRol == idRol)
+                .Select(r => r.Nombre)
+                .FirstOrDefaultAsync(ct);
+
+            if (nombreRol == "Preceptor")
+            {
+                var existePreceptor = await _context.Preceptores.AnyAsync(p => p.IdUsuario == idUsuario, ct);
+                if (!existePreceptor)
+                    _context.Preceptores.Add(new Preceptor { IdPreceptor = Guid.NewGuid(), IdUsuario = idUsuario });
+            }
+            else if (nombreRol == "Docente")
+            {
+                var existeDocente = await _context.Docentes.AnyAsync(d => d.IdUsuario == idUsuario, ct);
+                if (!existeDocente)
+                    _context.Docentes.Add(new Docente { IdDocente = Guid.NewGuid(), IdUsuario = idUsuario });
+            }
 
             await _context.SaveChangesAsync(ct);
         }
@@ -72,6 +85,23 @@ namespace TesisGestorApi.Services
             if (usuarioRol == null) return;
 
             _context.UsuariosRoles.Remove(usuarioRol);
+
+            var nombreRol = await _context.Roles
+                .Where(r => r.IdRol == idRol)
+                .Select(r => r.Nombre)
+                .FirstOrDefaultAsync(ct);
+
+            if (nombreRol == "Preceptor")
+            {
+                var preceptor = await _context.Preceptores.FirstOrDefaultAsync(p => p.IdUsuario == idUsuario, ct);
+                if (preceptor != null) _context.Preceptores.Remove(preceptor);
+            }
+            else if (nombreRol == "Docente")
+            {
+                var docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+                if (docente != null) _context.Docentes.Remove(docente);
+            }
+
             await _context.SaveChangesAsync(ct);
         }
 
@@ -80,9 +110,16 @@ namespace TesisGestorApi.Services
             var preceptor = await _context.Preceptores
                 .FirstOrDefaultAsync(p => p.IdUsuario == idUsuario, ct);
 
-            if (preceptor == null) return;
+            if (preceptor == null)
+            {
+                if (!esDelegado) return;
+                _context.Preceptores.Add(new Preceptor { IdPreceptor = Guid.NewGuid(), IdUsuario = idUsuario, EsDelegado = true });
+            }
+            else
+            {
+                preceptor.EsDelegado = esDelegado;
+            }
 
-            preceptor.EsDelegado = esDelegado;
             await _context.SaveChangesAsync(ct);
         }
     }

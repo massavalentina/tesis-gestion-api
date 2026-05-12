@@ -248,6 +248,7 @@ namespace TesisGestorApi.Services
                 Roles        = u.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList(),
                 IdDocente    = u.Docente?.IdDocente,
                 IdPreceptor  = u.Preceptor?.IdPreceptor,
+                EsDelegado   = u.Preceptor?.EsDelegado,
             };
         }
 

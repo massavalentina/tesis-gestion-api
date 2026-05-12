@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs.Auth;
+using TesisGestorApi.Entities;
 using TesisGestorApi.Interfaces;
 
 [ApiController]
@@ -22,16 +23,19 @@ public class DevLoginController : ControllerBase
     [HttpGet("login/usuarios")]
     public async Task<ActionResult<List<DevLoginUsuarioDto>>> GetUsuarios()
     {
-        var usuarios = await _context.Usuarios
+        // Materializar primero para evitar problemas de traducción EF con colecciones anidadas
+        var entidades = await _context.Usuarios
             .AsNoTracking()
             .Include(u => u.UsuarioRoles)
                 .ThenInclude(ur => ur.Rol)
-            .Select(u => new DevLoginUsuarioDto(
-                u.IdUsuario,
-                u.Mail,
-                u.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList()
-            ))
+            .OrderBy(u => u.Apellido)
             .ToListAsync();
+
+        var usuarios = entidades.Select(u => new DevLoginUsuarioDto(
+            u.IdUsuario,
+            u.Email,
+            u.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList()
+        )).ToList();
 
         return Ok(usuarios);
     }
@@ -55,8 +59,14 @@ public class DevLoginController : ControllerBase
         var accessToken = _tokenService.GenerarAccessToken(usuario);
         var refreshToken = _tokenService.GenerarRefreshToken();
 
-        usuario.RefreshToken = refreshToken;
-        usuario.RefreshTokenVencimiento = DateTime.UtcNow.AddDays(7);
+        _context.RefreshTokens.Add(new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            Token = refreshToken,
+            FechaCreacion = DateTime.UtcNow,
+            Expiracion = DateTime.UtcNow.AddDays(7),
+            IdUsuario = usuario.IdUsuario
+        });
         await _context.SaveChangesAsync();
 
         return Ok(new TokenResponseDto(accessToken, refreshToken));

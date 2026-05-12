@@ -57,7 +57,7 @@ namespace TesisGestorApi.Services
                     claims.Add(new Claim("permisos", "CREDENCIALES_QR_RW"));
             }
 
-            if (roles.Contains("Administrador"))
+            if (roles.Contains("Admin"))
                 claims.Add(new Claim("es_admin", "true"));
 
             var token = new JwtSecurityToken(
@@ -78,23 +78,34 @@ namespace TesisGestorApi.Services
 
         public async Task<TokenResponseDto> RefrescarTokenAsync(string refreshToken)
         {
-            var usuario = await _context.Usuarios
-                .Include(u => u.UsuarioRoles)
-                    .ThenInclude(ur => ur.Rol)
-                        .ThenInclude(r => r.RolPermisos)
-                            .ThenInclude(rp => rp.Permiso)
-                .Include(u => u.Docente)
-                .Include(u => u.Preceptor)
-                .FirstOrDefaultAsync(u => u.RefreshToken == refreshToken);
+            var tokenEntity = await _context.RefreshTokens
+                .Include(rt => rt.Usuario)
+                    .ThenInclude(u => u.UsuarioRoles)
+                        .ThenInclude(ur => ur.Rol)
+                            .ThenInclude(r => r.RolPermisos)
+                                .ThenInclude(rp => rp.Permiso)
+                .Include(rt => rt.Usuario)
+                    .ThenInclude(u => u.Docente)
+                .Include(rt => rt.Usuario)
+                    .ThenInclude(u => u.Preceptor)
+                .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
 
-            if (usuario == null || usuario.RefreshTokenVencimiento <= DateTime.UtcNow)
+            if (tokenEntity == null || tokenEntity.Revocado || tokenEntity.Expiracion <= DateTime.UtcNow)
                 throw new UnauthorizedAccessException("Refresh token inválido o vencido.");
 
+            var usuario = tokenEntity.Usuario;
             var nuevoAccessToken = GenerarAccessToken(usuario);
             var nuevoRefreshToken = GenerarRefreshToken();
 
-            usuario.RefreshToken = nuevoRefreshToken;
-            usuario.RefreshTokenVencimiento = DateTime.UtcNow.AddDays(7);
+            tokenEntity.Revocado = true;
+            _context.RefreshTokens.Add(new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                Token = nuevoRefreshToken,
+                FechaCreacion = DateTime.UtcNow,
+                Expiracion = DateTime.UtcNow.AddDays(7),
+                IdUsuario = usuario.IdUsuario
+            });
             await _context.SaveChangesAsync();
 
             return new TokenResponseDto(nuevoAccessToken, nuevoRefreshToken);
@@ -102,11 +113,7 @@ namespace TesisGestorApi.Services
 
         private static string ObtenerNombreCompleto(Usuario usuario)
         {
-            if (usuario.Docente != null)
-                return $"{usuario.Docente.Nombre} {usuario.Docente.Apellido}";
-            if (usuario.Preceptor != null)
-                return $"{usuario.Preceptor.Nombre} {usuario.Preceptor.Apellido}";
-            return usuario.Mail;
+            return $"{usuario.Nombre} {usuario.Apellido}";
         }
     }
 }

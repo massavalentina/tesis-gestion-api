@@ -89,12 +89,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Migraciones automáticas y seed (en todos los entornos)
+// Migraciones automáticas y seed
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
-    //await DbSeeder.SeedAdminAsync(db);
+    await DbSeeder.SeedAdminAsync(db);
+    if (app.Environment.IsDevelopment())
+        await DbSeeder.SeedDevUsuariosAsync(db);
 }
 
 // Swagger

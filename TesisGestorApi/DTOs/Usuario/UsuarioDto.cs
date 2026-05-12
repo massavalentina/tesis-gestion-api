@@ -15,5 +15,6 @@ namespace TesisGestorApi.DTOs.Usuario
         // Indica si tiene perfil vinculado (útil para el frontend)
         public Guid? IdDocente { get; set; }
         public Guid? IdPreceptor { get; set; }
+        public bool? EsDelegado { get; set; }
     }
 }
