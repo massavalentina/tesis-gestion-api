@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TesisGestorApi.DTOs.Usuario;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/usuario")]
     public class UsuarioController : ControllerBase
@@ -46,6 +48,7 @@ namespace TesisGestorApi.Controllers
         }
 
         // GET /api/usuario/{id}
+        [AllowAnonymous]
         [HttpGet("{id:guid}")]
         public async Task<ActionResult<UsuarioDto>> ObtenerPorId(Guid id)
         {
@@ -65,6 +68,7 @@ namespace TesisGestorApi.Controllers
         }
 
         // GET /api/usuario
+        [AllowAnonymous]
         [HttpGet]
         public async Task<ActionResult<List<UsuarioDto>>> ObtenerTodos()
         {
@@ -121,6 +125,31 @@ namespace TesisGestorApi.Controllers
             return existe
                 ? Conflict(new { error = "Este documento ya está registrado." })
                 : Ok();
+        }
+
+        // PUT /api/usuario/{id}/perfil
+        // Actualización de datos propios: nombre, apellido, email, teléfono.
+        [HttpPut("{id:guid}/perfil")]
+        public async Task<ActionResult<UsuarioDto>> ActualizarPerfil(Guid id, [FromBody] ActualizarPerfilDto dto)
+        {
+            try
+            {
+                var resultado = await _usuarioService.ActualizarPerfilAsync(id, dto);
+                return Ok(resultado);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al actualizar perfil del usuario {Id}.", id);
+                return StatusCode(500, new { error = "Error interno." });
+            }
         }
 
         // PATCH /api/usuario/{id}/desactivar

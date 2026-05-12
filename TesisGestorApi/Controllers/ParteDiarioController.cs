@@ -1,8 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TesisGestorApi.DTOs.ParteDiario;
 using TesisGestorApi.Interfaces;
 
-[ApiController]
+[Authorize]
+    [ApiController]
 [Route("api/parte-diario")]
 public class ParteDiarioController : ControllerBase
 {

@@ -69,7 +69,7 @@ namespace TesisGestorApi.Services
                 IntentosFailidos           = 0,
                 BloqueadoHasta             = null,
                 RequiereCambioContrasena   = true,
-                FechaVencimientoContrasena = DateTime.UtcNow.AddDays(7),
+                FechaVencimientoContrasena = DateTime.UtcNow.AddHours(24),
             };
 
             _context.Usuarios.Add(usuario);
@@ -117,7 +117,7 @@ namespace TesisGestorApi.Services
                           <li><strong>Email:</strong> {usuario.Email}</li>
                           <li><strong>Contraseña provisoria:</strong> {contrasenaProvisoria}</li>
                         </ul>
-                        <p>Esta contraseña vence en 7 días. Al ingresar se te pedirá que la cambies.</p>
+                        <p>Esta contraseña vence en 24 horas. Al ingresar se te pedirá que la cambies.</p>
                         <p>Por seguridad, no compartas estas credenciales.</p>");
             }
             catch
@@ -222,6 +222,50 @@ namespace TesisGestorApi.Services
 
         public async Task<bool> DocumentoExisteAsync(string documento)
             => await _context.Usuarios.AnyAsync(u => u.Documento == documento.Trim());
+
+        // ─────────────────────────────────────────────────────────────────────
+        // ACTUALIZAR PERFIL PROPIO
+        // ─────────────────────────────────────────────────────────────────────
+        public async Task<UsuarioDto> ActualizarPerfilAsync(Guid id, ActualizarPerfilDto dto)
+        {
+            var usuario = await _context.Usuarios
+                .Include(u => u.UsuarioRoles).ThenInclude(ur => ur.Rol)
+                .Include(u => u.Docente)
+                .Include(u => u.Preceptor)
+                .FirstOrDefaultAsync(u => u.IdUsuario == id)
+                ?? throw new KeyNotFoundException("Usuario no encontrado.");
+
+            var emailNormalizado = dto.Email.Trim().ToLowerInvariant();
+            if (!string.Equals(usuario.Email, emailNormalizado, StringComparison.Ordinal))
+            {
+                bool emailTomado = await _context.Usuarios
+                    .AnyAsync(u => u.Email == emailNormalizado && u.IdUsuario != id);
+                if (emailTomado)
+                    throw new InvalidOperationException("El email ya está en uso por otro usuario.");
+            }
+
+            usuario.Nombre   = dto.Nombre.Trim();
+            usuario.Apellido = dto.Apellido.Trim();
+            usuario.Email    = emailNormalizado;
+            usuario.Telefono = string.IsNullOrWhiteSpace(dto.Telefono) ? null : dto.Telefono.Trim();
+
+            await _context.SaveChangesAsync();
+
+            return new UsuarioDto
+            {
+                IdUsuario     = usuario.IdUsuario,
+                Nombre        = usuario.Nombre,
+                Apellido      = usuario.Apellido,
+                Email         = usuario.Email,
+                Documento     = usuario.Documento,
+                Telefono      = usuario.Telefono,
+                Activo        = usuario.Activo,
+                FechaCreacion = usuario.FechaCreacion,
+                Roles         = usuario.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList(),
+                IdDocente     = usuario.Docente?.IdDocente,
+                IdPreceptor   = usuario.Preceptor?.IdPreceptor,
+            };
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         // HELPERS PRIVADOS

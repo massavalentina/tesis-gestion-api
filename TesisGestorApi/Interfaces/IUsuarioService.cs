@@ -11,5 +11,6 @@ namespace TesisGestorApi.Interfaces
         Task ActivarAsync(Guid id);
         Task<bool> EmailExisteAsync(string email);
         Task<bool> DocumentoExisteAsync(string documento);
+        Task<UsuarioDto> ActualizarPerfilAsync(Guid id, ActualizarPerfilDto dto);
     }
 }

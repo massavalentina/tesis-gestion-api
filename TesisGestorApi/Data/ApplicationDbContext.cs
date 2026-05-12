@@ -44,6 +44,7 @@ namespace TesisGestorApi.Data
         // ===== Seguridad / Otros =====
         public DbSet<Usuario> Usuarios { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
         public DbSet<CredencialQR> CredencialesQR { get; set; }
         public DbSet<Rol> Roles { get; set; }
         public DbSet<UsuarioRol> UsuariosRoles { get; set; }
@@ -83,6 +84,16 @@ namespace TesisGestorApi.Data
 
             modelBuilder.Entity<RefreshToken>()
                 .HasIndex(rt => rt.Token)
+                .IsUnique();
+
+            modelBuilder.Entity<PasswordResetToken>()
+                .HasOne(prt => prt.Usuario)
+                .WithMany()
+                .HasForeignKey(prt => prt.IdUsuario)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PasswordResetToken>()
+                .HasIndex(prt => prt.Token)
                 .IsUnique();
 
             modelBuilder.Entity<Docente>()

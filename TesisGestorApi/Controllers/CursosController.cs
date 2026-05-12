@@ -1,4 +1,5 @@
 ﻿
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
@@ -6,6 +7,7 @@ using TesisGestorApi.DTOs;
 
 namespace TesisGestorApi.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/cursos")]
     public class CursosController : ControllerBase

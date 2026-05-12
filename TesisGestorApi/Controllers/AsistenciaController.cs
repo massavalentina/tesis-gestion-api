@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Runtime.InteropServices.Marshalling;
@@ -8,7 +9,8 @@ using TesisGestorApi.Interfaces;
 using TesisGestorApi.Services;
 
 
-[ApiController]
+[Authorize]
+    [ApiController]
 [Route("api/[controller]")]
 
 public class AsistenciaController : ControllerBase

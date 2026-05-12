@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TesisGestorApi.DTOs.Retiro;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/retiro")]
     public class RetiroController : ControllerBase

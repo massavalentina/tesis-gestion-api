@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Interfaces;
@@ -5,6 +6,7 @@ using TesisGestorApi.Services;
 
 namespace TesisGestorApi.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/qr-credentials/delivery")]
     public class QrCredentialDeliveryController : ControllerBase

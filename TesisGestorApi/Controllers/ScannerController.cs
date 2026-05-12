@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TesisGestorApi.Dtos;
 using TesisGestorApi.Exceptions;
@@ -5,6 +6,7 @@ using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/asistencia/scanner")]
     public class ScannerController : ControllerBase

@@ -540,6 +540,38 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Preceptores");
                 });
 
+            modelBuilder.Entity("TesisGestorApi.Entities.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Expiracion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IdUsuario")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Usado")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.ToTable("PasswordResetTokens");
+                });
+
             modelBuilder.Entity("TesisGestorApi.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1060,6 +1092,17 @@ namespace TesisGestorApi.Migrations
                     b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
                         .WithOne("Preceptor")
                         .HasForeignKey("TesisGestorApi.Entities.Preceptor", "IdUsuario")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.PasswordResetToken", b =>
+                {
+                    b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

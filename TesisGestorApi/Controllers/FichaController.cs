@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
@@ -9,6 +10,7 @@ using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/ficha")]
     public class FichaController : ControllerBase

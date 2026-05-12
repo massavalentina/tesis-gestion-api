@@ -1,11 +1,13 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Interfaces;
 
-[ApiController]
+[Authorize]
+    [ApiController]
 [Route("api/asistencia-rapida")]
 public class AsistenciaRapidaController : ControllerBase
 {
