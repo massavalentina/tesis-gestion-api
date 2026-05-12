@@ -30,6 +30,27 @@ builder.Services.AddScoped<IQrCredentialEmailTemplateService, QrCredentialEmailT
 builder.Services.AddSingleton<QrCredentialGenerationProgressStore>();
 builder.Services.AddSingleton<QrCredentialDeliveryProgressStore>();
 
+builder.Services.AddScoped<IUsuariosRolesService, UsuariosRolesService>();
+
+// Auth
+builder.Services.AddScoped<ITokenService, TokenService>();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Emisor"],
+            ValidAudience = builder.Configuration["Jwt:Audiencia"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Clave"]!))
+        };
+    });
+
 // JWT Authentication
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var secretKey  = Encoding.UTF8.GetBytes(jwtSection["SecretKey"]!);
@@ -93,12 +114,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Migraciones automáticas y seed (en todos los entornos)
+// Migraciones automáticas y seed
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
     await DbSeeder.SeedAdminAsync(db);
+    if (app.Environment.IsDevelopment())
+        await DbSeeder.SeedDevUsuariosAsync(db);
 }
 
 // Swagger

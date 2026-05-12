@@ -49,6 +49,10 @@ namespace TesisGestorApi.Data
         public DbSet<Rol> Roles { get; set; }
         public DbSet<UsuarioRol> UsuariosRoles { get; set; }
 
+        // ===== Permisos =====
+        public DbSet<Permiso> Permisos { get; set; }
+        public DbSet<RolPermiso> RolPermisos { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -70,21 +74,36 @@ namespace TesisGestorApi.Data
                 .HasForeignKey(ur => ur.IdRol)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<Usuario>()
-                .HasIndex(u => u.Email).IsUnique();
+modelBuilder.Entity<RolPermiso>(entity =>
+{
+    entity.HasOne(rp => rp.Rol)
+          .WithMany(r => r.RolPermisos)
+          .HasForeignKey(rp => rp.IdRol)
+          .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<Usuario>()
-                .HasIndex(u => u.Documento).IsUnique();
+    entity.HasOne(rp => rp.Permiso)
+          .WithMany(p => p.RolPermisos)
+          .HasForeignKey(rp => rp.IdPermiso)
+          .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<RefreshToken>()
-                .HasOne(rt => rt.Usuario)
-                .WithMany()
-                .HasForeignKey(rt => rt.IdUsuario)
-                .OnDelete(DeleteBehavior.Cascade);
+    entity.HasIndex(rp => new { rp.IdRol, rp.IdPermiso }).IsUnique();
+});
 
-            modelBuilder.Entity<RefreshToken>()
-                .HasIndex(rt => rt.Token)
-                .IsUnique();
+modelBuilder.Entity<Usuario>()
+    .HasIndex(u => u.Email).IsUnique();
+
+modelBuilder.Entity<Usuario>()
+    .HasIndex(u => u.Documento).IsUnique();
+
+modelBuilder.Entity<RefreshToken>()
+    .HasOne(rt => rt.Usuario)
+    .WithMany()
+    .HasForeignKey(rt => rt.IdUsuario)
+    .OnDelete(DeleteBehavior.Cascade);
+
+modelBuilder.Entity<RefreshToken>()
+    .HasIndex(rt => rt.Token)
+    .IsUnique();
 
             modelBuilder.Entity<PasswordResetToken>()
                 .HasOne(prt => prt.Usuario)
