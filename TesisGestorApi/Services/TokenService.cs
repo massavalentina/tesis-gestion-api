@@ -36,12 +36,13 @@ namespace TesisGestorApi.Services
                 .Distinct()
                 .ToList();
 
-            var nombre = ObtenerNombreCompleto(usuario);
-
             var claims = new List<Claim>
             {
-                new("idUsuario", usuario.IdUsuario.ToString()),
-                new("nombre", nombre),
+                new("idUsuario",               usuario.IdUsuario.ToString()),
+                new("nombre",                  ObtenerNombreCompleto(usuario)),
+                new("apellido",                usuario.Apellido),
+                new("email",                   usuario.Email),
+                new("requiresPasswordChange",  usuario.RequiereCambioContrasena.ToString().ToLower()),
             };
 
             foreach (var rol in roles)
@@ -60,11 +61,12 @@ namespace TesisGestorApi.Services
             if (roles.Contains("Admin"))
                 claims.Add(new Claim("es_admin", "true"));
 
+            var expiresMinutes = int.Parse(_config["Jwt:ExpiresInMinutes"] ?? "60");
             var token = new JwtSecurityToken(
-                issuer: _config["Jwt:Emisor"],
-                audience: _config["Jwt:Audiencia"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(60),
+                issuer:            _config["Jwt:Emisor"],
+                audience:          _config["Jwt:Audiencia"],
+                claims:            claims,
+                expires:           DateTime.UtcNow.AddMinutes(expiresMinutes),
                 signingCredentials: credenciales
             );
 
@@ -97,14 +99,15 @@ namespace TesisGestorApi.Services
             var nuevoAccessToken = GenerarAccessToken(usuario);
             var nuevoRefreshToken = GenerarRefreshToken();
 
+            var refreshDays = int.Parse(_config["Jwt:RefreshExpiresInDays"] ?? "7");
             tokenEntity.Revocado = true;
             _context.RefreshTokens.Add(new RefreshToken
             {
-                Id = Guid.NewGuid(),
-                Token = nuevoRefreshToken,
+                Id            = Guid.NewGuid(),
+                Token         = nuevoRefreshToken,
                 FechaCreacion = DateTime.UtcNow,
-                Expiracion = DateTime.UtcNow.AddDays(7),
-                IdUsuario = usuario.IdUsuario
+                Expiracion    = DateTime.UtcNow.AddDays(refreshDays),
+                IdUsuario     = usuario.IdUsuario
             });
             await _context.SaveChangesAsync();
 

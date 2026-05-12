@@ -40,32 +40,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Emisor"],
-            ValidAudience = builder.Configuration["Jwt:Audiencia"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Clave"]!))
-        };
-    });
-
-// JWT Authentication
-var jwtSection = builder.Configuration.GetSection("Jwt");
-var secretKey  = Encoding.UTF8.GetBytes(jwtSection["SecretKey"]!);
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey         = new SymmetricSecurityKey(secretKey),
             ValidateIssuer           = true,
-            ValidIssuer              = jwtSection["Issuer"],
             ValidateAudience         = true,
-            ValidAudience            = jwtSection["Audience"],
+            ValidateLifetime         = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer              = builder.Configuration["Jwt:Emisor"],
+            ValidAudience            = builder.Configuration["Jwt:Audiencia"],
+            IssuerSigningKey         = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Clave"]!)),
             ClockSkew                = TimeSpan.Zero,
         };
     });
@@ -119,6 +101,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
+    await DbSeeder.NormalizarRolesAsync(db);
     await DbSeeder.SeedAdminAsync(db);
     if (app.Environment.IsDevelopment())
         await DbSeeder.SeedDevUsuariosAsync(db);

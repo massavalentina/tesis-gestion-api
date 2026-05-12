@@ -1,9 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Security.Cryptography;
-using System.Text;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs.Auth;
 using TesisGestorApi.Entities;
@@ -16,12 +12,18 @@ namespace TesisGestorApi.Services
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _config;
         private readonly IEmailSender _emailSender;
+        private readonly ITokenService _tokenService;
 
-        public AuthService(ApplicationDbContext context, IConfiguration config, IEmailSender emailSender)
+        public AuthService(
+            ApplicationDbContext context,
+            IConfiguration config,
+            IEmailSender emailSender,
+            ITokenService tokenService)
         {
-            _context     = context;
-            _config      = config;
-            _emailSender = emailSender;
+            _context      = context;
+            _config       = config;
+            _emailSender  = emailSender;
+            _tokenService = tokenService;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -32,7 +34,11 @@ namespace TesisGestorApi.Services
             var identificador = dto.Identificador.Trim();
 
             var usuario = await _context.Usuarios
-                .Include(u => u.UsuarioRoles).ThenInclude(ur => ur.Rol)
+                .Include(u => u.UsuarioRoles)
+                    .ThenInclude(ur => ur.Rol)
+                    .ThenInclude(r => r.RolPermisos)
+                    .ThenInclude(rp => rp.Permiso)
+                .Include(u => u.Preceptor)
                 .FirstOrDefaultAsync(u =>
                     u.Email == identificador.ToLowerInvariant() ||
                     u.Documento == identificador);
@@ -85,8 +91,9 @@ namespace TesisGestorApi.Services
             usuario.UltimoLogin      = DateTime.UtcNow;
 
             var roles        = usuario.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList();
-            var (jwt, expira) = GenerarJwt(usuario, roles);
-            var refreshToken  = await GenerarRefreshTokenAsync(usuario.IdUsuario);
+            var jwt          = _tokenService.GenerarAccessToken(usuario);
+            var expira       = DateTime.UtcNow.AddMinutes(int.Parse(_config["Jwt:ExpiresInMinutes"] ?? "60"));
+            var refreshToken = await GenerarRefreshTokenAsync(usuario.IdUsuario);
 
             await _context.SaveChangesAsync();
 
@@ -106,11 +113,10 @@ namespace TesisGestorApi.Services
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // SOLICITAR RESET (olvide mi contraseña / cambiar clave desde perfil)
+        // SOLICITAR RESET (olvide mi contraseña / cambio provisorio)
         // ─────────────────────────────────────────────────────────────────────
         public async Task SolicitarResetAsync(SolicitarResetDto dto)
         {
-            // Buscar por email + documento (mapeamos por DNI para distinguir usuarios con mismo email)
             var usuario = await _context.Usuarios
                 .FirstOrDefaultAsync(u =>
                     u.Email == dto.Email.Trim().ToLowerInvariant() &&
@@ -124,7 +130,7 @@ namespace TesisGestorApi.Services
                 .Where(t => t.IdUsuario == usuario.IdUsuario && !t.Usado)
                 .ExecuteUpdateAsync(s => s.SetProperty(t => t.Usado, true));
 
-            // Generar nuevo token (1 hora de validez)
+            // Generar nuevo token (15 minutos de validez)
             var bytes = new byte[64];
             RandomNumberGenerator.Fill(bytes);
             var token = Convert.ToBase64String(bytes)
@@ -176,13 +182,17 @@ namespace TesisGestorApi.Services
             var resetToken = await _context.PasswordResetTokens
                 .Include(t => t.Usuario)
                     .ThenInclude(u => u.UsuarioRoles)
-                        .ThenInclude(ur => ur.Rol)
+                    .ThenInclude(ur => ur.Rol)
+                    .ThenInclude(r => r.RolPermisos)
+                    .ThenInclude(rp => rp.Permiso)
+                .Include(t => t.Usuario)
+                    .ThenInclude(u => u.Preceptor)
                 .FirstOrDefaultAsync(t => t.Token == dto.Token && !t.Usado);
 
             if (resetToken == null || resetToken.Expiracion <= DateTime.UtcNow)
                 throw new InvalidOperationException("El link de restablecimiento es inválido o ya expiró.");
 
-            // Verificar que el DNI coincida con el usuario del token (seguridad extra)
+            // Verificar que el DNI coincida (seguridad extra)
             if (!string.Equals(resetToken.Usuario.Documento, dto.Documento.Trim(), StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("El link de restablecimiento es inválido o ya expiró.");
 
@@ -196,8 +206,9 @@ namespace TesisGestorApi.Services
             resetToken.Usado                   = true;
 
             var roles        = usuario.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList();
-            var (jwt, expira) = GenerarJwt(usuario, roles);
-            var refreshToken  = await GenerarRefreshTokenAsync(usuario.IdUsuario);
+            var jwt          = _tokenService.GenerarAccessToken(usuario);
+            var expira       = DateTime.UtcNow.AddMinutes(int.Parse(_config["Jwt:ExpiresInMinutes"] ?? "60"));
+            var refreshToken = await GenerarRefreshTokenAsync(usuario.IdUsuario);
 
             await _context.SaveChangesAsync();
 
@@ -233,35 +244,6 @@ namespace TesisGestorApi.Services
                 throw new ArgumentException("La nueva contraseña no puede ser igual a la actual.");
         }
 
-        private (string token, DateTime expira) GenerarJwt(Usuario usuario, List<string> roles)
-        {
-            var jwtSection  = _config.GetSection("Jwt");
-            var key         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["SecretKey"]!));
-            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-            var expira      = DateTime.UtcNow.AddMinutes(int.Parse(jwtSection["ExpiresInMinutes"]!));
-
-            var claims = new List<Claim>
-            {
-                new Claim(JwtRegisteredClaimNames.Sub,   usuario.IdUsuario.ToString()),
-                new Claim(JwtRegisteredClaimNames.Email, usuario.Email),
-                new Claim("nombre",                      usuario.Nombre),
-                new Claim("apellido",                    usuario.Apellido),
-                new Claim("requiresPasswordChange",      usuario.RequiereCambioContrasena.ToString().ToLower()),
-            };
-
-            foreach (var rol in roles)
-                claims.Add(new Claim(ClaimTypes.Role, rol));
-
-            var token = new JwtSecurityToken(
-                issuer:             jwtSection["Issuer"],
-                audience:           jwtSection["Audience"],
-                claims:             claims,
-                expires:            expira,
-                signingCredentials: credentials);
-
-            return (new JwtSecurityTokenHandler().WriteToken(token), expira);
-        }
-
         private async Task<string> GenerarRefreshTokenAsync(Guid idUsuario)
         {
             await _context.RefreshTokens
@@ -272,12 +254,13 @@ namespace TesisGestorApi.Services
             RandomNumberGenerator.Fill(bytes);
             var token = Convert.ToBase64String(bytes);
 
+            var refreshDays = int.Parse(_config["Jwt:RefreshExpiresInDays"] ?? "7");
             _context.RefreshTokens.Add(new RefreshToken
             {
                 Id            = Guid.NewGuid(),
                 Token         = token,
                 FechaCreacion = DateTime.UtcNow,
-                Expiracion    = DateTime.UtcNow.AddDays(int.Parse(_config["Jwt:RefreshExpiresInDays"]!)),
+                Expiracion    = DateTime.UtcNow.AddDays(refreshDays),
                 Revocado      = false,
                 IdUsuario     = idUsuario,
             });
