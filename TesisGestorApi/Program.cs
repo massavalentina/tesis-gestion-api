@@ -103,8 +103,6 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
     await DbSeeder.NormalizarRolesAsync(db);
     await DbSeeder.SeedAdminAsync(db);
-    if (app.Environment.IsDevelopment())
-        await DbSeeder.SeedDevUsuariosAsync(db);
 }
 
 // Swagger
