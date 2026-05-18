@@ -1125,12 +1125,17 @@ namespace TesisGestorApi.Services
             await RegistrarLoteAsync(lista);
         }
 
-        public async Task<List<OpcionSeleccionDto>> ObtenerCursosAsync()
+        public async Task<List<OpcionSeleccionDto>> ObtenerCursosAsync(Guid? idDocente = null)
         {
-            return await _context.Cursos
+            var query = _context.Cursos
                 .Include(c => c.Anio)
                 .Include(c => c.Division)
-                .Where(c => c.Estado)
+                .Where(c => c.Estado);
+
+            if (idDocente.HasValue)
+                query = query.Where(c => c.EspaciosCurriculares.Any(ec => ec.IdDocente == idDocente));
+
+            return await query
                 .Select(c => new OpcionSeleccionDto
                 {
                     Id = c.IdCurso.ToString(),
@@ -1162,7 +1167,7 @@ namespace TesisGestorApi.Services
         }
 
         // [ GET ] Asistencia por Espacio Curricular de un día para un estudiante
-        public async Task<List<AsistenciaEspacioItemDto>> ObtenerAsistenciaEspaciosDiaAsync(Guid estudianteId, DateOnly fecha)
+        public async Task<List<AsistenciaEspacioItemDto>> ObtenerAsistenciaEspaciosDiaAsync(Guid estudianteId, DateOnly fecha, Guid? idDocente = null)
         {
             var dc = await _context.DetallesCursado.AsNoTracking()
                 .Where(d => d.IdEstudiante == estudianteId && d.Estado)
@@ -1170,14 +1175,18 @@ namespace TesisGestorApi.Services
             if (dc == null) return new List<AsistenciaEspacioItemDto>();
 
             var diaSemana = fecha.DayOfWeek;
-            var ecs = await _context.EspaciosCurriculares
+            var ecsQuery = _context.EspaciosCurriculares
                 .AsNoTracking()
                 .Include(ec => ec.Curricula)
                 .Include(ec => ec.Horarios.Where(h => h.DíaSemana == diaSemana))
                 .Include(ec => ec.ClasesDictadas.Where(cd => cd.Fecha == fecha))
                     .ThenInclude(cd => cd.Asistencias.Where(a => a.IdEstudiante == estudianteId))
-                .Where(ec => ec.IdCurso == dc.IdCurso && ec.Horarios.Any(h => h.DíaSemana == diaSemana))
-                .ToListAsync();
+                .Where(ec => ec.IdCurso == dc.IdCurso && ec.Horarios.Any(h => h.DíaSemana == diaSemana));
+
+            if (idDocente.HasValue)
+                ecsQuery = ecsQuery.Where(ec => ec.IdDocente == idDocente);
+
+            var ecs = await ecsQuery.ToListAsync();
 
             // Cada slot (Horario) tiene su propia ClaseDictada — búsqueda por IdHorario
             return ecs.SelectMany(ec =>
@@ -1206,8 +1215,17 @@ namespace TesisGestorApi.Services
         }
 
         // [ PUT ] Actualización manual de presencia en un Espacio Curricular
-        public async Task ActualizarAsistenciaEspacioAsync(ActualizarAsistenciaEspacioDto dto)
+        public async Task ActualizarAsistenciaEspacioAsync(ActualizarAsistenciaEspacioDto dto, Guid? idDocente = null)
         {
+            if (idDocente.HasValue)
+            {
+                var pertenece = await _context.ClasesDictadas
+                    .AnyAsync(cd => cd.IdClaseDictada == dto.IdClaseDictada &&
+                                   cd.EspacioCurricular.IdDocente == idDocente);
+                if (!pertenece)
+                    throw new UnauthorizedAccessException("No tiene permiso para modificar esta asistencia.");
+            }
+
             var existente = await _context.AsistenciasPorEspacio
                 .FirstOrDefaultAsync(a => a.IdEstudiante == dto.EstudianteId && a.IdClaseDictada == dto.IdClaseDictada);
 

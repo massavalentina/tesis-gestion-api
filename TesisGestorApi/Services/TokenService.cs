@@ -58,6 +58,9 @@ namespace TesisGestorApi.Services
                     claims.Add(new Claim("permisos", "CREDENCIALES_QR_RW"));
             }
 
+            if (roles.Contains("Docente") && usuario.Docente != null)
+                claims.Add(new Claim("idDocente", usuario.Docente.IdDocente.ToString()));
+
             if (roles.Contains("Admin"))
                 claims.Add(new Claim("es_admin", "true"));
 

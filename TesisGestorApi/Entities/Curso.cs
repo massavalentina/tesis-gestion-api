@@ -29,5 +29,8 @@ namespace TesisGestorApi.Entities
 
         public ICollection<Horario> Horarios { get; set; }
             = new List<Horario>();
+
+        public ICollection<PreceptorCurso> PreceptoresCursos { get; set; }
+            = new List<PreceptorCurso>();
     }
 }

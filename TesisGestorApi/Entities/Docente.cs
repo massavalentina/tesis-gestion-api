@@ -12,5 +12,8 @@ namespace TesisGestorApi.Entities
 
         public ICollection<EspacioCurricular> EspaciosCurriculares { get; set; }
             = new List<EspacioCurricular>();
+
+        public ICollection<DocenteEspacioCurricular> DocentesEspaciosCurriculares { get; set; }
+            = new List<DocenteEspacioCurricular>();
     }
 }
