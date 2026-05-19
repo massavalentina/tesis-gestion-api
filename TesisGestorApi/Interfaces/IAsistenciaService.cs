@@ -22,15 +22,15 @@ namespace TesisGestorApi.Interfaces
 
         Task ConfirmarAsync(ConfirmarAsistenciaRequest request);
 
-        Task<List<OpcionSeleccionDto>> ObtenerCursosAsync();
+        Task<List<OpcionSeleccionDto>> ObtenerCursosAsync(Guid? idDocente = null);
 
         List<OpcionSeleccionDto> ObtenerTurnos();
 
         Task<List<OpcionSeleccionDto>> ObtenerTiposAsistenciaAsync();
 
-        Task<List<AsistenciaEspacioItemDto>> ObtenerAsistenciaEspaciosDiaAsync(Guid estudianteId, DateOnly fecha);
+        Task<List<AsistenciaEspacioItemDto>> ObtenerAsistenciaEspaciosDiaAsync(Guid estudianteId, DateOnly fecha, Guid? idDocente = null);
 
-        Task ActualizarAsistenciaEspacioAsync(ActualizarAsistenciaEspacioDto dto);
+        Task ActualizarAsistenciaEspacioAsync(ActualizarAsistenciaEspacioDto dto, Guid? idDocente = null);
         Task RecalcularAsistenciasCursoFechaAsync(Guid cursoId, DateOnly fecha);
     }
 }

@@ -9,10 +9,14 @@ namespace TesisGestorApi.Services
     public class UsuariosRolesService : IUsuariosRolesService
     {
         private readonly ApplicationDbContext _context;
+        private readonly IDocenteService _docenteService;
+        private readonly IPreceptorService _preceptorService;
 
-        public UsuariosRolesService(ApplicationDbContext context)
+        public UsuariosRolesService(ApplicationDbContext context, IDocenteService docenteService, IPreceptorService preceptorService)
         {
-            _context = context;
+            _context          = context;
+            _docenteService   = docenteService;
+            _preceptorService = preceptorService;
         }
 
         public async Task<List<UsuarioConRolesDto>> GetUsuariosConRolesAsync(CancellationToken ct = default)
@@ -93,13 +97,17 @@ namespace TesisGestorApi.Services
 
             if (nombreRol == "Preceptor")
             {
-                var preceptor = await _context.Preceptores.FirstOrDefaultAsync(p => p.IdUsuario == idUsuario, ct);
-                if (preceptor != null) _context.Preceptores.Remove(preceptor);
+                var preceptor = await _context.Preceptores
+                    .FirstOrDefaultAsync(p => p.IdUsuario == idUsuario, ct);
+                if (preceptor != null)
+                    await _preceptorService.DesasignarCursosAsync(preceptor.IdPreceptor, "Baja del rol Preceptor", ct);
             }
             else if (nombreRol == "Docente")
             {
-                var docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
-                if (docente != null) _context.Docentes.Remove(docente);
+                var docente = await _context.Docentes
+                    .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+                if (docente != null)
+                    await _docenteService.DesasignarEspaciosCurricularesAsync(docente.IdDocente, "Baja del rol Docente", ct);
             }
 
             await _context.SaveChangesAsync(ct);

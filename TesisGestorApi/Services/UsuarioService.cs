@@ -11,15 +11,19 @@ namespace TesisGestorApi.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IEmailSender _emailSender;
+        private readonly IDocenteService _docenteService;
+        private readonly IPreceptorService _preceptorService;
 
         // Los roles que generan un perfil propio en su tabla correspondiente
         private static readonly HashSet<string> RolesConPerfil =
             new(StringComparer.OrdinalIgnoreCase) { "Docente", "Preceptor" };
 
-        public UsuarioService(ApplicationDbContext context, IEmailSender emailSender)
+        public UsuarioService(ApplicationDbContext context, IEmailSender emailSender, IDocenteService docenteService, IPreceptorService preceptorService)
         {
-            _context = context;
-            _emailSender = emailSender;
+            _context          = context;
+            _emailSender      = emailSender;
+            _docenteService   = docenteService;
+            _preceptorService = preceptorService;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -184,34 +188,15 @@ namespace TesisGestorApi.Services
                 throw new InvalidOperationException("El usuario ya está inactivo.");
 
             usuario.Activo = false;
-
-            // Desvincular de EspaciosCurriculares: IdDocente → null
-            if (await _context.Docentes.AnyAsync(d => d.IdUsuario == id))
-            {
-                var idDocente = await _context.Docentes
-                    .Where(d => d.IdUsuario == id)
-                    .Select(d => d.IdDocente)
-                    .FirstAsync();
-
-                await _context.EspaciosCurriculares
-                    .Where(ec => ec.IdDocente == idDocente)
-                    .ExecuteUpdateAsync(s => s.SetProperty(ec => ec.IdDocente, (Guid?)null));
-            }
-
-            // Desvincular de Cursos: IdPreceptor → null
-            if (await _context.Preceptores.AnyAsync(p => p.IdUsuario == id))
-            {
-                var idPreceptor = await _context.Preceptores
-                    .Where(p => p.IdUsuario == id)
-                    .Select(p => p.IdPreceptor)
-                    .FirstAsync();
-
-                await _context.Cursos
-                    .Where(c => c.IdPreceptor == idPreceptor)
-                    .ExecuteUpdateAsync(s => s.SetProperty(c => c.IdPreceptor, (Guid?)null));
-            }
-
             await _context.SaveChangesAsync();
+
+            var docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == id);
+            if (docente != null)
+                await _docenteService.DesasignarEspaciosCurricularesAsync(docente.IdDocente, "Desactivación de cuenta");
+
+            var preceptor = await _context.Preceptores.FirstOrDefaultAsync(p => p.IdUsuario == id);
+            if (preceptor != null)
+                await _preceptorService.DesasignarCursosAsync(preceptor.IdPreceptor, "Desactivación de cuenta");
         }
 
         // ─────────────────────────────────────────────────────────────────────

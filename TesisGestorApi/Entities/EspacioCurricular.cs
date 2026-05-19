@@ -19,5 +19,7 @@ namespace TesisGestorApi.Entities
 
         public ICollection<Horario> Horarios { get; set; } = new List<Horario>();
         public ICollection<ClaseDictada> ClasesDictadas { get; set; } = new List<ClaseDictada>();
+        public ICollection<DocenteEspacioCurricular> DocentesEspaciosCurriculares { get; set; }
+            = new List<DocenteEspacioCurricular>();
     }
 }

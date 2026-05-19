@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Runtime.InteropServices.Marshalling;
+using System.Security.Claims;
 using TesisGestorApi.Data;
 using TesisGestorApi.Dtos;
 using TesisGestorApi.DTOs;
@@ -49,11 +50,11 @@ public class AsistenciaController : ControllerBase
     }
 
     [HttpGet("cursos")]
-    public async Task<ActionResult<List<OpcionSeleccionDto>>> GetCursos()
+    public async Task<ActionResult<List<OpcionSeleccionDto>>> GetCursos(CancellationToken ct = default)
     {
         try
         {
-            var cursos = await _asistenciaService.ObtenerCursosAsync();
+            var cursos = await _asistenciaService.ObtenerCursosAsync(await GetIdDocenteAsync(ct));
             return Ok(cursos);
         }
         catch (Exception ex)
@@ -135,11 +136,11 @@ public class AsistenciaController : ControllerBase
 
     [HttpGet("estudiante/{estudianteId:guid}/dia/{fecha}")]
     public async Task<ActionResult<List<AsistenciaEspacioItemDto>>> GetEspaciosDia(
-        Guid estudianteId, DateOnly fecha)
+        Guid estudianteId, DateOnly fecha, CancellationToken ct = default)
     {
         try
         {
-            var items = await _asistenciaService.ObtenerAsistenciaEspaciosDiaAsync(estudianteId, fecha);
+            var items = await _asistenciaService.ObtenerAsistenciaEspaciosDiaAsync(estudianteId, fecha, await GetIdDocenteAsync(ct));
             return Ok(items);
         }
         catch (Exception ex)
@@ -150,17 +151,40 @@ public class AsistenciaController : ControllerBase
     }
 
     [HttpPut("espacio")]
-    public async Task<IActionResult> ActualizarEspacio([FromBody] ActualizarAsistenciaEspacioDto dto)
+    public async Task<IActionResult> ActualizarEspacio([FromBody] ActualizarAsistenciaEspacioDto dto, CancellationToken ct = default)
     {
         try
         {
-            await _asistenciaService.ActualizarAsistenciaEspacioAsync(dto);
+            await _asistenciaService.ActualizarAsistenciaEspacioAsync(dto, await GetIdDocenteAsync(ct));
             return NoContent();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al actualizar asistencia por espacio.");
             return StatusCode(500, ex.Message);
         }
+    }
+
+    private async Task<Guid?> GetIdDocenteAsync(CancellationToken ct = default)
+    {
+        var allClaims = User.Claims.Select(c => $"{c.Type}={c.Value}").ToList();
+        _logger.LogInformation("[ACCESS] ALL claims en token: [{Claims}]", string.Join(" | ", allClaims));
+        var roles = User.FindAll("roles").Select(c => c.Value).ToList();
+        var esDocente = roles.Contains("Docente");
+        _logger.LogInformation("[ACCESS] Roles en token: [{Roles}], esDocente={EsDocente}", string.Join(",", roles), esDocente);
+        if (!esDocente) return null;
+        var idUsuarioStr = User.FindFirstValue("idUsuario");
+        _logger.LogInformation("[ACCESS] idUsuario del token: {IdUsuario}", idUsuarioStr);
+        if (idUsuarioStr == null) return Guid.Empty;
+        var idUsuario = Guid.Parse(idUsuarioStr);
+        var docente = await _context.Docentes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+        _logger.LogInformation("[ACCESS] Docente encontrado: {Resultado}, IdDocente: {IdDocente}", docente != null, docente?.IdDocente);
+        return docente?.IdDocente ?? Guid.Empty;
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 
@@ -18,6 +19,19 @@ namespace TesisGestorApi.Controllers
             _db = db;
         }
 
+        private async Task<Guid?> GetIdDocenteAsync(CancellationToken ct)
+        {
+            var esDocente = User.FindAll("roles").Any(c => c.Value == "Docente");
+            if (!esDocente) return null;
+            var idUsuarioStr = User.FindFirstValue("idUsuario");
+            if (idUsuarioStr == null) return Guid.Empty;
+            var idUsuario = Guid.Parse(idUsuarioStr);
+            var docente = await _db.Docentes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+            return docente?.IdDocente ?? Guid.Empty;
+        }
+
         // GET /api/reporte-asistencia/curso/{cursoId}?desde=yyyy-MM-dd&hasta=yyyy-MM-dd&anioLectivo=2026
         [HttpGet("curso/{cursoId:guid}")]
         public async Task<IActionResult> GetReporteCurso(
@@ -27,6 +41,13 @@ namespace TesisGestorApi.Controllers
             [FromQuery] int anioLectivo = 2026,
             CancellationToken ct = default)
         {
+            var idDocente = await GetIdDocenteAsync(ct);
+            if (idDocente.HasValue)
+            {
+                var tieneAcceso = await _db.EspaciosCurriculares
+                    .AnyAsync(ec => ec.IdDocente == idDocente && ec.IdCurso == cursoId, ct);
+                if (!tieneAcceso) return Forbid();
+            }
             var estudianteIds = await _db.DetallesCursado
                 .Where(dc => dc.IdCurso == cursoId && dc.Estado)
                 .Select(dc => dc.IdEstudiante)
@@ -191,6 +212,14 @@ namespace TesisGestorApi.Controllers
             [FromQuery] int anioLectivo = 2026,
             CancellationToken ct = default)
         {
+            var idDocente = await GetIdDocenteAsync(ct);
+            if (idDocente.HasValue)
+            {
+                var tieneAcceso = await _db.EspaciosCurriculares
+                    .AnyAsync(ec => ec.IdEC == idEC && ec.IdDocente == idDocente, ct);
+                if (!tieneAcceso) return Forbid();
+            }
+
             var ec = await _db.EspaciosCurriculares
                 .AsNoTracking()
                 .Include(e => e.Curricula)
@@ -295,6 +324,14 @@ namespace TesisGestorApi.Controllers
             [FromQuery] DateOnly? hasta,
             CancellationToken ct = default)
         {
+            var idDocente = await GetIdDocenteAsync(ct);
+            if (idDocente.HasValue)
+            {
+                var tieneAcceso = await _db.EspaciosCurriculares
+                    .AnyAsync(ec => ec.IdEC == idEC && ec.IdDocente == idDocente, ct);
+                if (!tieneAcceso) return Forbid();
+            }
+
             var clasesQuery = _db.ClasesDictadas
                 .AsNoTracking()
                 .Where(cd => cd.IdEC == idEC);
@@ -371,6 +408,15 @@ namespace TesisGestorApi.Controllers
             [FromQuery] DateOnly? hasta,
             CancellationToken ct = default)
         {
+            var idDocente = await GetIdDocenteAsync(ct);
+            if (idDocente.HasValue)
+            {
+                var tieneAcceso = await _db.EspaciosCurriculares
+                    .AnyAsync(ec => ec.IdDocente == idDocente &&
+                                    ec.Curso.DetallesCursado.Any(dc => dc.IdEstudiante == estudianteId && dc.Estado), ct);
+                if (!tieneAcceso) return Forbid();
+            }
+
             var query = _db.Asistencias
                 .AsNoTracking()
                 .Include(a => a.TipoManiana)

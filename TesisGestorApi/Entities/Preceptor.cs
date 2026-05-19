@@ -14,5 +14,8 @@ namespace TesisGestorApi.Entities
 
         public ICollection<Curso> Cursos { get; set; }
             = new List<Curso>();
+
+        public ICollection<PreceptorCurso> PreceptoresCursos { get; set; }
+            = new List<PreceptorCurso>();
     }
 }

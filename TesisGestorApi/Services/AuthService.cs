@@ -13,17 +13,20 @@ namespace TesisGestorApi.Services
         private readonly IConfiguration _config;
         private readonly IEmailSender _emailSender;
         private readonly ITokenService _tokenService;
+        private readonly ILogger<AuthService> _logger;
 
         public AuthService(
             ApplicationDbContext context,
             IConfiguration config,
             IEmailSender emailSender,
-            ITokenService tokenService)
+            ITokenService tokenService,
+            ILogger<AuthService> logger)
         {
             _context      = context;
             _config       = config;
             _emailSender  = emailSender;
             _tokenService = tokenService;
+            _logger       = logger;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -39,6 +42,7 @@ namespace TesisGestorApi.Services
                     .ThenInclude(r => r.RolPermisos)
                     .ThenInclude(rp => rp.Permiso)
                 .Include(u => u.Preceptor)
+                .Include(u => u.Docente)
                 .FirstOrDefaultAsync(u =>
                     u.Email == identificador.ToLowerInvariant() ||
                     u.Documento == identificador);
@@ -91,6 +95,8 @@ namespace TesisGestorApi.Services
             usuario.UltimoLogin      = DateTime.UtcNow;
 
             var roles        = usuario.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList();
+            _logger.LogInformation("[AUTH] Login usuario {IdUsuario}, roles en BD: [{Roles}], UsuarioRoles count: {Count}",
+                usuario.IdUsuario, string.Join(",", roles), usuario.UsuarioRoles.Count);
             var jwt          = _tokenService.GenerarAccessToken(usuario);
             var expira       = DateTime.UtcNow.AddMinutes(int.Parse(_config["Jwt:ExpiresInMinutes"] ?? "60"));
             var refreshToken = await GenerarRefreshTokenAsync(usuario.IdUsuario);
@@ -187,6 +193,8 @@ namespace TesisGestorApi.Services
                     .ThenInclude(rp => rp.Permiso)
                 .Include(t => t.Usuario)
                     .ThenInclude(u => u.Preceptor)
+                .Include(t => t.Usuario)
+                    .ThenInclude(u => u.Docente)
                 .FirstOrDefaultAsync(t => t.Token == dto.Token && !t.Usado);
 
             if (resetToken == null || resetToken.Expiracion <= DateTime.UtcNow)

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -36,6 +37,22 @@ namespace TesisGestorApi.Controllers
             [FromQuery] int anioLectivo = 2026,
             CancellationToken ct = default)
         {
+            var esDocente = User.FindAll("roles").Any(c => c.Value == "Docente");
+            if (esDocente)
+            {
+                var idUsuarioStr = User.FindFirstValue("idUsuario");
+                if (idUsuarioStr == null) return Forbid();
+                var idUsuario = Guid.Parse(idUsuarioStr);
+                var docente = await _db.Docentes
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+                if (docente == null) return Forbid();
+                var tieneAcceso = await _db.EspaciosCurriculares
+                    .AnyAsync(ec => ec.IdDocente == docente.IdDocente &&
+                                    ec.Curso.DetallesCursado.Any(dc => dc.IdEstudiante == id && dc.Estado), ct);
+                if (!tieneAcceso) return Forbid();
+            }
+
             var estudiante = await _db.Estudiantes
                 .AsNoTracking()
                 .Include(e => e.TutorEstudiantes)

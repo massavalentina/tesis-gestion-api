@@ -31,6 +31,8 @@ builder.Services.AddSingleton<QrCredentialGenerationProgressStore>();
 builder.Services.AddSingleton<QrCredentialDeliveryProgressStore>();
 
 builder.Services.AddScoped<IUsuariosRolesService, UsuariosRolesService>();
+builder.Services.AddScoped<IDocenteService, DocenteService>();
+builder.Services.AddScoped<IPreceptorService, PreceptorService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -41,6 +43,7 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer           = true,

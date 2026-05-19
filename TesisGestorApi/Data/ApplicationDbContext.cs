@@ -28,6 +28,10 @@ namespace TesisGestorApi.Data
         public DbSet<EspacioCurricular> EspaciosCurriculares { get; set; }
         public DbSet<Curricula> Curriculas { get; set; }
 
+        // ===== Asignaciones =====
+        public DbSet<DocenteEspacioCurricular> DocentesEspaciosCurriculares { get; set; }
+        public DbSet<PreceptorCurso> PreceptoresCursos { get; set; }
+
         // ===== Asistencias =====
         public DbSet<Asistencia> Asistencias { get; set; }
         public DbSet<RetiroAnticipado> RetirosAnticipados { get; set; }
@@ -196,6 +200,34 @@ modelBuilder.Entity<RefreshToken>()
                 .HasForeignKey(c => c.IdPreceptor)
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // Historial de asignaciones docente ↔ EC
+            modelBuilder.Entity<DocenteEspacioCurricular>(entity =>
+            {
+                entity.HasOne(d => d.Docente)
+                      .WithMany(doc => doc.DocentesEspaciosCurriculares)
+                      .HasForeignKey(d => d.IdDocente)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.EspacioCurricular)
+                      .WithMany(ec => ec.DocentesEspaciosCurriculares)
+                      .HasForeignKey(d => d.IdEC)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Historial de asignaciones preceptor ↔ Curso
+            modelBuilder.Entity<PreceptorCurso>(entity =>
+            {
+                entity.HasOne(p => p.Preceptor)
+                      .WithMany(pr => pr.PreceptoresCursos)
+                      .HasForeignKey(p => p.IdPreceptor)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(p => p.Curso)
+                      .WithMany(c => c.PreceptoresCursos)
+                      .HasForeignKey(p => p.IdCurso)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
 
             modelBuilder.Entity<Horario>(entity =>
             {
