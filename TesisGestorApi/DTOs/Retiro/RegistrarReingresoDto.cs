@@ -4,6 +4,5 @@ namespace TesisGestorApi.DTOs.Retiro
     {
         public Guid IdRetiro { get; set; }
         public TimeSpan HorarioReingreso { get; set; }
-        public string NombrePreceptor { get; set; } = null!;
     }
 }

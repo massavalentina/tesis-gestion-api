@@ -27,8 +27,5 @@ namespace TesisGestorApi.DTOs.Retiro
 
         /// <summary>Motivo del retiro (obligatorio).</summary>
         public string Motivo { get; set; } = null!;
-
-        /// <summary>CDA006 — nombre del preceptor que registra.</summary>
-        public string NombrePreceptor { get; set; } = null!;
     }
 }

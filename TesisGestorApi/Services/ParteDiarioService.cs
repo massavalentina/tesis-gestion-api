@@ -11,6 +11,7 @@ namespace TesisGestorApi.Services
     public class ParteDiarioService : IParteDiarioService
     {
         private readonly ApplicationDbContext _context;
+        private readonly ICurrentUserService _currentUser;
         private static readonly TimeSpan LimiteTarde = new(13, 20, 0);
 
         // RE (retiro express, ≤10% perdido) sigue siendo un retiro y se muestra como tal.
@@ -19,9 +20,10 @@ namespace TesisGestorApi.Services
         private static readonly HashSet<string> CodigosRetirado  = new(StringComparer.OrdinalIgnoreCase) { "RA", "RAE", "RE" };
         private static readonly HashSet<string> CodigosAusente   = new(StringComparer.OrdinalIgnoreCase) { "A", "ANC" };
 
-        public ParteDiarioService(ApplicationDbContext context)
+        public ParteDiarioService(ApplicationDbContext context, ICurrentUserService currentUser)
         {
             _context = context;
+            _currentUser = currentUser;
         }
 
         public async Task<ParteDiarioResumenDto> ObtenerResumenAsync(Guid cursoId, DateOnly fecha)
@@ -310,7 +312,7 @@ namespace TesisGestorApi.Services
                 Timestamp    = DateTime.UtcNow,
                 Contenido    = dto.Contenido,
                 Tipo         = TipoComentarioParte.Comentario,
-                Autor        = dto.Autor,
+                Autor        = _currentUser.NombreCompleto,
             };
 
             _context.ComentariosParte.Add(comentario);
@@ -343,7 +345,7 @@ namespace TesisGestorApi.Services
                 Timestamp    = DateTime.UtcNow,
                 Contenido    = contenido,
                 Tipo         = TipoComentarioParte.Evento,
-                Autor        = "Sistema",
+                Autor        = _currentUser.NombreCompleto,
             });
 
             await _context.SaveChangesAsync();

@@ -32,6 +32,9 @@ builder.Services.AddSingleton<QrCredentialDeliveryProgressStore>();
 
 builder.Services.AddScoped<IUsuariosRolesService, UsuariosRolesService>();
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+
 // Auth
 builder.Services.AddScoped<ITokenService, TokenService>();
 

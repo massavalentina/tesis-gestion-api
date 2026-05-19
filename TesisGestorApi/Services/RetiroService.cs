@@ -10,12 +10,14 @@ namespace TesisGestorApi.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IParteDiarioService _parteDiario;
+        private readonly ICurrentUserService _currentUser;
         private static readonly TimeSpan LimiteTarde = new(13, 20, 0);
 
-        public RetiroService(ApplicationDbContext context, IParteDiarioService parteDiario)
+        public RetiroService(ApplicationDbContext context, IParteDiarioService parteDiario, ICurrentUserService currentUser)
         {
-            _context    = context;
+            _context     = context;
             _parteDiario = parteDiario;
+            _currentUser = currentUser;
         }
 
         // ── Tutores del estudiante ─────────────────────────────────────────────
@@ -188,7 +190,7 @@ namespace TesisGestorApi.Services
                     ? DateTime.SpecifyKind(fecha.ToDateTime(TimeOnly.FromTimeSpan(dto.HorarioLimiteReingreso.Value)), DateTimeKind.Utc)
                     : null,
                 Motivo                = dto.Motivo,
-                NombrePreceptor       = dto.NombrePreceptor,
+                NombrePreceptor       = _currentUser.NombreCompleto,
                 IdEstudiante          = dto.EstudianteId,
                 IdTutor               = dto.IdTutor,
                 NombreResponsable     = dto.NombreResponsable,
@@ -463,7 +465,7 @@ namespace TesisGestorApi.Services
 
             // ── Actualizar campos del retiro ───────────────────────────────────
             retiro.HorarioRetiro   = DateTime.SpecifyKind(fecha.ToDateTime(TimeOnly.FromTimeSpan(dto.HorarioRetiro)), DateTimeKind.Utc);
-            retiro.NombrePreceptor = dto.NombrePreceptor;
+            retiro.NombrePreceptor = _currentUser.NombreCompleto;
             if (dto.Motivo != null) retiro.Motivo = dto.Motivo;
 
             retiro.ConReingreso = conReingresoFinal;
@@ -543,7 +545,7 @@ namespace TesisGestorApi.Services
 
             // Actividad del día
             string newHora      = TimeOnly.FromTimeSpan(dto.HorarioRetiro).ToString("HH:mm");
-            string newPreceptor = dto.NombrePreceptor;
+            string newPreceptor = _currentUser.NombreCompleto;
             string newMotivo    = dto.Motivo ?? prevMotivo;
             string newLimite    = dto.HorarioLimiteReingreso.HasValue
                 ? TimeOnly.FromTimeSpan(dto.HorarioLimiteReingreso.Value).ToString("HH:mm")

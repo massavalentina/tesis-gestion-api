@@ -3,7 +3,6 @@ namespace TesisGestorApi.DTOs.Retiro
     public class ActualizarRetiroDto
     {
         public TimeSpan HorarioRetiro { get; set; }
-        public string NombrePreceptor { get; set; } = null!;
 
         /// <summary>Motivo del retiro (null = no cambiar).</summary>
         public string? Motivo { get; set; }
