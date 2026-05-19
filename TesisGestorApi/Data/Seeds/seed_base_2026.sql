@@ -93,146 +93,75 @@ ON CONFLICT ("IdRol") DO UPDATE
 SET "Nombre" = EXCLUDED."Nombre";
 
 -- =========================================================
--- 3) USUARIOS + ROLES DE PRUEBA
--- =========================================================
-
--- Usuarios docentes
--- Nota: "Contraseña" es un hash BCrypt placeholder. Los usuarios seed no pueden
--- iniciar sesión hasta que se genere un hash real con BCrypt.HashPassword("123456", 12).
-WITH docentes_seed AS (
-    SELECT *
-    FROM (VALUES
-        ('docente.seed.01@example.test', 'Docente', 'Uno',   'DOC-0001'),
-        ('docente.seed.02@example.test', 'Docente', 'Dos',   'DOC-0002'),
-        ('docente.seed.03@example.test', 'Docente', 'Tres',  'DOC-0003'),
-        ('docente.seed.04@example.test', 'Docente', 'Cuatro','DOC-0004'),
-        ('docente.seed.05@example.test', 'Docente', 'Cinco', 'DOC-0005')
-    ) d(email, nombre, apellido, documento)
-)
-INSERT INTO public."Usuarios" ("IdUsuario", "Contraseña", "Nombre", "Apellido", "Email", "Documento", "Activo", "FechaCreacion")
-SELECT
-    public.seed_uuid('usuario|' || d.email),
-    '$2a$12$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-    d.nombre,
-    d.apellido,
-    d.email,
-    d.documento,
-    true,
-    '2026-01-01 00:00:00+00'::timestamptz
-FROM docentes_seed d
-ON CONFLICT ("IdUsuario") DO UPDATE
-SET
-    "Nombre"          = EXCLUDED."Nombre",
-    "Apellido"        = EXCLUDED."Apellido",
-    "Email"           = EXCLUDED."Email",
-    "Documento"       = EXCLUDED."Documento",
-    "Activo"          = EXCLUDED."Activo",
-    "FechaCreacion"   = EXCLUDED."FechaCreacion";
-
--- Asignar rol Docente
-WITH docentes_seed AS (
-    SELECT email FROM (VALUES
-        ('docente.seed.01@example.test'),
-        ('docente.seed.02@example.test'),
-        ('docente.seed.03@example.test'),
-        ('docente.seed.04@example.test'),
-        ('docente.seed.05@example.test')
-    ) d(email)
-)
-INSERT INTO public."UsuariosRoles" ("IdUsuario", "IdRol")
-SELECT public.seed_uuid('usuario|' || email), '22222222-2222-2222-2222-222222222222'
-FROM docentes_seed
-ON CONFLICT DO NOTHING;
-
--- Usuarios preceptores
-WITH preceptores_seed AS (
-    SELECT *
-    FROM (VALUES
-        ('preceptor.seed.01@example.test', 'Preceptor', 'Uno', 'PREC-0001'),
-        ('preceptor.seed.02@example.test', 'Preceptor', 'Dos', 'PREC-0002')
-    ) p(email, nombre, apellido, documento)
-)
-INSERT INTO public."Usuarios" ("IdUsuario", "Contraseña", "Nombre", "Apellido", "Email", "Documento", "Activo", "FechaCreacion")
-SELECT
-    public.seed_uuid('usuario|' || p.email),
-    '$2a$12$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-    p.nombre,
-    p.apellido,
-    p.email,
-    p.documento,
-    true,
-    '2026-01-01 00:00:00+00'::timestamptz
-FROM preceptores_seed p
-ON CONFLICT ("IdUsuario") DO UPDATE
-SET
-    "Nombre"          = EXCLUDED."Nombre",
-    "Apellido"        = EXCLUDED."Apellido",
-    "Email"           = EXCLUDED."Email",
-    "Documento"       = EXCLUDED."Documento",
-    "Activo"          = EXCLUDED."Activo",
-    "FechaCreacion"   = EXCLUDED."FechaCreacion";
-
--- Asignar rol Preceptor
-WITH preceptores_seed AS (
-    SELECT email FROM (VALUES
-        ('preceptor.seed.01@example.test'),
-        ('preceptor.seed.02@example.test')
-    ) p(email)
-)
-INSERT INTO public."UsuariosRoles" ("IdUsuario", "IdRol")
-SELECT public.seed_uuid('usuario|' || email), '33333333-3333-3333-3333-333333333333'
-FROM preceptores_seed
-ON CONFLICT DO NOTHING;
-
--- =========================================================
--- 4) DOCENTES (solo IdDocente + IdUsuario)
--- =========================================================
-
-WITH docentes_seed AS (
-    SELECT *
-    FROM (VALUES
-        ('docente.seed.01@example.test'),
-        ('docente.seed.02@example.test'),
-        ('docente.seed.03@example.test'),
-        ('docente.seed.04@example.test'),
-        ('docente.seed.05@example.test')
-    ) d(email)
-)
-INSERT INTO public."Docentes" ("IdDocente", "IdUsuario")
-SELECT
-    public.seed_uuid('docente|' || d.email),
-    public.seed_uuid('usuario|' || d.email)
-FROM docentes_seed d
-ON CONFLICT ("IdDocente") DO UPDATE
-SET "IdUsuario" = EXCLUDED."IdUsuario";
-
--- =========================================================
--- 5) CURRICULAS BASE
+-- 3) CURRICULAS (20 existentes + 41 nuevas = 61 total)
 -- =========================================================
 
 WITH curriculas AS (
     SELECT *
     FROM (VALUES
-        ('ARTVI', 'Artes Visuales'),
-        ('GEOGR', 'Geografia'),
-        ('INGLS', 'Ingles'),
-        ('LENLI', 'Lengua y Literatura'),
-        ('FMHCR', 'Formacion Humana y Cristiana'),
-        ('EDTEC', 'Educacion Tecnologica'),
-        ('FISIC', 'Fisica'),
-        ('MATEM', 'Matematica'),
-        ('EDFIS', 'Educacion Fisica'),
-        ('COMPU', 'Computacion'),
-        ('BIOLG', 'Biologia'),
-        ('CIDPA', 'Ciudadania y Participacion'),
-        ('HISTO', 'Historia'),
-        ('QUIMC', 'Quimica'),
-        ('MUSIC', 'Musica'),
-        ('DCSIG', 'Doctrina Social de la Iglesia'),
-        ('FILOS', 'Filosofia'),
-        ('SOCIO', 'Sociologia'),
-        ('ECONM', 'Economia'),
-        ('DERCH', 'Derecho')
+        -- Existentes
+        ('ARTVI',  'Artes Visuales'),
+        ('GEOGR',  'Geografía'),
+        ('INGLS',  'Inglés'),
+        ('LENLI',  'Lengua y Literatura'),
+        ('FMHCR',  'Formación Humana y Cristiana'),
+        ('EDTEC',  'Educación Tecnológica'),
+        ('FISIC',  'Física'),
+        ('MATEM',  'Matemática'),
+        ('EDFIS',  'Educación Física'),
+        ('COMPU',  'Computación'),
+        ('BIOLG',  'Biología'),
+        ('CIDPA',  'Ciudadanía y Participación'),
+        ('HISTO',  'Historia'),
+        ('QUIMC',  'Química'),
+        ('MUSIC',  'Música'),
+        ('DCSIG',  'Doctrina Social de la Iglesia'),
+        ('FILOS',  'Filosofía'),
+        ('SOCIO',  'Sociología'),
+        ('ECONM',  'Economía'),
+        ('DERCH',  'Derecho'),
+        -- Nuevas (a partir de 3er año)
+        ('DBTEC',  'Dibujo Técnico'),
+        ('TALLL',  'Taller - Laboratorio'),
+        ('FPVYT',  'Formación para Vida y Trabajo'),
+        ('SISINF', 'Sistemas de Información'),
+        ('ADMIN',  'Administración'),
+        ('MJORG',  'Marco Jurídico de las Organizaciones'),
+        ('ANTRO',  'Antropología'),
+        ('METOD',  'Metodología'),
+        ('INFEL1', 'Informática Electrónica I'),
+        ('ELTEN1', 'Electrotecnia I'),
+        ('ELANA1', 'Electrónica Analógica I'),
+        ('ELDGT1', 'Electrónica Digital I'),
+        ('ADMPC',  'Administración de la Producción y Comercialización'),
+        ('PSICO',  'Psicología'),
+        ('TIC',    'Tecnologías de la Información y Comunicación'),
+        ('ELANA2', 'Electrónica Analógica II'),
+        ('ELDGT2', 'Electrónica Digital II'),
+        ('ELTEN2', 'Electrotecnia II'),
+        ('INFEL2', 'Informática Electrónica II'),
+        ('SINCON', 'Sistemas de Información Contable'),
+        ('ADMRH',  'Administración de Recursos Humanos'),
+        ('CIDPO',  'Ciudadanía y Política'),
+        ('TEATR',  'Teatro'),
+        ('GORG',   'Gestión de las Organizaciones Sociales'),
+        ('ECOPO',  'Economía Política'),
+        ('EDPOL',  'Educación Política'),
+        ('EGPIN',  'Economía y Gestión de Producción Industrial'),
+        ('ELIND1', 'Electrónica Industrial I'),
+        ('INSIND', 'Instalación Industrial'),
+        ('ELDGT3', 'Electrónica Digital III'),
+        ('ANMAT',  'Análisis Matemático'),
+        ('TELCO1', 'Telecomunicaciones I'),
+        ('EMPRD',  'Emprendimientos'),
+        ('ELIND2', 'Electrónica Industrial II'),
+        ('FAMBT',  'Formación en Ambientes de Trabajo'),
+        ('PRYIN',  'Proyecto Integrador'),
+        ('ELDGT4', 'Electrónica Digital IV'),
+        ('MJAI',   'Marco Jurídico de las Actividades Industriales'),
+        ('TELCO2', 'Telecomunicaciones II'),
+        ('INGTE',  'Inglés Técnico'),
+        ('HIGSEG', 'Higiene y Seguridad Laboral')
     ) c(codigo, nombre)
 )
 INSERT INTO public."Curriculas" ("IdCurricula", "Nombre", "Descripcion", "Codigo", "EsContraturno", "Estado")
@@ -241,7 +170,7 @@ SELECT
     c.nombre,
     'Pendiente de completar',
     c.codigo,
-    false,
+    (c.codigo = 'TALLL'),
     'ACTIVA'
 FROM curriculas c
 ON CONFLICT ("IdCurricula") DO UPDATE
@@ -253,28 +182,31 @@ SET
     "Estado"        = EXCLUDED."Estado";
 
 -- =========================================================
--- 6) CURSOS (21 = 7 anios x 3 divisiones)
+-- 4) CURSOS (19: años 1-6 × A/B/C + solo 7C)
 -- =========================================================
 
-WITH anios AS (
-    SELECT gs AS numero
-    FROM generate_series(1, 7) gs
-),
-divisiones AS (
-    SELECT d::char(1) AS nombre
-    FROM (VALUES ('A'), ('B'), ('C')) v(d)
+WITH combos AS (
+    SELECT *
+    FROM (VALUES
+        (1,'A'),(1,'B'),(1,'C'),
+        (2,'A'),(2,'B'),(2,'C'),
+        (3,'A'),(3,'B'),(3,'C'),
+        (4,'A'),(4,'B'),(4,'C'),
+        (5,'A'),(5,'B'),(5,'C'),
+        (6,'A'),(6,'B'),(6,'C'),
+        (7,'C')
+    ) c(anio_num, division)
 )
 INSERT INTO public."Cursos" ("IdCurso", "IdAnio", "IdDivision", "Codigo", "Estado", "AñoLectivo")
 SELECT
-    public.seed_uuid(format('curso|%s%s|2026', a.numero, d.nombre)),
-    public.seed_uuid('anio|' || a.numero::text),
-    public.seed_uuid('division|' || d.nombre::text),
-    format('%s%s-2026', a.numero, d.nombre),
+    public.seed_uuid(format('curso|%s%s|2026', c.anio_num, c.division)),
+    public.seed_uuid('anio|' || c.anio_num::text),
+    public.seed_uuid('division|' || c.division::text),
+    format('%s%s-2026', c.anio_num, c.division),
     true,
     '2026-01-01 00:00:00+00'::timestamptz
-FROM anios a
-CROSS JOIN divisiones d
-ORDER BY a.numero, d.nombre
+FROM combos c
+ORDER BY c.anio_num, c.division
 ON CONFLICT ("IdCurso") DO UPDATE
 SET
     "IdAnio"      = EXCLUDED."IdAnio",
@@ -283,85 +215,605 @@ SET
     "Estado"      = EXCLUDED."Estado",
     "AñoLectivo"  = EXCLUDED."AñoLectivo";
 
--- =========================================================
--- 7) PRECEPTORES (IdPreceptor + IdUsuario) y asignacion a cursos
--- =========================================================
-
-WITH preceptores_seed AS (
-    SELECT *
-    FROM (VALUES
-        ('preceptor.seed.01@example.test'),
-        ('preceptor.seed.02@example.test')
-    ) p(email)
-)
-INSERT INTO public."Preceptores" ("IdPreceptor", "IdUsuario")
-SELECT
-    public.seed_uuid('preceptor|' || p.email),
-    public.seed_uuid('usuario|' || p.email)
-FROM preceptores_seed p
-ON CONFLICT ("IdPreceptor") DO UPDATE
-SET "IdUsuario" = EXCLUDED."IdUsuario";
-
--- Asignar preceptores a sus cursos (FK ahora está en Cursos.IdPreceptor)
+-- Desactivar cursos sin existencia real en la institución
 UPDATE public."Cursos"
-SET "IdPreceptor" = public.seed_uuid('preceptor|preceptor.seed.01@example.test')
-WHERE "Codigo" = '1A-2026';
-
-UPDATE public."Cursos"
-SET "IdPreceptor" = public.seed_uuid('preceptor|preceptor.seed.02@example.test')
-WHERE "Codigo" = '1B-2026';
+SET "Estado" = false
+WHERE "Codigo" IN ('7A-2026', '7B-2026')
+  AND "AñoLectivo"::date = '2026-01-01'::date;
 
 -- =========================================================
--- 8) ESPACIOS CURRICULARES (docente asignado)
+-- Datos CSV de horarios 2026 (tablas temporales)
+-- Se eliminan automáticamente al hacer COMMIT.
 -- =========================================================
 
-WITH materias_plan AS (
-    SELECT *
-    FROM (VALUES
-        (1,  'MATEM'),
-        (2,  'LENLI'),
-        (3,  'HISTO'),
-        (4,  'GEOGR'),
-        (5,  'BIOLG'),
-        (6,  'FISIC'),
-        (7,  'QUIMC'),
-        (8,  'INGLS'),
-        (9,  'COMPU'),
-        (10, 'EDTEC'),
-        (11, 'CIDPA'),
-        (12, 'EDFIS'),
-        (13, 'FMHCR'),
-        (14, 'ARTVI'),
-        (15, 'MUSIC'),
-        (16, 'SOCIO')
-    ) m(ord, codigo)
-),
-cursos AS (
-    SELECT
-        c."IdCurso",
-        c."Codigo",
-        row_number() OVER (ORDER BY c."Codigo") AS curso_pos
-    FROM public."Cursos" c
-    WHERE c."Estado" = true
-      AND c."AñoLectivo"::date = '2026-01-01'::date
-),
-doc_pool AS (
-    SELECT
-        array_agg(d."IdDocente" ORDER BY u."Email") AS ids,
-        count(*)::int AS n
-    FROM public."Docentes" d
-    INNER JOIN public."Usuarios" u ON u."IdUsuario" = d."IdUsuario"
-    WHERE u."Email" LIKE 'docente.seed.%@example.test'
-)
+CREATE TEMP TABLE _horarios_csv (
+    dia_semana   int,
+    entrada      interval,
+    salida       interval,
+    materia      text,
+    curso_codigo text
+) ON COMMIT DROP;
+
+INSERT INTO _horarios_csv (dia_semana, entrada, salida, materia, curso_codigo) VALUES
+    -- 1A-2026
+    (1, '07:25', '08:50', 'Artes Visuales',               '1A-2026'),
+    (1, '09:00', '10:20', 'Geografía',                    '1A-2026'),
+    (1, '10:30', '11:10', 'Inglés',                       '1A-2026'),
+    (1, '11:10', '11:50', 'Lengua y Literatura',           '1A-2026'),
+    (1, '12:00', '13:20', 'Formación Humana y Cristiana',  '1A-2026'),
+    (2, '07:25', '08:50', 'Formación Humana y Cristiana',  '1A-2026'),
+    (2, '09:00', '10:20', 'Educación Tecnológica',         '1A-2026'),
+    (2, '10:30', '11:50', 'Física',                        '1A-2026'),
+    (2, '12:00', '13:20', 'Matemática',                    '1A-2026'),
+    (2, '13:20', '14:00', 'Educación Física',              '1A-2026'),
+    (3, '07:25', '08:50', 'Geografía',                     '1A-2026'),
+    (3, '09:00', '10:20', 'Computación',                   '1A-2026'),
+    (3, '10:30', '11:50', 'Biología',                      '1A-2026'),
+    (3, '12:00', '12:40', 'Física',                        '1A-2026'),
+    (4, '07:25', '08:50', 'Lengua y Literatura',           '1A-2026'),
+    (4, '09:00', '09:40', 'Ciudadanía y Participación',    '1A-2026'),
+    (4, '09:40', '10:20', 'Artes Visuales',               '1A-2026'),
+    (4, '10:30', '11:50', 'Matemática',                    '1A-2026'),
+    (4, '12:00', '12:40', 'Biología',                      '1A-2026'),
+    (4, '12:40', '13:20', 'Geografía',                     '1A-2026'),
+    (5, '07:25', '08:50', 'Lengua y Literatura',           '1A-2026'),
+    (5, '09:00', '10:20', 'Educación Física',              '1A-2026'),
+    (5, '10:30', '11:50', 'Inglés',                        '1A-2026'),
+    (5, '12:00', '13:20', 'Ciudadanía y Participación',    '1A-2026'),
+    -- 1B-2026
+    (1, '07:25', '08:50', 'Matemática',                    '1B-2026'),
+    (1, '09:00', '10:20', 'Biología',                      '1B-2026'),
+    (1, '10:30', '11:50', 'Artes Visuales',               '1B-2026'),
+    (1, '12:00', '13:20', 'Educación Física',              '1B-2026'),
+    (2, '07:25', '08:10', 'Biología',                      '1B-2026'),
+    (2, '08:10', '08:50', 'Física',                        '1B-2026'),
+    (2, '09:00', '10:20', 'Formación Humana y Cristiana',  '1B-2026'),
+    (2, '10:30', '11:50', 'Computación',                   '1B-2026'),
+    (2, '12:00', '13:20', 'Inglés',                        '1B-2026'),
+    (3, '07:25', '08:50', 'Geografía',                     '1B-2026'),
+    (3, '09:00', '09:40', 'Biología',                      '1B-2026'),
+    (3, '09:40', '10:20', 'Lengua y Literatura',           '1B-2026'),
+    (3, '10:30', '11:50', 'Física',                        '1B-2026'),
+    (3, '12:00', '13:20', 'Computación',                   '1B-2026'),
+    (4, '07:25', '08:50', 'Ciudadanía y Participación',    '1B-2026'),
+    (4, '09:00', '10:20', 'Lengua y Literatura',           '1B-2026'),
+    (4, '10:30', '11:10', 'Artes Visuales',               '1B-2026'),
+    (4, '11:20', '12:40', 'Educación Física',              '1B-2026'),
+    (4, '12:40', '13:20', 'Inglés',                        '1B-2026'),
+    (5, '07:25', '08:50', 'Geografía',                     '1B-2026'),
+    (5, '09:00', '10:20', 'Matemática',                    '1B-2026'),
+    (5, '10:30', '11:50', 'Lengua y Literatura',           '1B-2026'),
+    (5, '12:00', '13:20', 'Educación Tecnológica',         '1B-2026'),
+    -- 1C-2026
+    (1, '07:25', '08:50', 'Inglés',                        '1C-2026'),
+    (1, '09:00', '09:40', 'Matemática',                    '1C-2026'),
+    (1, '09:40', '10:20', 'Física',                        '1C-2026'),
+    (1, '10:30', '11:50', 'Geografía',                     '1C-2026'),
+    (1, '12:00', '13:20', 'Biología',                      '1C-2026'),
+    (1, '13:20', '14:00', 'Educación Física',              '1C-2026'),
+    (1, '14:30', '16:30', 'Taller - Laboratorio',          '1C-2026'),
+    (2, '07:25', '08:50', 'Educación Tecnológica',         '1C-2026'),
+    (2, '09:00', '10:20', 'Computación',                   '1C-2026'),
+    (2, '10:30', '11:50', 'Formación Humana y Cristiana',  '1C-2026'),
+    (2, '12:00', '12:40', 'Biología',                      '1C-2026'),
+    (2, '12:40', '13:20', 'Inglés',                        '1C-2026'),
+    (2, '13:40', '16:30', 'Taller - Laboratorio',          '1C-2026'),
+    (3, '07:25', '08:50', 'Matemática',                    '1C-2026'),
+    (3, '09:00', '10:20', 'Física',                        '1C-2026'),
+    (3, '10:30', '11:50', 'Lengua y Literatura',           '1C-2026'),
+    (3, '12:00', '13:20', 'Educación Física',              '1C-2026'),
+    (4, '07:25', '08:50', 'Artes Visuales',               '1C-2026'),
+    (4, '09:00', '11:00', 'Geografía',                     '1C-2026'),
+    (4, '11:10', '11:50', 'Física',                        '1C-2026'),
+    (4, '12:00', '12:40', 'Ciudadanía y Participación',    '1C-2026'),
+    (4, '12:40', '13:20', 'Lengua y Literatura',           '1C-2026'),
+    (5, '07:25', '08:50', 'Dibujo Técnico',                '1C-2026'),
+    (5, '09:00', '10:20', 'Lengua y Literatura',           '1C-2026'),
+    (5, '10:30', '11:50', 'Ciudadanía y Participación',    '1C-2026'),
+    (5, '12:00', '13:20', 'Matemática',                    '1C-2026'),
+    -- 2A-2026
+    (1, '07:25', '08:50', 'Computación',                   '2A-2026'),
+    (1, '09:00', '10:20', 'Inglés',                        '2A-2026'),
+    (1, '10:30', '11:50', 'Biología',                      '2A-2026'),
+    (1, '12:00', '13:20', 'Lengua y Literatura',           '2A-2026'),
+    (1, '13:30', '14:50', 'Música',                        '2A-2026'),
+    (2, '07:25', '08:10', 'Química',                       '2A-2026'),
+    (2, '08:10', '10:20', 'Matemática',                    '2A-2026'),
+    (2, '10:30', '11:50', 'Historia',                      '2A-2026'),
+    (2, '12:00', '12:40', 'Educación Física',              '2A-2026'),
+    (3, '07:25', '09:40', 'Lengua y Literatura',           '2A-2026'),
+    (3, '09:40', '10:20', 'Biología',                      '2A-2026'),
+    (3, '10:30', '11:10', 'Inglés',                        '2A-2026'),
+    (3, '11:10', '11:50', 'Música',                        '2A-2026'),
+    (3, '12:00', '13:20', 'Matemática',                    '2A-2026'),
+    (4, '07:25', '08:50', 'Química',                       '2A-2026'),
+    (4, '09:00', '10:20', 'Formación Humana y Cristiana',  '2A-2026'),
+    (4, '10:30', '11:50', 'Historia',                      '2A-2026'),
+    (4, '12:00', '13:20', 'Educación Física',              '2A-2026'),
+    (5, '07:25', '08:10', 'Historia',                      '2A-2026'),
+    (5, '08:10', '10:10', 'Formación Humana y Cristiana',  '2A-2026'),
+    (5, '10:30', '13:20', 'Educación Tecnológica',         '2A-2026'),
+    -- 2B-2026
+    (1, '07:25', '08:50', 'Lengua y Literatura',           '2B-2026'),
+    (1, '09:00', '10:20', 'Computación',                   '2B-2026'),
+    (1, '10:30', '11:50', 'Historia',                      '2B-2026'),
+    (1, '12:00', '13:20', 'Formación Humana y Cristiana',  '2B-2026'),
+    (2, '07:25', '08:50', 'Inglés',                        '2B-2026'),
+    (2, '09:00', '11:40', 'Educación Tecnológica',         '2B-2026'),
+    (2, '12:00', '13:20', 'Ciudadanía y Participación',    '2B-2026'),
+    (2, '13:40', '15:00', 'Educación Física',              '2B-2026'),
+    (3, '07:25', '08:50', 'Música',                        '2B-2026'),
+    (3, '09:00', '10:20', 'Matemática',                    '2B-2026'),
+    (3, '10:30', '11:50', 'Inglés',                        '2B-2026'),
+    (3, '12:00', '13:20', 'Biología',                      '2B-2026'),
+    (4, '07:25', '08:50', 'Matemática',                    '2B-2026'),
+    (4, '09:00', '10:20', 'Biología',                      '2B-2026'),
+    (4, '10:30', '12:30', 'Lengua y Literatura',           '2B-2026'),
+    (4, '12:40', '13:20', 'Educación Física',              '2B-2026'),
+    (5, '07:25', '08:10', 'Ciudadanía y Participación',    '2B-2026'),
+    (5, '08:10', '10:10', 'Química',                       '2B-2026'),
+    (5, '10:30', '12:30', 'Historia',                      '2B-2026'),
+    -- 2C-2026
+    (1, '07:25', '08:50', 'Biología',                      '2C-2026'),
+    (1, '09:00', '11:00', 'Lengua y Literatura',           '2C-2026'),
+    (1, '11:20', '13:20', 'Ciudadanía y Participación',    '2C-2026'),
+    (1, '14:00', '14:40', 'Educación Física',              '2C-2026'),
+    (2, '07:25', '08:50', 'Computación',                   '2C-2026'),
+    (2, '09:00', '10:20', 'Inglés',                        '2C-2026'),
+    (2, '10:30', '11:50', 'Química',                       '2C-2026'),
+    (2, '12:00', '13:20', 'Dibujo Técnico',                '2C-2026'),
+    (3, '07:25', '08:50', 'Inglés',                        '2C-2026'),
+    (3, '09:00', '10:20', 'Música',                        '2C-2026'),
+    (3, '10:30', '11:10', 'Matemática',                    '2C-2026'),
+    (3, '12:00', '13:20', 'Biología',                      '2C-2026'),
+    (3, '13:20', '14:20', 'Educación Física',              '2C-2026'),
+    (3, '14:30', '16:30', 'Taller - Laboratorio',          '2C-2026'),
+    (4, '07:25', '10:20', 'Educación Tecnológica',         '2C-2026'),
+    (4, '10:30', '11:50', 'Formación Humana y Cristiana',  '2C-2026'),
+    (4, '12:00', '12:40', 'Historia',                      '2C-2026'),
+    (4, '13:45', '15:45', 'Taller - Laboratorio',          '2C-2026'),
+    (5, '07:25', '08:50', 'Matemática',                    '2C-2026'),
+    (5, '09:00', '11:40', 'Historia',                      '2C-2026'),
+    (5, '12:00', '13:20', 'Lengua y Literatura',           '2C-2026'),
+    -- 3A-2026
+    (1, '07:25', '08:50', 'Lengua y Literatura',           '3A-2026'),
+    (1, '09:00', '10:20', 'Música',                        '3A-2026'),
+    (1, '10:30', '11:50', 'Matemática',                    '3A-2026'),
+    (1, '12:00', '12:40', 'Educación Tecnológica',         '3A-2026'),
+    (1, '12:40', '13:20', 'Química',                       '3A-2026'),
+    (2, '07:25', '08:50', 'Matemática',                    '3A-2026'),
+    (2, '09:00', '11:40', 'Inglés',                        '3A-2026'),
+    (2, '12:00', '13:20', 'Educación Física',              '3A-2026'),
+    (3, '07:25', '08:50', 'Formación Humana y Cristiana',  '3A-2026'),
+    (3, '09:00', '10:20', 'Educación Tecnológica',         '3A-2026'),
+    (3, '10:30', '11:50', 'Geografía',                     '3A-2026'),
+    (3, '12:00', '13:20', 'Computación',                   '3A-2026'),
+    (3, '13:20', '14:20', 'Lengua y Literatura',           '3A-2026'),
+    (3, '14:20', '16:00', 'Formación para Vida y Trabajo', '3A-2026'),
+    (4, '07:25', '08:50', 'Geografía',                     '3A-2026'),
+    (4, '09:00', '11:00', 'Física',                        '3A-2026'),
+    (4, '11:10', '11:50', 'Música',                        '3A-2026'),
+    (4, '12:00', '13:20', 'Historia',                      '3A-2026'),
+    (5, '07:25', '08:50', 'Lengua y Literatura',           '3A-2026'),
+    (5, '09:00', '10:20', 'Química',                       '3A-2026'),
+    (5, '10:30', '11:50', 'Historia',                      '3A-2026'),
+    (5, '12:00', '13:20', 'Formación para Vida y Trabajo', '3A-2026'),
+    (5, '13:20', '14:20', 'Educación Física',              '3A-2026'),
+    -- 3B-2026
+    (1, '07:25', '08:50', 'Física',                        '3B-2026'),
+    (1, '09:00', '10:20', 'Matemática',                    '3B-2026'),
+    (1, '10:30', '11:50', 'Inglés',                        '3B-2026'),
+    (1, '12:00', '13:20', 'Música',                        '3B-2026'),
+    (1, '13:20', '14:30', 'Educación Física',              '3B-2026'),
+    (2, '07:25', '08:50', 'Lengua y Literatura',           '3B-2026'),
+    (2, '09:00', '10:20', 'Matemática',                    '3B-2026'),
+    (2, '10:30', '12:30', 'Educación Tecnológica',         '3B-2026'),
+    (2, '13:20', '14:30', 'Computación',                   '3B-2026'),
+    (3, '07:25', '08:50', 'Matemática',                    '3B-2026'),
+    (3, '09:00', '10:20', 'Lengua y Literatura',           '3B-2026'),
+    (3, '10:30', '11:50', 'Formación Humana y Cristiana',  '3B-2026'),
+    (3, '12:00', '12:40', 'Química',                       '3B-2026'),
+    (3, '12:40', '13:20', 'Geografía',                     '3B-2026'),
+    (3, '14:00', '15:15', 'Formación para Vida y Trabajo', '3B-2026'),
+    (4, '07:25', '08:50', 'Música',                        '3B-2026'),
+    (4, '09:00', '10:20', 'Geografía',                     '3B-2026'),
+    (4, '10:30', '11:50', 'Inglés',                        '3B-2026'),
+    (4, '12:40', '13:20', 'Lengua y Literatura',           '3B-2026'),
+    (4, '13:30', '14:30', 'Educación Física',              '3B-2026'),
+    (5, '07:25', '08:50', 'Formación para Vida y Trabajo', '3B-2026'),
+    (5, '09:00', '10:20', 'Historia',                      '3B-2026'),
+    (5, '10:30', '12:30', 'Química',                       '3B-2026'),
+    (5, '13:20', '14:00', 'Geografía',                     '3B-2026'),
+    -- 3C-2026
+    (1, '07:25', '08:50', 'Geografía',                     '3C-2026'),
+    (1, '09:00', '10:20', 'Matemática',                    '3C-2026'),
+    (1, '10:30', '11:50', 'Física',                        '3C-2026'),
+    (1, '12:00', '12:40', 'Química',                       '3C-2026'),
+    (1, '13:20', '14:30', 'Lengua y Literatura',           '3C-2026'),
+    (1, '14:30', '17:30', 'Taller - Laboratorio',          '3C-2026'),
+    (2, '07:25', '08:50', 'Matemática',                    '3C-2026'),
+    (2, '09:00', '11:00', 'Formación para Vida y Trabajo', '3C-2026'),
+    (2, '11:10', '11:50', 'Inglés',                        '3C-2026'),
+    (2, '12:00', '13:20', 'Educación Tecnológica',         '3C-2026'),
+    (2, '13:40', '14:40', 'Educación Física',              '3C-2026'),
+    (2, '14:45', '17:45', 'Taller - Laboratorio',          '3C-2026'),
+    (3, '07:25', '08:50', 'Química',                       '3C-2026'),
+    (3, '09:00', '10:20', 'Geografía',                     '3C-2026'),
+    (3, '10:30', '11:50', 'Historia',                      '3C-2026'),
+    (3, '12:00', '12:40', 'Matemática',                    '3C-2026'),
+    (3, '12:40', '13:20', 'Formación para Vida y Trabajo', '3C-2026'),
+    (3, '13:30', '14:50', 'Computación',                   '3C-2026'),
+    (4, '07:25', '08:50', 'Inglés',                        '3C-2026'),
+    (4, '09:00', '10:20', 'Música',                        '3C-2026'),
+    (4, '10:30', '11:50', 'Física',                        '3C-2026'),
+    (4, '12:00', '13:20', 'Dibujo Técnico',                '3C-2026'),
+    (4, '13:20', '14:00', 'Lengua y Literatura',           '3C-2026'),
+    (4, '14:30', '15:30', 'Educación Física',              '3C-2026'),
+    (5, '07:25', '08:50', 'Historia',                      '3C-2026'),
+    (5, '09:00', '10:20', 'Educación Tecnológica',         '3C-2026'),
+    (5, '10:30', '11:50', 'Dibujo Técnico',                '3C-2026'),
+    (5, '12:00', '12:40', 'Formación Humana y Cristiana',  '3C-2026'),
+    (5, '12:40', '13:20', 'Lengua y Literatura',           '3C-2026'),
+    -- 4A-2026
+    (1, '07:25', '08:50', 'Inglés',                        '4A-2026'),
+    (1, '09:00', '10:20', 'Lengua y Literatura',           '4A-2026'),
+    (1, '10:30', '11:50', 'Sistemas de Información',        '4A-2026'),
+    (1, '12:00', '13:20', 'Formación para Vida y Trabajo', '4A-2026'),
+    (1, '13:20', '14:40', 'Artes Visuales',               '4A-2026'),
+    (2, '07:25', '08:50', 'Biología',                      '4A-2026'),
+    (2, '09:00', '10:20', 'Historia',                      '4A-2026'),
+    (2, '10:30', '11:50', 'Matemática',                    '4A-2026'),
+    (2, '12:00', '12:40', 'Lengua y Literatura',           '4A-2026'),
+    (2, '12:40', '13:20', 'Educación Física',              '4A-2026'),
+    (3, '07:25', '08:50', 'Biología',                      '4A-2026'),
+    (3, '09:00', '10:20', 'Doctrina Social de la Iglesia', '4A-2026'),
+    (3, '10:30', '11:50', 'Matemática',                    '4A-2026'),
+    (3, '12:00', '13:20', 'Lengua y Literatura',           '4A-2026'),
+    (4, '07:25', '08:50', 'Geografía',                     '4A-2026'),
+    (4, '09:00', '09:40', 'Administración',                '4A-2026'),
+    (4, '09:40', '10:20', 'Inglés',                        '4A-2026'),
+    (4, '10:30', '11:50', 'Sistemas de Información',        '4A-2026'),
+    (4, '12:00', '13:00', 'Educación Física',              '4A-2026'),
+    (5, '07:25', '08:50', 'Administración',                '4A-2026'),
+    (5, '09:00', '11:00', 'Marco Jurídico de las Org.',    '4A-2026'),
+    (5, '11:10', '11:50', 'Geografía',                     '4A-2026'),
+    (5, '12:00', '13:20', 'Formación para Vida y Trabajo', '4A-2026'),
+    -- 4B-2026
+    (1, '07:25', '08:50', 'Educación Física',              '4B-2026'),
+    (1, '09:00', '09:40', 'Metodología',                   '4B-2026'),
+    (1, '09:40', '10:20', 'Historia',                      '4B-2026'),
+    (1, '10:30', '11:50', 'Antropología',                  '4B-2026'),
+    (1, '12:00', '13:20', 'Inglés',                        '4B-2026'),
+    (2, '07:25', '08:50', 'Geografía',                     '4B-2026'),
+    (2, '09:00', '10:20', 'Historia',                      '4B-2026'),
+    (2, '10:30', '11:50', 'Biología',                      '4B-2026'),
+    (2, '12:00', '13:20', 'Metodología',                   '4B-2026'),
+    (3, '07:25', '08:50', 'Lengua y Literatura',           '4B-2026'),
+    (3, '09:00', '10:20', 'Doctrina Social de la Iglesia', '4B-2026'),
+    (3, '10:30', '12:40', 'Artes Visuales',               '4B-2026'),
+    (3, '13:20', '14:00', 'Formación para Vida y Trabajo', '4B-2026'),
+    (4, '07:25', '08:50', 'Historia',                      '4B-2026'),
+    (4, '09:00', '10:20', 'Matemática',                    '4B-2026'),
+    (4, '10:30', '11:50', 'Biología',                      '4B-2026'),
+    (4, '12:00', '13:20', 'Formación para Vida y Trabajo', '4B-2026'),
+    (5, '07:25', '08:40', 'Educación Física',              '4B-2026'),
+    (5, '09:00', '10:20', 'Matemática',                    '4B-2026'),
+    (5, '10:30', '11:50', 'Geografía',                     '4B-2026'),
+    (5, '12:00', '13:20', 'Antropología',                  '4B-2026'),
+    (5, '13:40', '15:00', 'Lengua y Literatura',           '4B-2026'),
+    -- 4C-2026
+    (1, '07:25', '08:50', 'Matemática',                    '4C-2026'),
+    (1, '09:00', '10:20', 'Física',                        '4C-2026'),
+    (1, '10:30', '11:50', 'Lengua y Literatura',           '4C-2026'),
+    (1, '12:00', '13:20', 'Informática Electrónica I',     '4C-2026'),
+    (1, '13:45', '15:05', 'Informática Electrónica I',     '4C-2026'),
+    (1, '15:20', '17:40', 'Electrotecnia I',               '4C-2026'),
+    (2, '07:25', '08:50', 'Física',                        '4C-2026'),
+    (2, '09:00', '10:20', 'Biología',                      '4C-2026'),
+    (2, '10:30', '11:50', 'Historia',                      '4C-2026'),
+    (2, '12:00', '13:20', 'Inglés',                        '4C-2026'),
+    (2, '13:40', '15:00', 'Educación Física',              '4C-2026'),
+    (3, '07:25', '08:50', 'Matemática',                    '4C-2026'),
+    (3, '09:00', '10:20', 'Inglés',                        '4C-2026'),
+    (3, '10:30', '11:50', 'Doctrina Social de la Iglesia', '4C-2026'),
+    (3, '12:00', '13:20', 'Electrónica Analógica I',       '4C-2026'),
+    (3, '13:45', '18:00', 'Electrónica Digital I',         '4C-2026'),
+    (4, '07:25', '08:50', 'Biología',                      '4C-2026'),
+    (4, '09:00', '10:20', 'Lengua y Literatura',           '4C-2026'),
+    (4, '10:30', '11:50', 'Geografía',                     '4C-2026'),
+    (4, '12:00', '13:10', 'Educación Física',              '4C-2026'),
+    (4, '13:20', '14:00', 'Electrónica Analógica I',       '4C-2026'),
+    (5, '07:25', '08:50', 'Matemática',                    '4C-2026'),
+    (5, '09:00', '10:20', 'Electrónica Analógica I',       '4C-2026'),
+    (5, '10:30', '11:50', 'Química',                       '4C-2026'),
+    (5, '12:00', '13:20', 'Artes Visuales',               '4C-2026'),
+    -- 5A-2026
+    (1, '07:25', '08:50', 'Física',                        '5A-2026'),
+    (1, '09:00', '10:20', 'Inglés',                        '5A-2026'),
+    (1, '10:30', '11:50', 'Matemática',                    '5A-2026'),
+    (1, '12:00', '13:20', 'Sistemas de Información',        '5A-2026'),
+    (1, '13:20', '14:20', 'Educación Física',              '5A-2026'),
+    (2, '07:25', '08:50', 'Historia',                      '5A-2026'),
+    (2, '09:00', '10:20', 'Matemática',                    '5A-2026'),
+    (2, '10:30', '11:10', 'Inglés',                        '5A-2026'),
+    (2, '11:10', '13:10', 'Economía',                      '5A-2026'),
+    (2, '13:45', '15:30', 'Sistemas de Información',        '5A-2026'),
+    (2, '15:30', '16:10', 'Administración',                '5A-2026'),
+    (3, '07:25', '08:50', 'Doctrina Social de la Iglesia', '5A-2026'),
+    (3, '09:00', '10:20', 'Física',                        '5A-2026'),
+    (3, '10:30', '11:50', 'Lengua y Literatura',           '5A-2026'),
+    (3, '12:00', '12:40', 'Historia',                      '5A-2026'),
+    (3, '13:20', '14:00', 'Geografía',                     '5A-2026'),
+    (4, '07:25', '09:40', 'Formación para Vida y Trabajo', '5A-2026'),
+    (4, '09:40', '11:50', 'Música',                        '5A-2026'),
+    (4, '12:00', '13:20', 'Administración',                '5A-2026'),
+    (4, '13:40', '15:30', 'ADM de la Producción y Comercialización', '5A-2026'),
+    (5, '07:25', '08:50', 'Psicología',                    '5A-2026'),
+    (5, '09:00', '10:20', 'Geografía',                     '5A-2026'),
+    (5, '10:30', '11:50', 'Lengua y Literatura',           '5A-2026'),
+    (5, '12:00', '13:00', 'Educación Física',              '5A-2026'),
+    (5, '13:20', '14:00', 'Psicología',                    '5A-2026'),
+    -- 5B-2026
+    (1, '07:25', '08:50', 'Sociología',                    '5B-2026'),
+    (1, '09:00', '10:20', 'Lengua y Literatura',           '5B-2026'),
+    (1, '10:30', '11:50', 'Música',                        '5B-2026'),
+    (1, '12:00', '13:20', 'Historia',                      '5B-2026'),
+    (1, '13:40', '15:00', 'Formación para Vida y Trabajo', '5B-2026'),
+    (2, '07:25', '08:10', 'Historia',                      '5B-2026'),
+    (2, '08:10', '08:50', 'Sociología',                    '5B-2026'),
+    (2, '09:00', '10:20', 'Geografía',                     '5B-2026'),
+    (2, '10:30', '11:50', 'Inglés',                        '5B-2026'),
+    (2, '12:00', '13:20', 'Física',                        '5B-2026'),
+    (2, '13:20', '14:00', 'Educación Física',              '5B-2026'),
+    (3, '07:25', '08:50', 'Doctrina Social de la Iglesia', '5B-2026'),
+    (3, '09:00', '10:20', 'Matemática',                    '5B-2026'),
+    (3, '10:30', '11:50', 'Geografía',                     '5B-2026'),
+    (3, '12:00', '12:40', 'Formación para Vida y Trabajo', '5B-2026'),
+    (3, '12:40', '13:20', 'Inglés',                        '5B-2026'),
+    (4, '07:25', '08:50', 'Matemática',                    '5B-2026'),
+    (4, '09:00', '10:20', 'Historia',                      '5B-2026'),
+    (4, '10:30', '11:10', 'Tecnologías de la Información y Comunicación', '5B-2026'),
+    (4, '11:10', '11:50', 'Lengua y Literatura',           '5B-2026'),
+    (4, '12:00', '13:20', 'Psicología',                    '5B-2026'),
+    (4, '13:40', '15:00', 'Tecnologías de la Información y Comunicación', '5B-2026'),
+    (5, '07:25', '08:50', 'Educación Física',              '5B-2026'),
+    (5, '09:00', '10:20', 'Psicología',                    '5B-2026'),
+    (5, '10:30', '11:50', 'Lengua y Literatura',           '5B-2026'),
+    (5, '12:00', '13:20', 'Física',                        '5B-2026'),
+    -- 5C-2026 ("Formación Cristiana y Humana" normalizado a FMHCR)
+    (1, '07:25', '08:50', 'Formación Humana y Cristiana',  '5C-2026'),
+    (1, '09:00', '11:40', 'Electrónica Analógica II',      '5C-2026'),
+    (1, '12:00', '13:20', 'Inglés',                        '5C-2026'),
+    (1, '14:10', '15:10', 'Educación Física',              '5C-2026'),
+    (1, '15:10', '18:00', 'Electrónica Digital II',        '5C-2026'),
+    (2, '07:25', '08:50', 'Física',                        '5C-2026'),
+    (2, '09:00', '10:20', 'Química',                       '5C-2026'),
+    (2, '10:30', '11:50', 'Historia',                      '5C-2026'),
+    (2, '12:00', '13:20', 'Matemática',                    '5C-2026'),
+    (2, '13:20', '14:00', 'Matemática',                    '5C-2026'),
+    (3, '07:25', '08:50', 'Química',                       '5C-2026'),
+    (3, '09:00', '10:20', 'Geografía',                     '5C-2026'),
+    (3, '10:30', '11:50', 'Física',                        '5C-2026'),
+    (3, '12:00', '13:20', 'Psicología',                    '5C-2026'),
+    (3, '13:20', '14:00', 'Inglés',                        '5C-2026'),
+    (3, '14:30', '15:30', 'Educación Física',              '5C-2026'),
+    (4, '07:25', '08:50', 'Lengua y Literatura',           '5C-2026'),
+    (4, '09:00', '10:20', 'Matemática',                    '5C-2026'),
+    (4, '10:30', '11:50', 'Geografía',                     '5C-2026'),
+    (4, '12:00', '13:20', 'Música',                        '5C-2026'),
+    (4, '13:45', '18:00', 'Electrotecnia II',              '5C-2026'),
+    (5, '07:25', '10:20', 'Electrónica Analógica II',      '5C-2026'),
+    (5, '10:30', '11:10', 'Psicología',                    '5C-2026'),
+    (5, '11:20', '13:20', 'Informática Electrónica II',    '5C-2026'),
+    -- 6A-2026
+    (1, '07:25', '08:50', 'Sistemas de Información Contable',        '6A-2026'),
+    (1, '09:00', '10:20', 'Administración de Recursos Humanos',      '6A-2026'),
+    (1, '10:30', '11:50', 'Química',                                 '6A-2026'),
+    (1, '12:00', '13:20', 'Lengua y Literatura',                     '6A-2026'),
+    (2, '07:25', '08:50', 'Sistemas de Información Contable',        '6A-2026'),
+    (2, '09:00', '10:20', 'Formación para Vida y Trabajo',           '6A-2026'),
+    (2, '10:30', '11:50', 'Lengua y Literatura',                     '6A-2026'),
+    (2, '12:00', '13:20', 'Matemática',                              '6A-2026'),
+    (2, '14:10', '15:10', 'Educación Física',                        '6A-2026'),
+    (3, '07:25', '08:50', 'Ciudadanía y Política',                   '6A-2026'),
+    (3, '09:00', '10:20', 'Matemática',                              '6A-2026'),
+    (3, '10:30', '11:50', 'Química',                                 '6A-2026'),
+    (3, '12:00', '13:20', 'Administración de Recursos Humanos',      '6A-2026'),
+    (3, '13:45', '16:20', 'Administración de Recursos Humanos',      '6A-2026'),
+    (3, '16:30', '17:40', 'Derecho',                                 '6A-2026'),
+    (4, '07:25', '08:10', 'Ciudadanía y Política',                   '6A-2026'),
+    (4, '08:10', '08:50', 'Sistemas de Información Contable',        '6A-2026'),
+    (4, '09:00', '10:20', 'Filosofía',                               '6A-2026'),
+    (4, '10:30', '11:50', 'Doctrina Social de la Iglesia',           '6A-2026'),
+    (4, '12:00', '13:20', 'Inglés',                                  '6A-2026'),
+    (5, '07:25', '08:50', 'Inglés',                                  '6A-2026'),
+    (5, '09:00', '11:10', 'Economía',                                '6A-2026'),
+    (5, '11:00', '11:50', 'Derecho',                                 '6A-2026'),
+    (5, '12:00', '13:00', 'Educación Física',                        '6A-2026'),
+    (5, '13:30', '15:30', 'Teatro',                                  '6A-2026'),
+    -- 6B-2026
+    (1, '07:25', '08:50', 'Lengua y Literatura',                     '6B-2026'),
+    (1, '09:00', '10:20', 'Doctrina Social de la Iglesia',           '6B-2026'),
+    (1, '10:30', '11:50', 'Gestión de las Organizaciones Sociales',  '6B-2026'),
+    (1, '12:00', '13:20', 'Matemática',                              '6B-2026'),
+    (1, '14:30', '15:50', 'Teatro',                                  '6B-2026'),
+    (2, '07:25', '08:50', 'Formación para Vida y Trabajo',           '6B-2026'),
+    (2, '09:00', '09:40', 'Gestión de las Organizaciones Sociales',  '6B-2026'),
+    (2, '09:40', '10:20', 'Inglés',                                  '6B-2026'),
+    (2, '10:30', '11:50', 'Química',                                 '6B-2026'),
+    (2, '12:00', '13:20', 'Matemática',                              '6B-2026'),
+    (2, '14:00', '14:40', 'Educación Política',                      '6B-2026'),
+    (2, '14:50', '15:50', 'Educación Física',                        '6B-2026'),
+    (3, '07:25', '08:10', 'Filosofía',                               '6B-2026'),
+    (3, '08:10', '08:50', 'Gestión de las Organizaciones Sociales',  '6B-2026'),
+    (3, '09:00', '10:20', 'Ciudadanía y Política',                   '6B-2026'),
+    (3, '10:30', '11:50', 'Economía Política',                       '6B-2026'),
+    (3, '12:00', '13:20', 'Geografía',                               '6B-2026'),
+    (3, '13:20', '14:00', 'Geografía',                               '6B-2026'),
+    (3, '14:30', '15:10', 'Formación para Vida y Trabajo',           '6B-2026'),
+    (4, '07:25', '08:50', 'Inglés',                                  '6B-2026'),
+    (4, '09:00', '10:20', 'Ciudadanía y Política',                   '6B-2026'),
+    (4, '10:30', '11:50', 'Historia',                                '6B-2026'),
+    (4, '12:00', '13:20', 'Lengua y Literatura',                     '6B-2026'),
+    (4, '13:30', '14:10', 'Historia',                                '6B-2026'),
+    (5, '07:25', '08:50', 'Química',                                 '6B-2026'),
+    (5, '09:00', '11:10', 'Filosofía',                               '6B-2026'),
+    (5, '11:10', '11:50', 'Teatro',                                  '6B-2026'),
+    (5, '12:00', '12:40', 'Lengua y Literatura',                     '6B-2026'),
+    (5, '13:20', '14:20', 'Educación Física',                        '6B-2026'),
+    -- 6C-2026
+    (1, '07:25', '08:50', 'Doctrina Social de la Iglesia',           '6C-2026'),
+    (1, '09:00', '10:20', 'Economía y Gestión de Producción Industrial', '6C-2026'),
+    (1, '10:30', '11:50', 'Inglés',                                  '6C-2026'),
+    (1, '12:00', '12:40', 'Educación Física',                        '6C-2026'),
+    (1, '12:40', '13:20', 'Electrónica Industrial I',                '6C-2026'),
+    (1, '13:20', '15:30', 'Electrónica Industrial I',                '6C-2026'),
+    (2, '08:10', '10:20', 'Lengua y Literatura',                     '6C-2026'),
+    (2, '10:30', '11:50', 'Ciudadanía y Política',                   '6C-2026'),
+    (2, '12:00', '13:20', 'Economía y Gestión de Producción Industrial', '6C-2026'),
+    (2, '13:45', '18:00', 'Instalación Industrial',                  '6C-2026'),
+    (3, '07:25', '08:10', 'Electrónica Digital III',                 '6C-2026'),
+    (3, '08:10', '10:20', 'Filosofía',                               '6C-2026'),
+    (3, '10:30', '11:50', 'Análisis Matemático',                     '6C-2026'),
+    (3, '12:00', '12:40', 'Inglés',                                  '6C-2026'),
+    (3, '12:40', '13:20', 'Ciudadanía y Política',                   '6C-2026'),
+    (3, '13:20', '14:00', 'Análisis Matemático',                     '6C-2026'),
+    (3, '14:30', '18:00', 'Telecomunicaciones I',                    '6C-2026'),
+    (4, '07:25', '10:20', 'Electrónica Digital III',                 '6C-2026'),
+    (4, '10:30', '11:50', 'Análisis Matemático',                     '6C-2026'),
+    (5, '07:25', '08:50', 'Electrónica Industrial I',                '6C-2026'),
+    (5, '09:00', '10:20', 'Instalación Industrial',                  '6C-2026'),
+    (5, '10:30', '11:50', 'Educación Física',                        '6C-2026'),
+    (5, '12:00', '13:20', 'Teatro',                                  '6C-2026'),
+    -- 7C-2026
+    (1, '07:25', '08:50', 'Emprendimientos',                                    '7C-2026'),
+    (1, '09:00', '12:40', 'Electrónica Industrial II',                          '7C-2026'),
+    (2, '07:25', '08:50', 'Emprendimientos',                                    '7C-2026'),
+    (2, '09:00', '12:40', 'Formación en Ambientes de Trabajo',                  '7C-2026'),
+    (2, '12:40', '13:20', 'Proyecto Integrador',                                '7C-2026'),
+    (2, '13:45', '17:15', 'Proyecto Integrador',                                '7C-2026'),
+    (3, '08:10', '11:50', 'Electrónica Digital IV',                             '7C-2026'),
+    (3, '12:00', '13:20', 'Marco Jurídico de las Actividades Industriales',     '7C-2026'),
+    (3, '13:20', '14:00', 'Marco Jurídico de las Actividades Industriales',     '7C-2026'),
+    (4, '07:25', '10:20', 'Telecomunicaciones II',                              '7C-2026'),
+    (4, '10:30', '11:50', 'Inglés Técnico',                                     '7C-2026'),
+    (4, '12:00', '13:20', 'Higiene y Seguridad Laboral',                        '7C-2026'),
+    (5, '09:00', '10:20', 'Inglés Técnico',                                     '7C-2026'),
+    (5, '10:30', '13:20', 'Formación en Ambientes de Trabajo',                  '7C-2026');
+
+CREATE TEMP TABLE _materia_codigo (materia text, codigo text) ON COMMIT DROP;
+INSERT INTO _materia_codigo (materia, codigo) VALUES
+    ('Artes Visuales',                                     'ARTVI'),
+    ('Geografía',                                          'GEOGR'),
+    ('Inglés',                                             'INGLS'),
+    ('Lengua y Literatura',                                'LENLI'),
+    ('Formación Humana y Cristiana',                       'FMHCR'),
+    ('Educación Tecnológica',                              'EDTEC'),
+    ('Física',                                             'FISIC'),
+    ('Matemática',                                         'MATEM'),
+    ('Educación Física',                                   'EDFIS'),
+    ('Computación',                                        'COMPU'),
+    ('Biología',                                           'BIOLG'),
+    ('Ciudadanía y Participación',                         'CIDPA'),
+    ('Historia',                                           'HISTO'),
+    ('Química',                                            'QUIMC'),
+    ('Música',                                             'MUSIC'),
+    ('Doctrina Social de la Iglesia',                      'DCSIG'),
+    ('Filosofía',                                          'FILOS'),
+    ('Sociología',                                         'SOCIO'),
+    ('Economía',                                           'ECONM'),
+    ('Derecho',                                            'DERCH'),
+    ('Dibujo Técnico',                                     'DBTEC'),
+    ('Taller - Laboratorio',                               'TALLL'),
+    ('Formación para Vida y Trabajo',                      'FPVYT'),
+    ('Sistemas de Información',                            'SISINF'),
+    ('Administración',                                     'ADMIN'),
+    ('Marco Jurídico de las Org.',                         'MJORG'),
+    ('Antropología',                                       'ANTRO'),
+    ('Metodología',                                        'METOD'),
+    ('Informática Electrónica I',                          'INFEL1'),
+    ('Electrotecnia I',                                    'ELTEN1'),
+    ('Electrónica Analógica I',                            'ELANA1'),
+    ('Electrónica Digital I',                              'ELDGT1'),
+    ('ADM de la Producción y Comercialización',            'ADMPC'),
+    ('Psicología',                                         'PSICO'),
+    ('Tecnologías de la Información y Comunicación',       'TIC'),
+    ('Electrónica Analógica II',                           'ELANA2'),
+    ('Electrónica Digital II',                             'ELDGT2'),
+    ('Electrotecnia II',                                   'ELTEN2'),
+    ('Informática Electrónica II',                         'INFEL2'),
+    ('Sistemas de Información Contable',                   'SINCON'),
+    ('Administración de Recursos Humanos',                 'ADMRH'),
+    ('Ciudadanía y Política',                              'CIDPO'),
+    ('Teatro',                                             'TEATR'),
+    ('Gestión de las Organizaciones Sociales',             'GORG'),
+    ('Economía Política',                                  'ECOPO'),
+    ('Educación Política',                                 'EDPOL'),
+    ('Economía y Gestión de Producción Industrial',        'EGPIN'),
+    ('Electrónica Industrial I',                           'ELIND1'),
+    ('Instalación Industrial',                             'INSIND'),
+    ('Electrónica Digital III',                            'ELDGT3'),
+    ('Análisis Matemático',                                'ANMAT'),
+    ('Telecomunicaciones I',                               'TELCO1'),
+    ('Emprendimientos',                                    'EMPRD'),
+    ('Electrónica Industrial II',                          'ELIND2'),
+    ('Formación en Ambientes de Trabajo',                  'FAMBT'),
+    ('Proyecto Integrador',                                'PRYIN'),
+    ('Electrónica Digital IV',                             'ELDGT4'),
+    ('Marco Jurídico de las Actividades Industriales',     'MJAI'),
+    ('Telecomunicaciones II',                              'TELCO2'),
+    ('Inglés Técnico',                                     'INGTE'),
+    ('Higiene y Seguridad Laboral',                        'HIGSEG');
+
+-- =========================================================
+-- Limpieza: eliminar ECs y Horarios 2026 (reconstrucción desde CSV)
+-- =========================================================
+
+DELETE FROM public."AsistenciasPorEspacio"
+WHERE "IdClaseDictada" IN (
+    SELECT cd."IdClaseDictada"
+    FROM public."ClasesDictadas" cd
+    INNER JOIN public."EspaciosCurriculares" ec ON ec."IdEC" = cd."IdEC"
+    INNER JOIN public."Cursos" c ON c."IdCurso" = ec."IdCurso"
+    WHERE c."AñoLectivo"::date = '2026-01-01'::date
+);
+
+DELETE FROM public."ClasesDictadas"
+WHERE "IdEC" IN (
+    SELECT ec."IdEC"
+    FROM public."EspaciosCurriculares" ec
+    INNER JOIN public."Cursos" c ON c."IdCurso" = ec."IdCurso"
+    WHERE c."AñoLectivo"::date = '2026-01-01'::date
+);
+
+DELETE FROM public."Horarios"
+WHERE "IdCurso" IN (
+    SELECT c."IdCurso" FROM public."Cursos" c
+    WHERE c."AñoLectivo"::date = '2026-01-01'::date
+);
+
+DELETE FROM public."EspaciosCurriculares"
+WHERE "IdCurso" IN (
+    SELECT c."IdCurso" FROM public."Cursos" c
+    WHERE c."AñoLectivo"::date = '2026-01-01'::date
+);
+
+-- =========================================================
+-- 5) ESPACIOS CURRICULARES (basado en horarios reales del CSV)
+-- =========================================================
+
 INSERT INTO public."EspaciosCurriculares" ("IdEC", "IdCurso", "IdCurricula", "IdDocente")
 SELECT
-    public.seed_uuid('ec|' || c."Codigo" || '|' || m.codigo),
+    public.seed_uuid('ec|' || eu.curso_codigo || '|' || eu.curricula_codigo),
     c."IdCurso",
-    public.seed_uuid('curricula|' || m.codigo),
-    dp.ids[((c.curso_pos + m.ord - 2) % dp.n) + 1]
-FROM cursos c
-CROSS JOIN materias_plan m
-CROSS JOIN doc_pool dp
+    public.seed_uuid('curricula|' || eu.curricula_codigo),
+    NULL
+FROM (
+    SELECT DISTINCT h.curso_codigo, mc.codigo AS curricula_codigo
+    FROM _horarios_csv h
+    INNER JOIN _materia_codigo mc ON mc.materia = h.materia
+) eu
+INNER JOIN public."Cursos" c ON c."Codigo" = eu.curso_codigo
 ON CONFLICT ("IdEC") DO UPDATE
 SET
     "IdCurso"     = EXCLUDED."IdCurso",
@@ -369,107 +821,20 @@ SET
     "IdDocente"   = EXCLUDED."IdDocente";
 
 -- =========================================================
--- 9) HORARIOS POR CURSO
+-- 6) HORARIOS (446 filas reales desde CSV)
 -- =========================================================
 
-WITH materias_plan AS (
-    SELECT *
-    FROM (VALUES
-        (1,  'MATEM'),
-        (2,  'LENLI'),
-        (3,  'HISTO'),
-        (4,  'GEOGR'),
-        (5,  'BIOLG'),
-        (6,  'FISIC'),
-        (7,  'QUIMC'),
-        (8,  'INGLS'),
-        (9,  'COMPU'),
-        (10, 'EDTEC'),
-        (11, 'CIDPA'),
-        (12, 'EDFIS'),
-        (13, 'FMHCR'),
-        (14, 'ARTVI'),
-        (15, 'MUSIC'),
-        (16, 'SOCIO')
-    ) m(ord, codigo)
-),
-ec_map AS (
-    SELECT
-        ec."IdCurso",
-        mp.ord,
-        ec."IdEC"
-    FROM public."EspaciosCurriculares" ec
-    INNER JOIN public."Curriculas" cu
-        ON cu."IdCurricula" = ec."IdCurricula"
-    INNER JOIN materias_plan mp
-        ON mp.codigo = cu."Codigo"
-),
-cursos AS (
-    SELECT
-        c."IdCurso",
-        c."Codigo",
-        row_number() OVER (ORDER BY c."Codigo") AS curso_pos,
-        regexp_replace(split_part(c."Codigo", '-', 1), '[^0-9]', '', 'g')::int AS anio_num,
-        right(split_part(c."Codigo", '-', 1), 1) AS division
-    FROM public."Cursos" c
-    WHERE c."Estado" = true
-      AND c."AñoLectivo"::date = '2026-01-01'::date
-),
-slots AS (
-    SELECT *
-    FROM (VALUES
-        (1, 1, '07:30:00'::interval, '08:40:00'::interval),
-        (1, 2, '08:50:00'::interval, '10:00:00'::interval),
-        (1, 3, '10:10:00'::interval, '11:20:00'::interval),
-        (1, 4, '11:30:00'::interval, '12:40:00'::interval),
-        (1, 5, '13:30:00'::interval, '14:40:00'::interval),
-
-        (2, 1, '07:30:00'::interval, '08:40:00'::interval),
-        (2, 2, '08:50:00'::interval, '10:00:00'::interval),
-        (2, 3, '10:10:00'::interval, '11:20:00'::interval),
-        (2, 4, '11:30:00'::interval, '12:40:00'::interval),
-        (2, 5, '13:30:00'::interval, '14:40:00'::interval),
-
-        (3, 1, '07:30:00'::interval, '08:40:00'::interval),
-        (3, 2, '08:50:00'::interval, '10:00:00'::interval),
-        (3, 3, '10:10:00'::interval, '11:20:00'::interval),
-        (3, 4, '11:30:00'::interval, '12:40:00'::interval),
-        (3, 5, '13:30:00'::interval, '14:40:00'::interval),
-
-        (4, 1, '07:30:00'::interval, '08:40:00'::interval),
-        (4, 2, '08:50:00'::interval, '10:00:00'::interval),
-        (4, 3, '10:10:00'::interval, '11:20:00'::interval),
-        (4, 4, '11:30:00'::interval, '12:40:00'::interval),
-        (4, 5, '13:30:00'::interval, '14:40:00'::interval),
-
-        (5, 1, '07:30:00'::interval, '08:40:00'::interval),
-        (5, 2, '08:50:00'::interval, '10:00:00'::interval),
-        (5, 3, '10:10:00'::interval, '11:20:00'::interval),
-        (5, 4, '11:30:00'::interval, '12:40:00'::interval),
-        (5, 5, '13:30:00'::interval, '14:40:00'::interval)
-    ) s(dia, slot, base_entrada, base_salida)
-)
 INSERT INTO public."Horarios" ("IdHorario", "DíaSemana", "HorarioEntrada", "HorarioSalida", "IdCurso", "IdEC")
 SELECT
-    public.seed_uuid('horario|' || c."Codigo" || '|d' || s.dia::text || '|s' || s.slot::text),
-    s.dia,
-    s.base_entrada
-        + make_interval(mins => (
-            CASE c.division WHEN 'A' THEN 0 WHEN 'B' THEN 5 ELSE 10 END
-            + ((c.anio_num - 1) % 3) * 2
-        )),
-    s.base_salida
-        + make_interval(mins => (
-            CASE c.division WHEN 'A' THEN 0 WHEN 'B' THEN 5 ELSE 10 END
-            + ((c.anio_num - 1) % 3) * 2
-        )),
+    public.seed_uuid('horario|' || h.curso_codigo || '|d' || h.dia_semana::text || '|' || REPLACE(h.entrada::text, ':', '')),
+    h.dia_semana,
+    h.entrada,
+    h.salida,
     c."IdCurso",
-    em."IdEC"
-FROM cursos c
-CROSS JOIN slots s
-INNER JOIN ec_map em
-    ON em."IdCurso" = c."IdCurso"
-   AND em.ord = (((s.dia - 1) * 5 + s.slot + c.curso_pos - 2) % 16) + 1
+    public.seed_uuid('ec|' || h.curso_codigo || '|' || mc.codigo)
+FROM _horarios_csv h
+INNER JOIN _materia_codigo mc ON mc.materia = h.materia
+INNER JOIN public."Cursos" c ON c."Codigo" = h.curso_codigo
 ON CONFLICT ("IdHorario") DO UPDATE
 SET
     "DíaSemana"      = EXCLUDED."DíaSemana",
@@ -479,7 +844,7 @@ SET
     "IdEC"           = EXCLUDED."IdEC";
 
 -- =========================================================
--- 10) ESTUDIANTES (30 por curso = 630)
+-- 7) ESTUDIANTES (30 por curso = 570)
 -- =========================================================
 
 WITH cursos AS (
@@ -547,7 +912,7 @@ SET
     "TeaGeneral"      = EXCLUDED."TeaGeneral";
 
 -- =========================================================
--- 11) DETALLES CURSADO (1 activo por estudiante)
+-- 8) DETALLES CURSADO (1 activo por estudiante)
 -- =========================================================
 
 WITH cursos AS (
@@ -580,7 +945,7 @@ SET
     "IdCurso"      = EXCLUDED."IdCurso";
 
 -- =========================================================
--- 12) TUTORES + VINCULO TUTOR/ESTUDIANTE
+-- 9) TUTORES + VINCULO TUTOR/ESTUDIANTE
 -- =========================================================
 
 WITH cursos AS (
@@ -668,5 +1033,112 @@ FROM base b
 ON CONFLICT ("IdTutor", "IdEstudiante") DO UPDATE
 SET
     "EsPrincipal" = EXCLUDED."EsPrincipal";
+
+-- =========================================================
+-- 10) PERMISOS
+-- =========================================================
+
+WITH permisos AS (
+    SELECT *
+    FROM (VALUES
+        ('Sistema',        'Escritura', 'CARGAS_BASE_RW',        'Cargas base',                     'Gestionar datos base del sistema'),
+        ('Alumnos',        'Lectura',   'FICHA_ALUMNO_R',         'Ficha del alumno (lectura)',       'Ver la ficha de un alumno'),
+        ('Alumnos',        'Escritura', 'FICHA_ALUMNO_RW',        'Ficha del alumno (escritura)',     'Editar la ficha de un alumno'),
+        ('Alumnos',        'Lectura',   'DATOS_CONTACTO_R',       'Datos de contacto (lectura)',      'Ver datos de contacto'),
+        ('Alumnos',        'Escritura', 'DATOS_CONTACTO_RW',      'Datos de contacto (escritura)',    'Editar datos de contacto'),
+        ('Asistencia',     'Lectura',   'ASISTENCIA_MANUAL_R',    'Asistencia manual (lectura)',      'Ver registros de asistencia manual'),
+        ('Asistencia',     'Escritura', 'ASISTENCIA_MANUAL_RW',   'Asistencia manual (escritura)',    'Registrar asistencia manual'),
+        ('Asistencia',     'Escritura', 'ASISTENCIA_QR_RW',       'Asistencia QR',                   'Registrar asistencia por QR'),
+        ('Credenciales',   'Escritura', 'CREDENCIALES_QR_RW',     'Credenciales QR',                 'Generar y enviar credenciales QR'),
+        ('Asistencia',     'Escritura', 'BUSQUEDA_RAPIDA_RW',     'Busqueda rapida',                 'Registrar asistencia por busqueda rapida'),
+        ('Asistencia',     'Lectura',   'PARTE_DIARIO_R',         'Parte diario (lectura)',           'Ver el parte diario'),
+        ('Asistencia',     'Escritura', 'PARTE_DIARIO_RW',        'Parte diario (escritura)',         'Gestionar el parte diario'),
+        ('Reportes',       'Escritura', 'REPORTES_ASISTENCIA_RW', 'Reportes de asistencia general',  'Ver y exportar reportes generales de asistencia'),
+        ('Reportes',       'Escritura', 'REPORTES_EC_RW',         'Reportes por espacio curricular', 'Ver y exportar reportes de asistencia por EC'),
+        ('Administracion', 'Escritura', 'GESTION_USUARIOS_RW',   'Gestion de usuarios',             'Crear, editar y desactivar usuarios'),
+        ('Administracion', 'Escritura', 'ASIGNACION_ROLES_RW',   'Gestion de roles',                'Asignar y quitar roles a usuarios')
+    ) p(modulo, accion, codigo, nombre, descripcion)
+)
+INSERT INTO public."Permisos" ("IdPermiso", "Modulo", "Accion", "Codigo", "Nombre", "Descripcion")
+SELECT
+    public.seed_uuid('permiso|' || p.codigo),
+    p.modulo,
+    p.accion,
+    p.codigo,
+    p.nombre,
+    p.descripcion
+FROM permisos p
+ON CONFLICT ("IdPermiso") DO UPDATE
+SET
+    "Modulo"      = EXCLUDED."Modulo",
+    "Accion"      = EXCLUDED."Accion",
+    "Codigo"      = EXCLUDED."Codigo",
+    "Nombre"      = EXCLUDED."Nombre",
+    "Descripcion" = EXCLUDED."Descripcion";
+
+-- =========================================================
+-- 11) ROL-PERMISOS
+-- =========================================================
+
+DELETE FROM public."RolPermisos"
+WHERE "IdRol" IN (
+    SELECT "IdRol" FROM public."Roles"
+    WHERE "Nombre" IN ('Secretario', 'Docente', 'Preceptor', 'Equipo Directivo')
+);
+
+WITH asignaciones AS (
+    SELECT *
+    FROM (VALUES
+        ('Secretario',       'CARGAS_BASE_RW'),
+        ('Secretario',       'FICHA_ALUMNO_R'),
+        ('Secretario',       'FICHA_ALUMNO_RW'),
+        ('Secretario',       'DATOS_CONTACTO_R'),
+        ('Secretario',       'DATOS_CONTACTO_RW'),
+        ('Secretario',       'REPORTES_ASISTENCIA_RW'),
+        ('Secretario',       'REPORTES_EC_RW'),
+        ('Secretario',       'GESTION_USUARIOS_RW'),
+        ('Secretario',       'ASIGNACION_ROLES_RW'),
+        ('Preceptor',        'FICHA_ALUMNO_R'),
+        ('Preceptor',        'FICHA_ALUMNO_RW'),
+        ('Preceptor',        'DATOS_CONTACTO_R'),
+        ('Preceptor',        'DATOS_CONTACTO_RW'),
+        ('Preceptor',        'ASISTENCIA_MANUAL_R'),
+        ('Preceptor',        'ASISTENCIA_MANUAL_RW'),
+        ('Preceptor',        'ASISTENCIA_QR_RW'),
+        ('Preceptor',        'CREDENCIALES_QR_RW'),
+        ('Preceptor',        'BUSQUEDA_RAPIDA_RW'),
+        ('Preceptor',        'PARTE_DIARIO_R'),
+        ('Preceptor',        'PARTE_DIARIO_RW'),
+        ('Preceptor',        'REPORTES_ASISTENCIA_RW'),
+        ('Docente',          'FICHA_ALUMNO_R'),
+        ('Docente',          'DATOS_CONTACTO_R'),
+        ('Docente',          'PARTE_DIARIO_R'),
+        ('Docente',          'REPORTES_EC_RW'),
+        ('Equipo Directivo', 'FICHA_ALUMNO_R'),
+        ('Equipo Directivo', 'FICHA_ALUMNO_RW'),
+        ('Equipo Directivo', 'DATOS_CONTACTO_R'),
+        ('Equipo Directivo', 'DATOS_CONTACTO_RW'),
+        ('Equipo Directivo', 'ASISTENCIA_MANUAL_R'),
+        ('Equipo Directivo', 'PARTE_DIARIO_R')
+    ) a(rol, permiso_codigo)
+)
+INSERT INTO public."RolPermisos" ("IdRolPermiso", "IdRol", "IdPermiso")
+SELECT
+    public.seed_uuid('rolpermiso|' || a.rol || '|' || a.permiso_codigo),
+    r."IdRol",
+    public.seed_uuid('permiso|' || a.permiso_codigo)
+FROM asignaciones a
+INNER JOIN public."Roles" r ON r."Nombre" = a.rol
+ON CONFLICT ("IdRolPermiso") DO NOTHING;
+
+-- =========================================================
+-- Fix: admin sin contraseña provisoria ni vencimiento
+-- =========================================================
+
+UPDATE public."Usuarios"
+SET
+    "RequiereCambioContrasena"   = false,
+    "FechaVencimientoContrasena" = NULL
+WHERE "Email" = 'admin@sistema.local';
 
 COMMIT;

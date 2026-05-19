@@ -27,8 +27,7 @@ namespace TesisGestorApi.Data
                 Activo                     = true,
                 FechaCreacion              = DateTime.UtcNow,
                 IntentosFailidos           = 0,
-                RequiereCambioContrasena   = true,
-                FechaVencimientoContrasena = DateTime.UtcNow.AddDays(30),
+                RequiereCambioContrasena   = false,
             });
 
             db.UsuariosRoles.Add(new UsuarioRol { IdUsuario = adminId, IdRol = adminRol.IdRol });
@@ -152,55 +151,5 @@ namespace TesisGestorApi.Data
             }
         }
 
-        public static async Task SeedDevUsuariosAsync(ApplicationDbContext db)
-        {
-            const string pwd = "Dev1234";
-
-            var devUsuarios = new[]
-            {
-                (email: "admin@dev.local",      nombre: "Admin",      apellido: "Dev", doc: "99000001", rol: "Admin"),
-                (email: "docente@dev.local",     nombre: "Docente",    apellido: "Dev", doc: "99000002", rol: "Docente"),
-                (email: "preceptor@dev.local",   nombre: "Preceptor",  apellido: "Dev", doc: "99000003", rol: "Preceptor"),
-                (email: "secretario@dev.local",  nombre: "Secretario", apellido: "Dev", doc: "99000004", rol: "Secretario"),
-                (email: "directivo@dev.local",   nombre: "Directivo",  apellido: "Dev", doc: "99000005", rol: "Equipo Directivo"),
-            };
-
-            var roles = await db.Roles.ToListAsync();
-
-            foreach (var u in devUsuarios)
-            {
-                if (await db.Usuarios.AnyAsync(x => x.Email == u.email))
-                    continue;
-
-                var rol = roles.FirstOrDefault(r => r.Nombre == u.rol);
-                if (rol == null) continue;
-
-                var id = Guid.NewGuid();
-
-                db.Usuarios.Add(new Usuario
-                {
-                    IdUsuario                  = id,
-                    Nombre                     = u.nombre,
-                    Apellido                   = u.apellido,
-                    Email                      = u.email,
-                    Documento                  = u.doc,
-                    Contraseña                 = BCrypt.Net.BCrypt.HashPassword(pwd, workFactor: 4),
-                    Activo                     = true,
-                    FechaCreacion              = DateTime.UtcNow,
-                    IntentosFailidos           = 0,
-                    RequiereCambioContrasena   = false,
-                });
-
-                db.UsuariosRoles.Add(new UsuarioRol { IdUsuario = id, IdRol = rol.IdRol });
-
-                if (u.rol == "Docente")
-                    db.Docentes.Add(new Docente { IdDocente = Guid.NewGuid(), IdUsuario = id });
-
-                if (u.rol == "Preceptor")
-                    db.Preceptores.Add(new Preceptor { IdPreceptor = Guid.NewGuid(), IdUsuario = id });
-            }
-
-            await db.SaveChangesAsync();
-        }
     }
 }
