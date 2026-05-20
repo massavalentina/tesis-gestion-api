@@ -28,6 +28,7 @@
     <Content Include="utils\robles.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+
   </ItemGroup>
 
 </Project>

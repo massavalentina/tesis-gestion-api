@@ -116,6 +116,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 // Middleware
+app.UseStaticFiles();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();

@@ -152,6 +152,31 @@ namespace TesisGestorApi.Controllers
             }
         }
 
+        // PUT /api/usuario/{id}
+        // Actualización administrativa: nombre, apellido, email, documento, teléfono.
+        [HttpPut("{id:guid}")]
+        public async Task<ActionResult<UsuarioDto>> ActualizarUsuario(Guid id, [FromBody] ActualizarUsuarioAdminDto dto)
+        {
+            try
+            {
+                var resultado = await _usuarioService.ActualizarUsuarioAdminAsync(id, dto);
+                return Ok(resultado);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al actualizar usuario {Id}.", id);
+                return StatusCode(500, new { error = "Error interno." });
+            }
+        }
+
         // PATCH /api/usuario/{id}/desactivar
         // Baja lógica: marca Activo=false, desvincula de ECs y Cursos.
         [HttpPatch("{id:guid}/desactivar")]
