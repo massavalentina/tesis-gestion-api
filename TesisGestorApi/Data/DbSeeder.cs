@@ -10,7 +10,7 @@ namespace TesisGestorApi.Data
             var adminRol = await db.Roles.FirstOrDefaultAsync(r => r.Nombre == "Admin");
             if (adminRol == null) return;
 
-            if (await db.Usuarios.AnyAsync(u => u.Email == "admin@sistema.local")) return;
+            if (await db.Usuarios.AnyAsync(u => u.Email == "admin@sistema.local" || u.Documento == "00000000")) return;
 
             const string pwdInicial = "Admin@1234";
             var hash    = BCrypt.Net.BCrypt.HashPassword(pwdInicial, workFactor: 12);

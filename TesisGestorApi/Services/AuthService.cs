@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using TesisGestorApi.Data;
+using TesisGestorApi.DTOs;
 using TesisGestorApi.DTOs.Auth;
 using TesisGestorApi.Entities;
+using TesisGestorApi.Helpers;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Services
@@ -163,20 +165,30 @@ namespace TesisGestorApi.Services
             var frontendUrl = _config["FrontendUrl"] ?? "http://localhost:4200";
             var link = $"{frontendUrl}/restablecer-contrasena?token={Uri.EscapeDataString(token)}&dni={Uri.EscapeDataString(usuario.Documento)}";
 
+            const string logoCid = "institution-logo";
+            var (logoBytes, logoContentType) = EmailTemplateHelper.LoadLogoBytes();
+            var logoSrc = logoBytes is { Length: > 0 } ? $"cid:{logoCid}" : null;
+
+            var cuerpo = $@"<p style='margin:0 0 14px;'>Hola <strong>{usuario.Nombre} {usuario.Apellido}</strong>,</p>
+<p style='margin:0 0 14px;'>Recibimos una solicitud para restablecer la contraseña de la cuenta asociada al DNI <strong>{usuario.Documento}</strong>.</p>
+<p style='margin:0 0 20px;'>Hacé clic en el siguiente botón para crear una nueva contraseña. El link es válido por <strong>15 minutos</strong>.</p>
+<p style='margin:0 0 20px;'>
+  <a href='{link}' style='display:inline-block;background:#0284c7;color:#ffffff;padding:11px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;'>
+    Restablecer contraseña
+  </a>
+</p>
+<p style='margin:0 0 14px;'>Si no solicitaste este cambio, ignorá este correo. Tu contraseña anterior ya no es válida para ingresar al sistema.</p>
+<p style='margin:0;font-size:12px;color:#94a3b8;'>Link directo: <a href='{link}' style='color:#94a3b8;'>{link}</a></p>";
+
+            var inlineResources = logoBytes is { Length: > 0 }
+                ? new[] { new EmailInlineResourceDto { ContentId = logoCid, ContentType = logoContentType, Content = logoBytes } }
+                : null;
+
             await _emailSender.SendAsync(
                 to: usuario.Email,
-                subject: "Restablecimiento de contraseña",
-                htmlBody: $@"
-                    <p>Hola <strong>{usuario.Nombre} {usuario.Apellido}</strong>,</p>
-                    <p>Recibimos una solicitud para restablecer la contraseña de la cuenta asociada al DNI <strong>{usuario.Documento}</strong>.</p>
-                    <p>Hacé clic en el siguiente botón para crear una nueva contraseña. El link es válido por <strong>15 minutos</strong>.</p>
-                    <p style='margin:24px 0;'>
-                      <a href='{link}' style='background:#0284c7;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;'>
-                        Restablecer contraseña
-                      </a>
-                    </p>
-                    <p>Si no solicitaste este cambio, ignorá este correo. Tu contraseña anterior ya no es válida para ingresar al sistema.</p>
-                    <p style='color:#64748b;font-size:12px;'>Link directo: {link}</p>"
+                subject: $"{EmailTemplateHelper.SubjectPrefix} - Restablecimiento de contraseña",
+                htmlBody: EmailTemplateHelper.Build(cuerpo, logoSrc),
+                inlineResources: inlineResources
             );
         }
 

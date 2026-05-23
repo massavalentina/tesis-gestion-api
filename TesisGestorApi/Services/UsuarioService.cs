@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using TesisGestorApi.Data;
+using TesisGestorApi.DTOs;
 using TesisGestorApi.DTOs.Usuario;
 using TesisGestorApi.Entities;
+using TesisGestorApi.Helpers;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Services
@@ -111,18 +113,34 @@ namespace TesisGestorApi.Services
             // 8. Enviar email con contraseña provisoria.
             try
             {
+                const string logoCid = "institution-logo";
+                var (logoBytes, logoContentType) = EmailTemplateHelper.LoadLogoBytes();
+                var logoSrc = logoBytes is { Length: > 0 } ? $"cid:{logoCid}" : null;
+
+                var cuerpo = $@"<p style='margin:0 0 14px;'>Hola <strong>{usuario.Nombre} {usuario.Apellido}</strong>,</p>
+<p style='margin:0 0 14px;'>Tu cuenta ha sido creada en el Sistema de Gestión Escolar. A continuación encontrás tus credenciales de acceso:</p>
+<table cellpadding='0' cellspacing='0' border='0' style='margin:0 0 20px;border-collapse:collapse;'>
+  <tr>
+    <td style='padding:6px 16px 6px 0;font-size:14px;color:#64748b;font-weight:600;white-space:nowrap;'>Email</td>
+    <td style='padding:6px 0;font-size:14px;color:#0f2f4b;'>{usuario.Email}</td>
+  </tr>
+  <tr>
+    <td style='padding:6px 16px 6px 0;font-size:14px;color:#64748b;font-weight:600;white-space:nowrap;'>Contraseña provisoria</td>
+    <td style='padding:6px 0;font-size:14px;color:#0f2f4b;font-family:monospace;letter-spacing:0.05em;'>{contrasenaProvisoria}</td>
+  </tr>
+</table>
+<p style='margin:0 0 14px;'>Esta contraseña vence en <strong>24 horas</strong>. Al ingresar por primera vez se te pedirá que establezcas una nueva.</p>
+<p style='margin:0;font-size:13px;color:#94a3b8;'>Por seguridad, no compartas estas credenciales con nadie.</p>";
+
+                var inlineResources = logoBytes is { Length: > 0 }
+                    ? new[] { new EmailInlineResourceDto { ContentId = logoCid, ContentType = logoContentType, Content = logoBytes } }
+                    : null;
+
                 await _emailSender.SendAsync(
                     to: usuario.Email,
-                    subject: "Credenciales de acceso al Sistema de Gestión Escolar",
-                    htmlBody: $@"
-                        <p>Hola {usuario.Nombre},</p>
-                        <p>Tu cuenta ha sido creada. Tus credenciales de acceso son:</p>
-                        <ul>
-                          <li><strong>Email:</strong> {usuario.Email}</li>
-                          <li><strong>Contraseña provisoria:</strong> {contrasenaProvisoria}</li>
-                        </ul>
-                        <p>Esta contraseña vence en 24 horas. Al ingresar se te pedirá que la cambies.</p>
-                        <p>Por seguridad, no compartas estas credenciales.</p>");
+                    subject: $"{EmailTemplateHelper.SubjectPrefix} - Credenciales de acceso al Sistema de Gestión Escolar",
+                    htmlBody: EmailTemplateHelper.Build(cuerpo, logoSrc),
+                    inlineResources: inlineResources);
             }
             catch
             {
@@ -249,6 +267,61 @@ namespace TesisGestorApi.Services
                 Roles         = usuario.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList(),
                 IdDocente     = usuario.Docente?.IdDocente,
                 IdPreceptor   = usuario.Preceptor?.IdPreceptor,
+            };
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // ACTUALIZAR USUARIO (ADMIN)
+        // ─────────────────────────────────────────────────────────────────────
+        public async Task<UsuarioDto> ActualizarUsuarioAdminAsync(Guid id, ActualizarUsuarioAdminDto dto)
+        {
+            var usuario = await _context.Usuarios
+                .Include(u => u.UsuarioRoles).ThenInclude(ur => ur.Rol)
+                .Include(u => u.Docente)
+                .Include(u => u.Preceptor)
+                .FirstOrDefaultAsync(u => u.IdUsuario == id)
+                ?? throw new KeyNotFoundException("Usuario no encontrado.");
+
+            var emailNormalizado = dto.Email.Trim().ToLowerInvariant();
+            if (!string.Equals(usuario.Email, emailNormalizado, StringComparison.Ordinal))
+            {
+                bool emailTomado = await _context.Usuarios
+                    .AnyAsync(u => u.Email == emailNormalizado && u.IdUsuario != id);
+                if (emailTomado)
+                    throw new InvalidOperationException("El email ya está en uso por otro usuario.");
+            }
+
+            var documentoTrimmed = dto.Documento.Trim();
+            if (!string.Equals(usuario.Documento, documentoTrimmed, StringComparison.Ordinal))
+            {
+                bool documentoTomado = await _context.Usuarios
+                    .AnyAsync(u => u.Documento == documentoTrimmed && u.IdUsuario != id);
+                if (documentoTomado)
+                    throw new InvalidOperationException("El documento ya está en uso por otro usuario.");
+            }
+
+            usuario.Nombre    = dto.Nombre.Trim();
+            usuario.Apellido  = dto.Apellido.Trim();
+            usuario.Email     = emailNormalizado;
+            usuario.Documento = documentoTrimmed;
+            usuario.Telefono  = string.IsNullOrWhiteSpace(dto.Telefono) ? null : dto.Telefono.Trim();
+
+            await _context.SaveChangesAsync();
+
+            return new UsuarioDto
+            {
+                IdUsuario     = usuario.IdUsuario,
+                Nombre        = usuario.Nombre,
+                Apellido      = usuario.Apellido,
+                Email         = usuario.Email,
+                Documento     = usuario.Documento,
+                Telefono      = usuario.Telefono,
+                Activo        = usuario.Activo,
+                FechaCreacion = usuario.FechaCreacion,
+                Roles         = usuario.UsuarioRoles.Select(ur => ur.Rol.Nombre).ToList(),
+                IdDocente     = usuario.Docente?.IdDocente,
+                IdPreceptor   = usuario.Preceptor?.IdPreceptor,
+                EsDelegado    = usuario.Preceptor?.EsDelegado,
             };
         }
 

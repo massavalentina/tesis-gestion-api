@@ -34,6 +34,9 @@ builder.Services.AddScoped<IUsuariosRolesService, UsuariosRolesService>();
 builder.Services.AddScoped<IDocenteService, DocenteService>();
 builder.Services.AddScoped<IPreceptorService, PreceptorService>();
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+
 // Auth
 builder.Services.AddScoped<ITokenService, TokenService>();
 
@@ -113,6 +116,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 // Middleware
+app.UseStaticFiles();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
