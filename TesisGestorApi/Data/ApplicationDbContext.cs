@@ -40,6 +40,7 @@ namespace TesisGestorApi.Data
         public DbSet<ClaseDictada> ClasesDictadas { get; set; }
         public DbSet<AsistenciaResumenAnual> AsistenciasResumenAnual { get; set; }
         public DbSet<AsistenciaUmbralNotificacion> AsistenciasUmbralNotificacion { get; set; }
+        public DbSet<AuditoriaAsistenciaEC> AuditoriasAsistenciaEC { get; set; }
 
         // ===== Parte Diario =====
         public DbSet<ParteDiario> PartesDiarios { get; set; }
@@ -332,6 +333,27 @@ modelBuilder.Entity<RefreshToken>()
                       .WithMany(p => p.Comentarios)
                       .HasForeignKey(c => c.IdParte)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Auditoría de asistencia por espacio curricular
+            modelBuilder.Entity<AuditoriaAsistenciaEC>(entity =>
+            {
+                entity.HasOne(a => a.Estudiante)
+                      .WithMany()
+                      .HasForeignKey(a => a.IdEstudiante)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(a => a.ClaseDictada)
+                      .WithMany()
+                      .HasForeignKey(a => a.IdClaseDictada)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(a => a.Usuario)
+                      .WithMany()
+                      .HasForeignKey(a => a.IdUsuario)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(a => new { a.IdEstudiante, a.IdClaseDictada, a.FechaRegistro });
             });
 
             /// Umbrales de asistencia

@@ -13,19 +13,21 @@ namespace TesisGestorApi.Services
         private readonly ApplicationDbContext _context;
         private readonly ILogger<AsistenciaService> _logger;
         private readonly IParteDiarioService _parteDiarioService;
-
         private readonly IAsistenciaUmbralService _umbrales;
+        private readonly IAuditoriaAsistenciaECService _auditoriaEC;
 
         public AsistenciaService(
             ApplicationDbContext context,
             ILogger<AsistenciaService> logger,
             IParteDiarioService parteDiarioService,
-            IAsistenciaUmbralService umbrales)
+            IAsistenciaUmbralService umbrales,
+            IAuditoriaAsistenciaECService auditoriaEC)
         {
             _context = context;
             _logger = logger;
             _parteDiarioService = parteDiarioService;
             _umbrales = umbrales;
+            _auditoriaEC = auditoriaEC;
         }
 
         // [ POST ] Registro de Asistencia General por Lote
@@ -246,9 +248,16 @@ namespace TesisGestorApi.Services
                     g => g.Select(d => d.Turno?.Trim().ToUpper() == "MANANA" ? "MANANA" : "TARDE").ToHashSet()
                 );
 
+            var auditBufferEC = new List<(Guid EstudianteId, Guid IdClaseDictada, bool? EstadoAnterior, bool EstadoNuevo, TimeSpan HorarioEvento)>();
             if (asistenciasParaProcesar.Any())
             {
-                await ProcesarAsistenciaEspacios(asistenciasParaProcesar, turnosPorEstudiante);
+                await ProcesarAsistenciaEspacios(asistenciasParaProcesar, turnosPorEstudiante, auditBuffer: auditBufferEC);
+            }
+
+            if (auditBufferEC.Any())
+            {
+                try { await _auditoriaEC.RegistrarLoteAsync(auditBufferEC, TipoEventoAuditoriaEC.RegistroGeneral); }
+                catch (Exception ex) { _logger.LogWarning(ex, "No se pudo registrar auditoría EC en RegistrarLoteAsync."); }
             }
 
             // Registrar cambios de asistencia en el log del parte diario
@@ -350,7 +359,8 @@ namespace TesisGestorApi.Services
         // Cada slot dictado recibe su propio AsistenciaPorEspacio con el mismo resultado de presente/ausente.
         // turnosPorEstudiante: para cada estudiante, qué turno(s) fueron explícitamente registrados en este request.
         // Si es null, no se aplica filtro por turno (solo se salta si tipoTurnoEc == null).
-        public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales, Dictionary<Guid, HashSet<string>>? turnosPorEstudiante = null, bool respectarManuales = false)
+        public async Task ProcesarAsistenciaEspacios(List<Asistencia> asistenciasGenerales, Dictionary<Guid, HashSet<string>>? turnosPorEstudiante = null, bool respectarManuales = false,
+            List<(Guid EstudianteId, Guid IdClaseDictada, bool? EstadoAnterior, bool EstadoNuevo, TimeSpan HorarioEvento)>? auditBuffer = null)
         {
             var estudiantesIds = asistenciasGenerales.Select(a => a.EstudianteId).Distinct().ToList();
             var fechas = asistenciasGenerales.Select(a => a.Fecha).Distinct().ToList();
@@ -533,7 +543,10 @@ namespace TesisGestorApi.Services
                         if (porcentajeAusencia > 20.0)
                         {
                             presenteMateria = false;
-                            motivoMateria = minAsistidosMateria == 0 ? "Ausente Total" : $"Ausencia Parcial ({Math.Round(porcentajeAusencia)}%)";
+                            if (codigoTurnoEc is "LLT" or "LLTE" or "LLTC")
+                                motivoMateria = "Llegada tarde";
+                            else
+                                motivoMateria = minAsistidosMateria == 0 ? "Ausente Total" : $"Ausencia Parcial ({Math.Round(porcentajeAusencia)}%)";
                         }
                     }
 
@@ -547,6 +560,9 @@ namespace TesisGestorApi.Services
                         var ape = await _context.AsistenciasPorEspacio
                             .FirstOrDefaultAsync(ae => ae.IdClaseDictada == cdSlot.IdClaseDictada
                                                     && ae.IdEstudiante   == asistencia.EstudianteId);
+
+                        bool? estadoAnteriorApe = ape?.Presente;
+
                         if (ape != null)
                         {
                             if (respectarManuales && ape.Motivo == "Ausente Manual") continue;
@@ -563,6 +579,15 @@ namespace TesisGestorApi.Services
                                 Presente            = presenteMateria,
                                 Motivo              = motivoMateria,
                             });
+                        }
+
+                        // Registrar en buffer de auditoría si el estado cambió
+                        if (auditBuffer != null && estadoAnteriorApe != presenteMateria)
+                        {
+                            TimeSpan horaEvento = esEcManana
+                                ? (asistencia.HoraEntradaManana ?? TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan())
+                                : (asistencia.HoraEntradaTarde  ?? TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan());
+                            auditBuffer.Add((asistencia.EstudianteId, cdSlot.IdClaseDictada, estadoAnteriorApe, presenteMateria, horaEvento));
                         }
                     }
                 }
@@ -1226,8 +1251,17 @@ namespace TesisGestorApi.Services
                     throw new UnauthorizedAccessException("No tiene permiso para modificar esta asistencia.");
             }
 
+            // Cargar con datos para auditoría y log de parte diario
+            var clase = await _context.ClasesDictadas
+                .AsNoTracking()
+                .Include(c => c.EspacioCurricular).ThenInclude(ec => ec.Curricula)
+                .FirstOrDefaultAsync(c => c.IdClaseDictada == dto.IdClaseDictada)
+                ?? throw new Exception("ClaseDictada no encontrada.");
+
             var existente = await _context.AsistenciasPorEspacio
                 .FirstOrDefaultAsync(a => a.IdEstudiante == dto.EstudianteId && a.IdClaseDictada == dto.IdClaseDictada);
+
+            bool? estadoAnterior = existente?.Presente;
 
             if (existente != null)
             {
@@ -1236,8 +1270,6 @@ namespace TesisGestorApi.Services
             }
             else
             {
-                var clase = await _context.ClasesDictadas.FindAsync(dto.IdClaseDictada)
-                    ?? throw new Exception("ClaseDictada no encontrada.");
                 _context.AsistenciasPorEspacio.Add(new AsistenciaPorEspacio
                 {
                     IdAsistenciaEspacio = Guid.NewGuid(),
@@ -1249,6 +1281,45 @@ namespace TesisGestorApi.Services
                 });
             }
             await _context.SaveChangesAsync();
+
+            // Auditoría EC — evento 3 (Cambio Manual)
+            try
+            {
+                TimeSpan horaEvento = TimeOnly.FromDateTime(DateTime.Now).ToTimeSpan();
+                await _auditoriaEC.RegistrarAsync(dto.EstudianteId, dto.IdClaseDictada, TipoEventoAuditoriaEC.CambioManual, estadoAnterior, dto.Presente, horaEvento);
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "No se pudo registrar auditoría EC (CambioManual)."); }
+
+            // Log en parte diario — solo cambios manuales de EC
+            try
+            {
+                var inscripcion = await _context.DetallesCursado
+                    .AsNoTracking()
+                    .Where(dc => dc.IdEstudiante == dto.EstudianteId && dc.Estado)
+                    .FirstOrDefaultAsync();
+
+                if (inscripcion != null)
+                {
+                    var est = await _context.Estudiantes
+                        .AsNoTracking()
+                        .Where(e => e.IdEstudiante == dto.EstudianteId)
+                        .Select(e => new { e.Nombre, e.Apellido })
+                        .FirstOrDefaultAsync();
+
+                    if (est != null)
+                    {
+                        string materia        = clase.EspacioCurricular.Curricula.Nombre;
+                        string antLabel       = estadoAnterior.HasValue ? (estadoAnterior.Value ? "Presente" : "Ausente") : "Sin registro";
+                        string nuevoLabel     = dto.Presente ? "Presente" : "Ausente";
+                        await _parteDiarioService.RegistrarEventoAsync(
+                            inscripcion.IdCurso, clase.Fecha,
+                            "ASISTENCIA",
+                            $"Cambio manual en EC — {est.Apellido}, {est.Nombre}",
+                            $"{materia}: {antLabel} → {nuevoLabel}");
+                    }
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "No se pudo registrar evento de cambio manual EC en parte diario."); }
         }
 
         // [ POST ] Deshacer registro de asistencia rápida — restablece el turno a Presente (P)

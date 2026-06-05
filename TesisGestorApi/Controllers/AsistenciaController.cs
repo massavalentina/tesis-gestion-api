@@ -7,6 +7,7 @@ using TesisGestorApi.Data;
 using TesisGestorApi.Dtos;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Interfaces;
+using TesisGestorApi.DTOs;
 using TesisGestorApi.Services;
 
 
@@ -19,12 +20,14 @@ public class AsistenciaController : ControllerBase
     private IAsistenciaService _asistenciaService; // Servicio para lógica de negocio (cálculo de asistencias)
     private readonly ApplicationDbContext _context; // Conexión a Db
     private readonly ILogger<AsistenciaController> _logger; // Logger de errores
+    private readonly IAuditoriaAsistenciaECService _auditoriaECService;
 
-    public AsistenciaController(ApplicationDbContext context, ILogger<AsistenciaController> logger, IAsistenciaService asistenciaService)
+    public AsistenciaController(ApplicationDbContext context, ILogger<AsistenciaController> logger, IAsistenciaService asistenciaService, IAuditoriaAsistenciaECService auditoriaECService)
     {
         _context = context; // Inyección de Dependencias
         _logger = logger;
         _asistenciaService = asistenciaService;
+        _auditoriaECService = auditoriaECService;
     }
 
     [HttpGet("cursos/{cursoId:guid}/turnos")]
@@ -146,6 +149,22 @@ public class AsistenciaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al obtener espacios del día para estudiante {EstudianteId}", estudianteId);
+            return StatusCode(500, "Error interno al obtener los datos.");
+        }
+    }
+
+    [HttpGet("estudiante/{estudianteId:guid}/dia/{fecha}/auditoria-ec")]
+    public async Task<ActionResult<List<AuditoriaAsistenciaECDto>>> GetAuditoriaEC(
+        Guid estudianteId, DateOnly fecha)
+    {
+        try
+        {
+            var items = await _auditoriaECService.ObtenerPorEstudianteFechaAsync(estudianteId, fecha);
+            return Ok(items);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener auditoría EC para estudiante {EstudianteId}", estudianteId);
             return StatusCode(500, "Error interno al obtener los datos.");
         }
     }

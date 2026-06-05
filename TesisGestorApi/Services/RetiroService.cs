@@ -11,13 +11,15 @@ namespace TesisGestorApi.Services
         private readonly ApplicationDbContext _context;
         private readonly IParteDiarioService _parteDiario;
         private readonly ICurrentUserService _currentUser;
+        private readonly IAuditoriaAsistenciaECService _auditoriaEC;
         private static readonly TimeSpan LimiteTarde = new(13, 20, 0);
 
-        public RetiroService(ApplicationDbContext context, IParteDiarioService parteDiario, ICurrentUserService currentUser)
+        public RetiroService(ApplicationDbContext context, IParteDiarioService parteDiario, ICurrentUserService currentUser, IAuditoriaAsistenciaECService auditoriaEC)
         {
             _context     = context;
             _parteDiario = parteDiario;
             _currentUser = currentUser;
+            _auditoriaEC = auditoriaEC;
         }
 
         // ── Tutores del estudiante ─────────────────────────────────────────────
@@ -210,9 +212,16 @@ namespace TesisGestorApi.Services
                 ? asistencia.HoraEntradaManana : null;
 
             // Marcar ausentes en AsistenciaPorEspacio usando regla del 20% por EC
-            await MarcarAusentesPorRetiroAsync(dto.EstudianteId, horariosTurno, clasesDict, dto.HorarioRetiro, horaLlegadaEC);
+            var auditBufferRetiro = new List<(Guid, Guid, bool?, bool, TimeSpan)>();
+            await MarcarAusentesPorRetiroAsync(dto.EstudianteId, horariosTurno, clasesDict, dto.HorarioRetiro, horaLlegadaEC, auditBufferRetiro);
 
             await _context.SaveChangesAsync();
+
+            if (auditBufferRetiro.Any())
+            {
+                try { await _auditoriaEC.RegistrarLoteAsync(auditBufferRetiro, TipoEventoAuditoriaEC.Retiro); }
+                catch { /* no bloquear el retiro si falla la auditoría */ }
+            }
 
             // Actividad del día
             var est = await _context.Estudiantes
@@ -356,9 +365,16 @@ namespace TesisGestorApi.Services
                 ? asistencia.HoraEntradaManana : null;
 
             // Actualizar AsistenciaPorEspacio con la ventana real [retiro, reingreso] usando 20% por EC
-            await ActualizarAusentesPorReingresoAsync(retiro.IdEstudiante, horariosTurno, clasesDict, horaRetiro, horaReingreso, horaLlegadaReing);
+            var auditBufferReingreso = new List<(Guid, Guid, bool?, bool, TimeSpan)>();
+            await ActualizarAusentesPorReingresoAsync(retiro.IdEstudiante, horariosTurno, clasesDict, horaRetiro, horaReingreso, horaLlegadaReing, auditBufferReingreso);
 
             await _context.SaveChangesAsync();
+
+            if (auditBufferReingreso.Any())
+            {
+                try { await _auditoriaEC.RegistrarLoteAsync(auditBufferReingreso, TipoEventoAuditoriaEC.Retiro); }
+                catch { /* no bloquear el reingreso si falla la auditoría */ }
+            }
 
             // Actividad del día
             var estReingreso = await _context.Estudiantes
@@ -536,12 +552,19 @@ namespace TesisGestorApi.Services
             // ActualizarAusentesPorReingresoAsync actualizan en-lugar los APEs existentes,
             // evitando el estado Deleted del change tracker que causaba que los EC
             // quedaran null al reducir la ventana de reingreso o cambiar Sin→Con Reingreso.
+            var auditBufferActualizar = new List<(Guid, Guid, bool?, bool, TimeSpan)>();
             if (nuevaHoraReingreso.HasValue)
-                await ActualizarAusentesPorReingresoAsync(retiro.IdEstudiante, horariosTurno, clasesDict, dto.HorarioRetiro, nuevaHoraReingreso.Value, horaLlegadaAct);
+                await ActualizarAusentesPorReingresoAsync(retiro.IdEstudiante, horariosTurno, clasesDict, dto.HorarioRetiro, nuevaHoraReingreso.Value, horaLlegadaAct, auditBufferActualizar);
             else
-                await MarcarAusentesPorRetiroAsync(retiro.IdEstudiante, horariosTurno, clasesDict, dto.HorarioRetiro, horaLlegadaAct);
+                await MarcarAusentesPorRetiroAsync(retiro.IdEstudiante, horariosTurno, clasesDict, dto.HorarioRetiro, horaLlegadaAct, auditBufferActualizar);
 
             await _context.SaveChangesAsync();
+
+            if (auditBufferActualizar.Any())
+            {
+                try { await _auditoriaEC.RegistrarLoteAsync(auditBufferActualizar, TipoEventoAuditoriaEC.Retiro); }
+                catch { /* no bloquear si falla la auditoría */ }
+            }
 
             // Actividad del día
             string newHora      = TimeOnly.FromTimeSpan(dto.HorarioRetiro).ToString("HH:mm");
@@ -669,7 +692,8 @@ namespace TesisGestorApi.Services
             List<Horario> horariosTurno,
             Dictionary<Guid, ClaseDictada> clasesDict,
             TimeSpan horaRetiro,
-            TimeSpan? horaLlegada = null)
+            TimeSpan? horaLlegada = null,
+            List<(Guid EstudianteId, Guid IdClaseDictada, bool? EstadoAnterior, bool EstadoNuevo, TimeSpan HorarioEvento)>? auditBuffer = null)
         {
             foreach (var grupo in horariosTurno.GroupBy(h => h.IdEC))
             {
@@ -702,8 +726,13 @@ namespace TesisGestorApi.Services
                     if (!clasesDict.TryGetValue(h.IdHorario, out var cd) || !cd.Dictada) continue;
                     var ape = await _context.AsistenciasPorEspacio
                         .FirstOrDefaultAsync(a => a.IdEstudiante == estudianteId && a.IdClaseDictada == cd.IdClaseDictada);
+
+                    bool? estadoAnterior = ape?.Presente;
+                    bool estadoNuevo;
+
                     if (debeAusente)
                     {
+                        estadoNuevo = false;
                         if (ape == null)
                             _context.AsistenciasPorEspacio.Add(new AsistenciaPorEspacio
                             {
@@ -714,14 +743,24 @@ namespace TesisGestorApi.Services
                                 Presente       = false,
                                 Motivo         = "Retiro anticipado",
                             });
-                        else { ape.Presente = false; ape.Motivo = "Retiro anticipado"; }
+                        else
+                        {
+                            ape.Presente = false;
+                            if (ape.Motivo != "Llegada tarde")
+                                ape.Motivo = "Retiro anticipado";
+                        }
                     }
                     else if (ape != null && ape.Motivo == "Retiro anticipado")
                     {
                         // El retiro ya no supera el 20%: restaurar presencia
+                        estadoNuevo = true;
                         ape.Presente = true;
                         ape.Motivo   = string.Empty;
                     }
+                    else continue;
+
+                    if (auditBuffer != null && estadoAnterior != estadoNuevo)
+                        auditBuffer.Add((estudianteId, cd.IdClaseDictada, estadoAnterior, estadoNuevo, DateTime.Now.TimeOfDay));
                 }
             }
         }
@@ -737,7 +776,8 @@ namespace TesisGestorApi.Services
             Dictionary<Guid, ClaseDictada> clasesDict,
             TimeSpan horaRetiro,
             TimeSpan horaReingreso,
-            TimeSpan? horaLlegada = null)
+            TimeSpan? horaLlegada = null,
+            List<(Guid EstudianteId, Guid IdClaseDictada, bool? EstadoAnterior, bool EstadoNuevo, TimeSpan HorarioEvento)>? auditBuffer = null)
         {
             foreach (var grupo in horariosTurno.GroupBy(h => h.IdEC))
             {
@@ -778,8 +818,12 @@ namespace TesisGestorApi.Services
                     var ape = await _context.AsistenciasPorEspacio
                         .FirstOrDefaultAsync(a => a.IdEstudiante == estudianteId && a.IdClaseDictada == cd.IdClaseDictada);
 
+                    bool? estadoAnterior = ape?.Presente;
+                    bool estadoNuevo;
+
                     if (debeAusente)
                     {
+                        estadoNuevo = false;
                         if (ape == null)
                             _context.AsistenciasPorEspacio.Add(new AsistenciaPorEspacio
                             {
@@ -790,14 +834,24 @@ namespace TesisGestorApi.Services
                                 Presente       = false,
                                 Motivo         = "Retiro anticipado",
                             });
-                        else { ape.Presente = false; ape.Motivo = "Retiro anticipado"; }
+                        else
+                        {
+                            ape.Presente = false;
+                            if (ape.Motivo != "Llegada tarde")
+                                ape.Motivo = "Retiro anticipado";
+                        }
                     }
                     else if (ape != null && !ape.Presente)
                     {
                         // El reingreso acortó la ausencia suficientemente: restaurar presencia
+                        estadoNuevo = true;
                         ape.Presente = true;
                         ape.Motivo   = string.Empty;
                     }
+                    else continue;
+
+                    if (auditBuffer != null && estadoAnterior != estadoNuevo)
+                        auditBuffer.Add((estudianteId, cd.IdClaseDictada, estadoAnterior, estadoNuevo, DateTime.Now.TimeOfDay));
                 }
             }
         }
