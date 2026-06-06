@@ -9,6 +9,6 @@ namespace TesisGestorApi.Interfaces
         Task<RetiroActivoDto> RegistrarRetiroAsync(RegistrarRetiroDto dto);
         Task<RetiroActivoDto> RegistrarReingresoAsync(RegistrarReingresoDto dto);
         Task<RetiroActivoDto> ActualizarRetiroAsync(Guid idRetiro, ActualizarRetiroDto dto);
-        Task CancelarRetiroAsync(Guid idRetiro);
+        Task CancelarRetiroAsync(Guid idRetiro, string? motivo);
     }
 }

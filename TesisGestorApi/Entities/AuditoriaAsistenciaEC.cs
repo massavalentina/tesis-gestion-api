@@ -4,9 +4,10 @@ namespace TesisGestorApi.Entities
 {
     public enum TipoEventoAuditoriaEC
     {
-        RegistroGeneral = 1,
-        Retiro          = 2,
-        CambioManual    = 3
+        RegistroGeneral   = 1,
+        Retiro            = 2,
+        CambioManual      = 3,
+        CancelacionRetiro = 4
     }
 
     public class AuditoriaAsistenciaEC

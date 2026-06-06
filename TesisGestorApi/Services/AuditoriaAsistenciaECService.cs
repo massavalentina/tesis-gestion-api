@@ -82,8 +82,9 @@ namespace TesisGestorApi.Services
                 {
                     IdAuditoria      = a.IdAuditoria,
                     TipoEvento       = (int)a.TipoEvento,
-                    TipoEventoLabel  = a.TipoEvento == TipoEventoAuditoriaEC.RegistroGeneral ? "Registro General"
-                                     : a.TipoEvento == TipoEventoAuditoriaEC.Retiro          ? "Retiro"
+                    TipoEventoLabel  = a.TipoEvento == TipoEventoAuditoriaEC.RegistroGeneral   ? "Registro General"
+                                     : a.TipoEvento == TipoEventoAuditoriaEC.Retiro            ? "Retiro"
+                                     : a.TipoEvento == TipoEventoAuditoriaEC.CancelacionRetiro ? "Cancelación de Retiro"
                                      : "Cambio Manual",
                     NombreMateria    = a.ClaseDictada.EspacioCurricular.Curricula.Nombre,
                     EstadoAnterior   = a.EstadoAnterior,

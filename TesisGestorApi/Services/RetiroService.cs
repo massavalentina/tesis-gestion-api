@@ -478,6 +478,13 @@ namespace TesisGestorApi.Services
             bool   prevConReing  = retiro.ConReingreso;
             string prevLimite    = retiro.HorarioLimiteReingreso?.ToString("HH:mm") ?? "";
             string prevReingreso = retiro.HorarioReingreso?.ToString("HH:mm") ?? "";
+            // Responsable contingente (solo si no hay tutor)
+            string prevNombre    = retiro.NombreResponsable   ?? "";
+            string prevApellido  = retiro.ApellidoResponsable ?? "";
+            string prevDni       = retiro.DNIResponsable      ?? "";
+            string prevRelacion  = retiro.RelacionResponsable ?? "";
+            string prevTelefono  = retiro.TelefonoResponsable ?? "";
+            string prevCorreo    = retiro.CorreoResponsable   ?? "";
 
             // ── Actualizar campos del retiro ───────────────────────────────────
             retiro.HorarioRetiro   = DateTime.SpecifyKind(fecha.ToDateTime(TimeOnly.FromTimeSpan(dto.HorarioRetiro)), DateTimeKind.Utc);
@@ -584,6 +591,23 @@ namespace TesisGestorApi.Services
             if (prevConReing  != conReingresoFinal) cambios.AppendLine($"Con reingreso: {(prevConReing ? "Sí" : "No")} → {(conReingresoFinal ? "Sí" : "No")}");
             if (prevLimite    != newLimite)     cambios.AppendLine($"Hora límite reingreso: {(prevLimite == "" ? "—" : prevLimite)} → {(newLimite == "" ? "—" : newLimite)}");
             if (prevReingreso != newReingreso)  cambios.AppendLine($"Hora de reingreso: {(prevReingreso == "" ? "—" : prevReingreso)} → {(newReingreso == "" ? "—" : newReingreso)}");
+            // Cambios en datos del responsable contingente
+            if (!retiro.IdTutor.HasValue)
+            {
+                string newNombre   = retiro.NombreResponsable   ?? "";
+                string newApellido = retiro.ApellidoResponsable ?? "";
+                string newDni      = retiro.DNIResponsable      ?? "";
+                string newRelacion = retiro.RelacionResponsable ?? "";
+                string newTelefono = retiro.TelefonoResponsable ?? "";
+                string newCorreo   = retiro.CorreoResponsable   ?? "";
+                static string V(string s) => s == "" ? "—" : s;
+                if (prevNombre   != newNombre)   cambios.AppendLine($"Nombre responsable: {V(prevNombre)} → {V(newNombre)}");
+                if (prevApellido != newApellido) cambios.AppendLine($"Apellido responsable: {V(prevApellido)} → {V(newApellido)}");
+                if (prevDni      != newDni)      cambios.AppendLine($"DNI responsable: {V(prevDni)} → {V(newDni)}");
+                if (prevRelacion != newRelacion) cambios.AppendLine($"Relación responsable: {V(prevRelacion)} → {V(newRelacion)}");
+                if (prevTelefono != newTelefono) cambios.AppendLine($"Teléfono responsable: {V(prevTelefono)} → {V(newTelefono)}");
+                if (prevCorreo   != newCorreo)   cambios.AppendLine($"Correo responsable: {V(prevCorreo)} → {V(newCorreo)}");
+            }
 
             string detalleLog = cambios.Length > 0
                 ? cambios.ToString().TrimEnd()
@@ -857,13 +881,15 @@ namespace TesisGestorApi.Services
         }
 
         /// <summary>
-        /// Elimina los registros de AsistenciaPorEspacio del turno causados por el retiro,
-        /// dejando la asistencia por espacio en estado null (sin registro).
+        /// Restaura a Presente=true los registros de AsistenciaPorEspacio del turno causados
+        /// por el retiro. Se actualiza en lugar de eliminar para que el detalle de EC
+        /// muestre "Presente" en vez de "sin registro" (null).
         /// </summary>
         private async Task ResetearAusentesECTurnoAsync(
             Guid estudianteId,
             List<Horario> horariosTurno,
-            Dictionary<Guid, ClaseDictada> clasesDict)
+            Dictionary<Guid, ClaseDictada> clasesDict,
+            TimeSpan horaRetiro)
         {
             var idsCd = horariosTurno
                 .Where(h => clasesDict.ContainsKey(h.IdHorario))
@@ -876,12 +902,28 @@ namespace TesisGestorApi.Services
                          && a.Motivo == "Retiro anticipado")
                 .ToListAsync();
 
-            _context.AsistenciasPorEspacio.RemoveRange(apes);
+            if (!apes.Any()) return;
+
+            foreach (var ape in apes)
+            {
+                ape.Presente = true;
+                ape.Motivo   = string.Empty;
+            }
+
+            var lote = apes.Select(a => (
+                EstudianteId:   estudianteId,
+                IdClaseDictada: a.IdClaseDictada,
+                EstadoAnterior: (bool?)false,
+                EstadoNuevo:    true,
+                HorarioEvento:  horaRetiro
+            ));
+
+            await _auditoriaEC.RegistrarLoteAsync(lote, TipoEventoAuditoriaEC.CancelacionRetiro);
         }
 
         // ── Cancelar retiro ───────────────────────────────────────────────────
 
-        public async Task CancelarRetiroAsync(Guid idRetiro)
+        public async Task CancelarRetiroAsync(Guid idRetiro, string? motivo)
         {
             var retiro = await _context.RetirosAnticipados
                 .Include(r => r.Asistencia)
@@ -891,6 +933,7 @@ namespace TesisGestorApi.Services
                 .Include(r => r.Asistencia)
                     .ThenInclude(a => a.TipoTarde)
                 .Include(r => r.Estudiante)
+                .Include(r => r.Tutor)
                 .FirstOrDefaultAsync(r => r.IdRetiro == idRetiro)
                 ?? throw new InvalidOperationException("Retiro no encontrado.");
 
@@ -921,7 +964,7 @@ namespace TesisGestorApi.Services
                     .ToList();
 
                 // Restaurar asistencias por espacio
-                await ResetearAusentesECTurnoAsync(retiro.IdEstudiante, horariosTurno, clasesDict);
+                await ResetearAusentesECTurnoAsync(retiro.IdEstudiante, horariosTurno, clasesDict, DateTime.Now.TimeOfDay);
 
                 // Recalcular ValorTotalInasistencia sin el retiro
                 var horariosManana = todosHorarios.Where(h => h.HorarioEntrada < LimiteTarde).ToList();
@@ -961,13 +1004,23 @@ namespace TesisGestorApi.Services
 
             if (inscripcion != null)
             {
-                string respCancelDetalle = retiro.IdTutor.HasValue
-                    ? "Responsable: tutor registrado"
-                    : $"Responsable: {retiro.ApellidoResponsable ?? "—"}, {retiro.NombreResponsable ?? "—"}";
+                string respDetalle;
+                if (retiro.IdTutor.HasValue && retiro.Tutor != null)
+                {
+                    respDetalle = $"Responsable: {retiro.Tutor.Apellido}, {retiro.Tutor.Nombre} | Relación: {retiro.Tutor.RelacionEstudiante ?? "—"} | DNI: {retiro.Tutor.Documento ?? "—"}";
+                }
+                else
+                {
+                    respDetalle = $"Responsable: {retiro.ApellidoResponsable ?? "—"}, {retiro.NombreResponsable ?? "—"} | Relación: {retiro.RelacionResponsable ?? "—"} | DNI: {retiro.DNIResponsable ?? "—"}";
+                }
+
+                string motivoCancelacion = string.IsNullOrWhiteSpace(motivo) ? "—" : motivo;
+                string detalleCancel = $"Preceptor: {retiro.NombrePreceptor ?? "—"}\n{respDetalle}\nMotivo de cancelación: {motivoCancelacion}";
+
                 await _parteDiario.RegistrarEventoAsync(
                     inscripcion.IdCurso, fecha, "RETIRO",
                     $"Retiro cancelado — {retiro.Estudiante.Apellido}, {retiro.Estudiante.Nombre} — {retiro.HorarioRetiro:HH\\:mm}",
-                    $"Preceptor: {retiro.NombrePreceptor ?? "—"}\n{respCancelDetalle}");
+                    detalleCancel);
             }
         }
 

@@ -99,11 +99,11 @@ namespace TesisGestorApi.Controllers
 
         /// <summary>Cancelar un retiro anticipado (revierte asistencia y borra el retiro).</summary>
         [HttpDelete("{idRetiro:guid}")]
-        public async Task<IActionResult> CancelarRetiro(Guid idRetiro)
+        public async Task<IActionResult> CancelarRetiro(Guid idRetiro, [FromBody] CancelarRetiroDto? dto)
         {
             try
             {
-                await _retiroService.CancelarRetiroAsync(idRetiro);
+                await _retiroService.CancelarRetiroAsync(idRetiro, dto?.Motivo);
                 return NoContent();
             }
             catch (InvalidOperationException ex)
