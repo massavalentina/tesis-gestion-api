@@ -9,5 +9,6 @@ namespace TesisGestorApi.Interfaces
         Task DesasignarEspacioCurricularAsync(Guid idDocente, Guid idDocenteEC, string motivo, CancellationToken ct = default);
         Task<DocenteECsResponseDto> GetEspaciosCurricularesAsync(Guid idDocente, CancellationToken ct = default);
         Task<List<ECsinDocenteDto>> GetEspaciosCurricularesSinDocenteAsync(CancellationToken ct = default);
+        Task<List<MisEcItemDto>> GetMisEspaciosCurricularesAsync(Guid idUsuario, CancellationToken ct = default);
     }
 }

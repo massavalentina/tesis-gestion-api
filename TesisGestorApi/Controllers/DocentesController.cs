@@ -11,12 +11,33 @@ namespace TesisGestorApi.Controllers
     public class DocentesController : ControllerBase
     {
         private readonly IDocenteService _service;
+        private readonly ICurrentUserService _currentUser;
         private readonly ILogger<DocentesController> _logger;
 
-        public DocentesController(IDocenteService service, ILogger<DocentesController> logger)
+        public DocentesController(IDocenteService service, ICurrentUserService currentUser, ILogger<DocentesController> logger)
         {
-            _service = service;
-            _logger  = logger;
+            _service     = service;
+            _currentUser = currentUser;
+            _logger      = logger;
+        }
+
+        // GET /api/docentes/mis-espacios-curriculares
+        [HttpGet("mis-espacios-curriculares")]
+        public async Task<IActionResult> GetMisEspaciosCurriculares(CancellationToken ct)
+        {
+            var idUsuario = _currentUser.UserId;
+            if (idUsuario == null) return Unauthorized();
+
+            try
+            {
+                var resultado = await _service.GetMisEspaciosCurricularesAsync(idUsuario.Value, ct);
+                return Ok(resultado);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener mis ECs del usuario {Id}.", idUsuario);
+                return StatusCode(500, new { error = "Error interno." });
+            }
         }
 
         // GET /api/docentes/{idDocente}/espacios-curriculares

@@ -180,6 +180,49 @@ namespace TesisGestorApi.Services
             return new DocenteECsResponseDto(activos, historial);
         }
 
+        public async Task<List<MisEcItemDto>> GetMisEspaciosCurricularesAsync(Guid idUsuario, CancellationToken ct = default)
+        {
+            var docente = await _context.Docentes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+
+            if (docente == null) return [];
+
+            var ecs = await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .Include(ec => ec.Curricula)
+                .Include(ec => ec.Curso)
+                    .ThenInclude(c => c.Anio)
+                .Include(ec => ec.Curso)
+                    .ThenInclude(c => c.Division)
+                .Include(ec => ec.Curso)
+                    .ThenInclude(c => c.DetallesCursado)
+                .Include(ec => ec.Horarios)
+                .Where(ec => ec.IdDocente == docente.IdDocente)
+                .OrderBy(ec => ec.Curso.Anio.Numero)
+                    .ThenBy(ec => ec.Curso.Division.Nombre)
+                    .ThenBy(ec => ec.Curricula.Nombre)
+                .ToListAsync(ct);
+
+            return ecs.Select(ec => new MisEcItemDto(
+                ec.IdEC,
+                ec.IdCurso,
+                ec.Curricula.Nombre,
+                ec.Curso.Codigo,
+                ec.Curso.Anio.Numero,
+                ec.Curso.Division.Nombre.ToString(),
+                ec.Curso.AñoLectivo.Year,
+                ec.Curso.DetallesCursado.Count(d => d.Estado),
+                ec.Horarios
+                    .OrderBy(h => h.DíaSemana)
+                    .Select(h => new HorarioDto(
+                        h.DíaSemana.ToString(),
+                        h.HorarioEntrada.ToString(@"hh\:mm"),
+                        h.HorarioSalida.ToString(@"hh\:mm")
+                    )).ToList()
+            )).ToList();
+        }
+
         public async Task<List<ECsinDocenteDto>> GetEspaciosCurricularesSinDocenteAsync(CancellationToken ct = default)
         {
             var ecs = await _context.EspaciosCurriculares
