@@ -42,6 +42,7 @@ builder.Services.AddScoped<IUsuariosRolesService, UsuariosRolesService>();
 builder.Services.AddScoped<IDocenteService, DocenteService>();
 builder.Services.AddScoped<IPreceptorService, PreceptorService>();
 builder.Services.AddScoped<IProgramaService, ProgramaService>();
+builder.Services.AddHttpClient<ISupabaseStorageService, SupabaseStorageService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();

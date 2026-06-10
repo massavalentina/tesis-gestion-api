@@ -10,5 +10,6 @@ namespace TesisGestorApi.Interfaces
         Task<ProgramaDetalleDto> ActualizarProgramaAsync(Guid idPrograma, Guid idDocente, CrearProgramaDto dto, CancellationToken ct);
         Task CambiarEstadoAsync(Guid idPrograma, Guid idDocente, string nuevoEstado, CancellationToken ct);
         Task EliminarProgramaAsync(Guid idPrograma, Guid idDocente, CancellationToken ct);
+        Task<ProgramaDetalleDto> CrearDesdeArchivoAsync(Guid idDocente, CargarProgramaArchivoDto dto, string urlArchivo, CancellationToken ct);
     }
 }

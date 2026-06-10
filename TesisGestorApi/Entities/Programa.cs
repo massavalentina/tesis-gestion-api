@@ -27,6 +27,9 @@ namespace TesisGestorApi.Entities
 
         public int HorasCatedra { get; set; }
 
+        [MaxLength(500)]
+        public string? Url { get; set; }
+
         public OrigenPrograma Origen { get; set; }
         public EstadoPrograma Estado { get; set; }
 
