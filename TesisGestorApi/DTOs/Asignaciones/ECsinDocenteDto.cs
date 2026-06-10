@@ -5,6 +5,7 @@ namespace TesisGestorApi.DTOs.Asignaciones
         string NombreCurricula,
         string CodigoCurricula,
         string CodigoCurso,
-        bool TieneHistorial
+        bool TieneHistorial,
+        List<HorarioDto> Horarios
     );
 }
