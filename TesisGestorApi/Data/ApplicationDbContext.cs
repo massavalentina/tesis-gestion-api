@@ -58,6 +58,12 @@ namespace TesisGestorApi.Data
         public DbSet<Permiso> Permisos { get; set; }
         public DbSet<RolPermiso> RolPermisos { get; set; }
 
+        // ===== Programas =====
+        public DbSet<Programa> Programas { get; set; }
+        public DbSet<ObjetivoPrograma> ObjetivosPrograma { get; set; }
+        public DbSet<Unidad> Unidades { get; set; }
+        public DbSet<Tema> Temas { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -382,6 +388,52 @@ modelBuilder.Entity<RefreshToken>()
 
                 entity.HasIndex(n => new { n.IdEstudiante, n.AnioLectivo, n.Umbral })
                       .IsUnique();
+            });
+
+            /// Programas
+
+            modelBuilder.Entity<Programa>(entity =>
+            {
+                entity.HasOne(p => p.Docente)
+                      .WithMany()
+                      .HasForeignKey(p => p.IdDocente)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(p => p.Curso)
+                      .WithMany()
+                      .HasForeignKey(p => p.IdCurso)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(p => p.EspacioCurricular)
+                      .WithMany()
+                      .HasForeignKey(p => p.IdEC)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(p => new { p.IdEC, p.AnioLectivo }).IsUnique();
+            });
+
+            modelBuilder.Entity<ObjetivoPrograma>(entity =>
+            {
+                entity.HasOne(o => o.Programa)
+                      .WithMany(p => p.Objetivos)
+                      .HasForeignKey(o => o.IdPrograma)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Unidad>(entity =>
+            {
+                entity.HasOne(u => u.Programa)
+                      .WithMany(p => p.Unidades)
+                      .HasForeignKey(u => u.IdPrograma)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Tema>(entity =>
+            {
+                entity.HasOne(t => t.Unidad)
+                      .WithMany(u => u.Temas)
+                      .HasForeignKey(t => t.IdUnidad)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }
