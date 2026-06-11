@@ -12,12 +12,17 @@ namespace TesisGestorApi.Controllers
     public class ProgramasController : ControllerBase
     {
         private readonly IProgramaService _programaService;
+        private readonly ISupabaseStorageService _storageService;
         private readonly ILogger<ProgramasController> _logger;
 
-        public ProgramasController(IProgramaService programaService, ILogger<ProgramasController> logger)
+        public ProgramasController(
+            IProgramaService programaService,
+            ISupabaseStorageService storageService,
+            ILogger<ProgramasController> logger)
         {
             _programaService = programaService;
-            _logger = logger;
+            _storageService  = storageService;
+            _logger          = logger;
         }
 
         [HttpGet("ec/{idEC:guid}")]
@@ -42,6 +47,8 @@ namespace TesisGestorApi.Controllers
             try
             {
                 var programa = await _programaService.GetProgramaAsync(id, ct);
+                if (!string.IsNullOrEmpty(programa.Url))
+                    programa.Url = _storageService.GetUrlPublica(programa.Url);
                 return Ok(programa);
             }
             catch (KeyNotFoundException ex)
@@ -148,6 +155,49 @@ namespace TesisGestorApi.Controllers
             {
                 _logger.LogError(ex, "Error al cambiar estado del programa {Id}.", id);
                 return StatusCode(500, "Error interno al cambiar el estado.");
+            }
+        }
+
+        [HttpPost("archivo")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<ProgramaDetalleDto>> CargarDesdeArchivo(
+            [FromForm] CargarProgramaArchivoDto dto, CancellationToken ct)
+        {
+            var idDocente = GetIdDocente();
+            if (idDocente == null) return Forbid();
+
+            if (!dto.Archivo.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
+                return BadRequest("El archivo debe ser un PDF.");
+            if (dto.Archivo.Length > 50 * 1024 * 1024)
+                return BadRequest("El archivo no puede superar los 50 MB.");
+
+            try
+            {
+                var ruta = $"programas/subidos/{Guid.NewGuid()}.pdf";
+                await using var stream = dto.Archivo.OpenReadStream();
+                await _storageService.SubirArchivoAsync(stream, ruta, "application/pdf", ct);
+
+                var programa = await _programaService.CrearDesdeArchivoAsync(idDocente.Value, dto, ruta, ct);
+                if (!string.IsNullOrEmpty(programa.Url))
+                    programa.Url = _storageService.GetUrlPublica(programa.Url);
+                return CreatedAtAction(nameof(GetPrograma), new { id = programa.IdPrograma }, programa);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al cargar programa desde archivo.");
+                return StatusCode(500, "Error interno al cargar el programa.");
             }
         }
 

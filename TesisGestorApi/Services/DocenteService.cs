@@ -142,14 +142,20 @@ namespace TesisGestorApi.Services
                     .ThenInclude(ec => ec.Curricula)
                 .Include(d => d.EspacioCurricular)
                     .ThenInclude(ec => ec.Curso)
+                        .ThenInclude(c => c.Anio)
+                .Include(d => d.EspacioCurricular)
+                    .ThenInclude(ec => ec.Curso)
+                        .ThenInclude(c => c.Division)
                 .Include(d => d.EspacioCurricular)
                     .ThenInclude(ec => ec.Horarios)
                 .Where(d => d.IdDocente == idDocente)
-                .OrderByDescending(d => d.FechaDesde)
                 .ToListAsync(ct);
 
             var activos = registros
                 .Where(r => r.FechaHasta == null)
+                .OrderBy(r => r.EspacioCurricular.Curso.Anio?.Numero ?? 0)
+                    .ThenBy(r => r.EspacioCurricular.Curso.Division?.Nombre ?? ' ')
+                    .ThenBy(r => r.EspacioCurricular.Curricula.Nombre)
                 .Select(r => new DocenteECActivoDto(
                     r.IdDocenteEC,
                     r.IdEC,
@@ -229,7 +235,14 @@ namespace TesisGestorApi.Services
                 .AsNoTracking()
                 .Include(ec => ec.Curricula)
                 .Include(ec => ec.Curso)
+                    .ThenInclude(c => c.Anio)
+                .Include(ec => ec.Curso)
+                    .ThenInclude(c => c.Division)
+                .Include(ec => ec.Horarios)
                 .Where(ec => ec.IdDocente == null)
+                .OrderBy(ec => ec.Curso.Anio.Numero)
+                    .ThenBy(ec => ec.Curso.Division.Nombre)
+                    .ThenBy(ec => ec.Curricula.Nombre)
                 .ToListAsync(ct);
 
             var ecIds = ecs.Select(ec => ec.IdEC).ToList();
@@ -245,7 +258,14 @@ namespace TesisGestorApi.Services
                 ec.Curricula.Nombre,
                 ec.Curricula.Codigo,
                 ec.Curso.Codigo,
-                conHistorial.Contains(ec.IdEC)
+                conHistorial.Contains(ec.IdEC),
+                ec.Horarios
+                    .OrderBy(h => h.DíaSemana)
+                    .Select(h => new HorarioDto(
+                        h.DíaSemana.ToString(),
+                        h.HorarioEntrada.ToString(@"hh\:mm"),
+                        h.HorarioSalida.ToString(@"hh\:mm")
+                    )).ToList()
             )).ToList();
         }
     }

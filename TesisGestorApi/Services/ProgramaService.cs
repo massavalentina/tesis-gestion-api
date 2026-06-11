@@ -277,7 +277,9 @@ namespace TesisGestorApi.Services
                             $"Solo se puede activar como vigente un programa del año lectivo {anioActual}. " +
                             $"Este programa corresponde al año {programa.AnioLectivo}.");
 
-                    ValidarCamposObligatorios(programa);
+                    // Los programas por archivo no tienen unidades ni objetivos; solo validar contenido estructurado
+                    if (programa.Origen == OrigenPrograma.Manual)
+                        ValidarCamposObligatorios(programa);
 
                     // El Vigente previo del mismo EC vuelve a Confirmado
                     var vigentes = await _context.Programas
@@ -346,6 +348,53 @@ namespace TesisGestorApi.Services
                 throw new InvalidOperationException("Todas las unidades deben tener al menos un tema.");
         }
 
+        public async Task<ProgramaDetalleDto> CrearDesdeArchivoAsync(
+            Guid idDocente, CargarProgramaArchivoDto dto, string urlArchivo, CancellationToken ct)
+        {
+            var ec = await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.IdEC == dto.IdEC, ct)
+                ?? throw new KeyNotFoundException("Espacio curricular no encontrado.");
+
+            if (ec.IdDocente != idDocente)
+                throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
+
+            var existe = await _context.Programas
+                .AnyAsync(p => p.IdEC == dto.IdEC && p.AnioLectivo == dto.AnioLectivo, ct);
+            if (existe)
+                throw new InvalidOperationException(
+                    $"Ya existe un programa para este espacio curricular en el año lectivo {dto.AnioLectivo}.");
+
+            var ahora = DateTime.UtcNow;
+            var programa = new Programa
+            {
+                IdPrograma             = Guid.NewGuid(),
+                IdDocente              = idDocente,
+                IdCurso                = dto.IdCurso,
+                IdEC                   = dto.IdEC,
+                AnioLectivo            = dto.AnioLectivo,
+                Titulo                 = dto.Titulo.Trim(),
+                Descripcion            = dto.Descripcion?.Trim(),
+                HorasCatedra           = dto.HorasCatedra,
+                Url                    = urlArchivo,
+                Origen                 = OrigenPrograma.Archivo,
+                Estado                 = dto.AnioLectivo == DateTime.UtcNow.Year
+                    ? EstadoPrograma.Confirmado
+                    : EstadoPrograma.NoVigente,
+                FechaVencimiento       = new DateOnly(dto.AnioLectivo, 12, 31),
+                FechaCreacion          = ahora,
+                FechaUltimaModificacion = ahora,
+            };
+
+            _context.Programas.Add(programa);
+            await _context.SaveChangesAsync(ct);
+
+            _logger.LogInformation("Programa por archivo {Id} creado para EC {IdEC}, año {Anio}.",
+                programa.IdPrograma, dto.IdEC, dto.AnioLectivo);
+
+            return await GetProgramaAsync(programa.IdPrograma, ct);
+        }
+
         private static ProgramaDetalleDto MapToDetalle(Programa p)
         {
             return new ProgramaDetalleDto
@@ -357,6 +406,7 @@ namespace TesisGestorApi.Services
                 Titulo = p.Titulo,
                 Descripcion = p.Descripcion,
                 HorasCatedra = p.HorasCatedra,
+                Url = p.Url,
                 Estado = p.Estado.ToString(),
                 Origen = p.Origen.ToString(),
                 FechaVencimiento = p.FechaVencimiento.ToString("dd/MM/yyyy"),

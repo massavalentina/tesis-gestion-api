@@ -11,6 +11,7 @@ public class ProgramaDetalleDto
     public int HorasCatedra { get; set; }
     public string Estado { get; set; } = null!;
     public string Origen { get; set; } = null!;
+    public string? Url { get; set; }
     public string FechaVencimiento { get; set; } = null!;
     public DateTime FechaCreacion { get; set; }
     public string NombreMateria { get; set; } = null!;
