@@ -29,6 +29,10 @@ namespace TesisGestorApi.Entities
         public ICollection<AsistenciaPorEspacio> AsistenciasPorEspacio { get; set; }
             = new List<AsistenciaPorEspacio>();
 
+        // Calificaciones por instancia evaluativa
+        public ICollection<Calificacion> Calificaciones { get; set; }
+            = new List<Calificacion>();
+
         // Relación con tutores
         public ICollection<TutorEstudiante> TutorEstudiantes { get; set; }
             = new List<TutorEstudiante>();

@@ -64,6 +64,13 @@ namespace TesisGestorApi.Data
         public DbSet<Unidad> Unidades { get; set; }
         public DbSet<Tema> Temas { get; set; }
 
+        // ===== Calificaciones =====
+        public DbSet<InstanciaEvaluativa> InstanciasEvaluativas { get; set; }
+        public DbSet<ArchivoIE> ArchivosIE { get; set; }
+        public DbSet<Calificacion> Calificaciones { get; set; }
+        public DbSet<AuditoriaCalificacionSesion> AuditoriasCalificacionesSesiones { get; set; }
+        public DbSet<AuditoriaCalificacionDetalle> AuditoriasCalificacionesDetalles { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -434,6 +441,134 @@ modelBuilder.Entity<RefreshToken>()
                       .WithMany(u => u.Temas)
                       .HasForeignKey(t => t.IdUnidad)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            /// Calificaciones
+
+            modelBuilder.Entity<InstanciaEvaluativa>(entity =>
+            {
+                entity.ToTable("InstanciaEvaluativa");
+
+                entity.HasOne(i => i.EspacioCurricular)
+                      .WithMany(ec => ec.InstanciasEvaluativas)
+                      .HasForeignKey(i => i.IdEC)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(i => new { i.IdEC, i.Nro })
+                      .IsUnique();
+            });
+
+            modelBuilder.Entity<ArchivoIE>(entity =>
+            {
+                entity.ToTable("ArchivoIE");
+
+                entity.HasOne(a => a.InstanciaEvaluativa)
+                      .WithMany(i => i.Archivos)
+                      .HasForeignKey(a => a.IdIE)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(a => a.UsuarioCarga)
+                      .WithMany()
+                      .HasForeignKey(a => a.IdUsuarioCarga)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(a => a.ArchivoAnterior)
+                      .WithMany(a => a.VersionesSiguientes)
+                      .HasForeignKey(a => a.IdArchivoIEAnterior)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(a => new { a.IdIE, a.TipoCalificacion, a.FechaCarga });
+
+                entity.HasIndex(a => new { a.IdIE, a.TipoCalificacion })
+                      .HasFilter("\"Habilitada\" = TRUE")
+                      .IsUnique();
+            });
+
+            modelBuilder.Entity<Calificacion>(entity =>
+            {
+                entity.ToTable("Calificacion");
+
+                entity.HasOne(c => c.InstanciaEvaluativa)
+                      .WithMany(i => i.Calificaciones)
+                      .HasForeignKey(c => c.IdIE)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(c => c.Estudiante)
+                      .WithMany(e => e.Calificaciones)
+                      .HasForeignKey(c => c.IdEstudiante)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(c => c.ArchivoIE)
+                      .WithMany(a => a.Calificaciones)
+                      .HasForeignKey(c => c.IdArchivoIE)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(c => c.UsuarioCarga)
+                      .WithMany()
+                      .HasForeignKey(c => c.IdUsuarioCarga)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(c => c.CalificacionAnterior)
+                      .WithMany(c => c.VersionesSiguientes)
+                      .HasForeignKey(c => c.IdCalificacionAnterior)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(c => new { c.IdIE, c.IdEstudiante });
+                entity.HasIndex(c => new { c.IdIE, c.TipoCalificacion });
+
+                entity.HasIndex(c => new { c.IdIE, c.IdEstudiante, c.TipoCalificacion })
+                      .HasFilter("\"Habilitada\" = TRUE")
+                      .IsUnique();
+            });
+
+            modelBuilder.Entity<AuditoriaCalificacionSesion>(entity =>
+            {
+                entity.ToTable("AuditoriaCalificacionSesion");
+
+                entity.HasOne(s => s.EspacioCurricular)
+                      .WithMany()
+                      .HasForeignKey(s => s.IdEC)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(s => s.Usuario)
+                      .WithMany()
+                      .HasForeignKey(s => s.IdUsuario)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(s => new { s.IdEC, s.FechaRegistro });
+            });
+
+            modelBuilder.Entity<AuditoriaCalificacionDetalle>(entity =>
+            {
+                entity.ToTable("AuditoriaCalificacionDetalle");
+
+                entity.HasOne(d => d.Sesion)
+                      .WithMany(s => s.Detalles)
+                      .HasForeignKey(d => d.IdSesionAuditoria)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.InstanciaEvaluativa)
+                      .WithMany()
+                      .HasForeignKey(d => d.IdIE)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.Estudiante)
+                      .WithMany()
+                      .HasForeignKey(d => d.IdEstudiante)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.CalificacionAnterior)
+                      .WithMany()
+                      .HasForeignKey(d => d.IdCalificacionAnterior)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.CalificacionNueva)
+                      .WithMany()
+                      .HasForeignKey(d => d.IdCalificacionNueva)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(d => d.IdSesionAuditoria);
+                entity.HasIndex(d => new { d.IdIE, d.IdEstudiante });
             });
         }
     }
