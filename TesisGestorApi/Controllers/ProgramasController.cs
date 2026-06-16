@@ -31,8 +31,19 @@ namespace TesisGestorApi.Controllers
         {
             try
             {
-                var programas = await _programaService.GetProgramasPorECAsync(idEC, ct);
+                var idDocente = GetIdDocente();
+                if (idDocente == null) return Forbid();
+
+                var programas = await _programaService.GetProgramasPorECAsync(idEC, idDocente.Value, ct);
                 return Ok(programas);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
             }
             catch (Exception ex)
             {
@@ -46,7 +57,10 @@ namespace TesisGestorApi.Controllers
         {
             try
             {
-                var programa = await _programaService.GetProgramaAsync(id, ct);
+                var idDocente = GetIdDocente();
+                if (idDocente == null) return Forbid();
+
+                var programa = await _programaService.GetProgramaAsync(id, idDocente.Value, ct);
                 if (!string.IsNullOrEmpty(programa.Url))
                     programa.Url = _storageService.GetUrlPublica(programa.Url);
                 return Ok(programa);
@@ -54,6 +68,10 @@ namespace TesisGestorApi.Controllers
             catch (KeyNotFoundException ex)
             {
                 return NotFound(ex.Message);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
             }
             catch (Exception ex)
             {

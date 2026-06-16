@@ -17,8 +17,18 @@ namespace TesisGestorApi.Services
             _logger = logger;
         }
 
-        public async Task<List<ProgramaResumenDto>> GetProgramasPorECAsync(Guid idEC, CancellationToken ct)
+        public async Task<List<ProgramaResumenDto>> GetProgramasPorECAsync(Guid idEC, Guid idDocente, CancellationToken ct)
         {
+            // Hardcodeado: un docente solo puede ver los programas de los EC donde tiene clases asignadas.
+            // No depende de la tabla de permisos genérica.
+            var ec = await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.IdEC == idEC, ct)
+                ?? throw new KeyNotFoundException("Espacio curricular no encontrado.");
+
+            if (ec.IdDocente != idDocente)
+                throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
+
             return await _context.Programas
                 .AsNoTracking()
                 .Where(p => p.IdEC == idEC)
@@ -48,7 +58,7 @@ namespace TesisGestorApi.Services
                 .ToListAsync(ct);
         }
 
-        public async Task<ProgramaDetalleDto> GetProgramaAsync(Guid idPrograma, CancellationToken ct)
+        public async Task<ProgramaDetalleDto> GetProgramaAsync(Guid idPrograma, Guid idDocente, CancellationToken ct)
         {
             var p = await _context.Programas
                 .AsNoTracking()
@@ -60,6 +70,10 @@ namespace TesisGestorApi.Services
                 .Include(p => p.Unidades).ThenInclude(u => u.Temas)
                 .FirstOrDefaultAsync(p => p.IdPrograma == idPrograma, ct)
                 ?? throw new KeyNotFoundException("Programa no encontrado.");
+
+            // Hardcodeado: solo el docente titular del EC del programa puede verlo.
+            if (p.IdDocente != idDocente)
+                throw new UnauthorizedAccessException("No sos el docente titular de este programa.");
 
             return MapToDetalle(p);
         }
@@ -111,29 +125,48 @@ namespace TesisGestorApi.Services
                 });
             }
 
-            // Unidades + Temas
+            // Unidades + Temas + BloquePrograma (uno por unidad, uno por tema)
             foreach (var uDto in dto.Unidades)
             {
+                var idUnidad = Guid.NewGuid();
                 var unidad = new Unidad
                 {
-                    IdUnidad = Guid.NewGuid(),
-                    Titulo = uDto.Titulo.Trim(),
+                    IdUnidad    = idUnidad,
+                    Titulo      = uDto.Titulo.Trim(),
                     Descripcion = uDto.Descripcion?.Trim(),
-                    Nro = uDto.Nro,
+                    Nro         = uDto.Nro,
                 };
 
                 foreach (var tDto in uDto.Temas)
                 {
+                    var idTema = Guid.NewGuid();
                     unidad.Temas.Add(new Tema
                     {
-                        IdTema = Guid.NewGuid(),
-                        Titulo = tDto.Titulo.Trim(),
+                        IdTema      = idTema,
+                        Titulo      = tDto.Titulo.Trim(),
                         Descripcion = tDto.Descripcion?.Trim(),
-                        Nro = tDto.Nro,
+                        Nro         = tDto.Nro,
+                    });
+                    _context.BloquesProgramas.Add(new BloquePrograma
+                    {
+                        IdBloquePrograma = Guid.NewGuid(),
+                        IdPrograma       = programa.IdPrograma,
+                        IdUnidad         = idUnidad,
+                        IdTema           = idTema,
+                        Tipo             = TipoBloquePrograma.Tema,
+                        Estado           = EstadoBloque.PendienteDar,
                     });
                 }
 
                 programa.Unidades.Add(unidad);
+                _context.BloquesProgramas.Add(new BloquePrograma
+                {
+                    IdBloquePrograma = Guid.NewGuid(),
+                    IdPrograma       = programa.IdPrograma,
+                    IdUnidad         = idUnidad,
+                    Tipo             = TipoBloquePrograma.Unidad,
+                    Estado           = EstadoBloque.PendienteDar,
+                });
             }
 
             _context.Programas.Add(programa);
@@ -142,7 +175,7 @@ namespace TesisGestorApi.Services
             _logger.LogInformation("Programa {Id} creado para EC {IdEC}, año {Anio}.",
                 programa.IdPrograma, dto.IdEC, dto.AnioLectivo);
 
-            return await GetProgramaAsync(programa.IdPrograma, ct);
+            return await GetProgramaAsync(programa.IdPrograma, idDocente, ct);
         }
 
         public async Task<ProgramaDetalleDto> ActualizarProgramaAsync(Guid idPrograma, Guid idDocente, CrearProgramaDto dto, CancellationToken ct)
@@ -178,7 +211,12 @@ namespace TesisGestorApi.Services
             programa.FechaUltimaModificacion = DateTime.UtcNow;
 
             // Replace strategy: borrar hijos y recrear.
-            // Se copian las referencias antes de remover para no iterar sobre colecciones modificadas.
+            // BloquePrograma tiene NoAction hacia Unidad/Tema, hay que eliminarlo antes que ellos.
+            var viejosBloques = await _context.BloquesProgramas
+                .Where(b => b.IdPrograma == idPrograma)
+                .ToListAsync(ct);
+            _context.BloquesProgramas.RemoveRange(viejosBloques);
+
             var viejosTemas = programa.Unidades.SelectMany(u => u.Temas).ToList();
             var viejasUnidades = programa.Unidades.ToList();
             var viejosObjetivos = programa.Objetivos.ToList();
@@ -202,33 +240,52 @@ namespace TesisGestorApi.Services
 
             foreach (var uDto in dto.Unidades)
             {
+                var idUnidad = Guid.NewGuid();
                 var unidad = new Unidad
                 {
-                    IdUnidad = Guid.NewGuid(),
-                    IdPrograma = idPrograma,
-                    Titulo = uDto.Titulo.Trim(),
+                    IdUnidad    = idUnidad,
+                    IdPrograma  = idPrograma,
+                    Titulo      = uDto.Titulo.Trim(),
                     Descripcion = uDto.Descripcion?.Trim(),
-                    Nro = uDto.Nro,
+                    Nro         = uDto.Nro,
                 };
 
                 foreach (var tDto in uDto.Temas)
                 {
+                    var idTema = Guid.NewGuid();
                     unidad.Temas.Add(new Tema
                     {
-                        IdTema = Guid.NewGuid(),
-                        Titulo = tDto.Titulo.Trim(),
+                        IdTema      = idTema,
+                        Titulo      = tDto.Titulo.Trim(),
                         Descripcion = tDto.Descripcion?.Trim(),
-                        Nro = tDto.Nro,
+                        Nro         = tDto.Nro,
+                    });
+                    _context.BloquesProgramas.Add(new BloquePrograma
+                    {
+                        IdBloquePrograma = Guid.NewGuid(),
+                        IdPrograma       = idPrograma,
+                        IdUnidad         = idUnidad,
+                        IdTema           = idTema,
+                        Tipo             = TipoBloquePrograma.Tema,
+                        Estado           = EstadoBloque.PendienteDar,
                     });
                 }
 
                 _context.Unidades.Add(unidad);
+                _context.BloquesProgramas.Add(new BloquePrograma
+                {
+                    IdBloquePrograma = Guid.NewGuid(),
+                    IdPrograma       = idPrograma,
+                    IdUnidad         = idUnidad,
+                    Tipo             = TipoBloquePrograma.Unidad,
+                    Estado           = EstadoBloque.PendienteDar,
+                });
             }
 
             await _context.SaveChangesAsync(ct);
 
             _logger.LogInformation("Programa {Id} actualizado.", idPrograma);
-            return await GetProgramaAsync(idPrograma, ct);
+            return await GetProgramaAsync(idPrograma, idDocente, ct);
         }
 
         public async Task CambiarEstadoAsync(Guid idPrograma, Guid idDocente, string nuevoEstado, CancellationToken ct)
@@ -392,7 +449,7 @@ namespace TesisGestorApi.Services
             _logger.LogInformation("Programa por archivo {Id} creado para EC {IdEC}, año {Anio}.",
                 programa.IdPrograma, dto.IdEC, dto.AnioLectivo);
 
-            return await GetProgramaAsync(programa.IdPrograma, ct);
+            return await GetProgramaAsync(programa.IdPrograma, idDocente, ct);
         }
 
         private static ProgramaDetalleDto MapToDetalle(Programa p)
