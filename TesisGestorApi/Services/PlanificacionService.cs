@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs.Planificaciones;
 using TesisGestorApi.Entities;
@@ -25,6 +25,8 @@ public class PlanificacionService : IPlanificacionService
         var programa = await _db.Programas
             .Include(p => p.EspacioCurricular)
                 .ThenInclude(ec => ec.Curricula)
+            .Include(p => p.Docente)
+                .ThenInclude(d => d.Usuario)
             .Where(p => p.IdEC == idEC && p.Estado == EstadoPrograma.Vigente)
             .FirstOrDefaultAsync(ct);
 
@@ -87,6 +89,7 @@ public class PlanificacionService : IPlanificacionService
             PermiteCrearItems = programa.Origen == OrigenPrograma.Archivo,
             NombreMateria     = programa.EspacioCurricular.Curricula?.Nombre ?? programa.EspacioCurricular.IdCurricula.ToString(),
             TituloPrograma    = programa.Titulo,
+            NombreDocente     = $"{programa.Docente.Usuario.Nombre} {programa.Docente.Usuario.Apellido}",
             AnioLectivo       = programa.AnioLectivo,
             EstadoPrograma    = programa.Estado.ToString(),
             UrlPrograma       = programa.Url,

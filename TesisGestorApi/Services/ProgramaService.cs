@@ -468,6 +468,7 @@ namespace TesisGestorApi.Services
                 Origen = p.Origen.ToString(),
                 FechaVencimiento = p.FechaVencimiento.ToString("dd/MM/yyyy"),
                 FechaCreacion = p.FechaCreacion,
+                FechaUltimaModificacion = p.FechaUltimaModificacion,
                 NombreMateria = p.EspacioCurricular.Curricula.Nombre,
                 CodigoCurso = p.Curso.Codigo,
                 AnioNumero = p.Curso.Anio.Numero,
