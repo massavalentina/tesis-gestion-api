@@ -64,6 +64,11 @@ namespace TesisGestorApi.Data
         public DbSet<Unidad> Unidades { get; set; }
         public DbSet<Tema> Temas { get; set; }
 
+        // ===== Planificaciones =====
+        public DbSet<BloquePrograma> BloquesProgramas { get; set; }
+        public DbSet<Planificacion> Planificaciones { get; set; }
+        public DbSet<ClaseBloquePrograma> ClasesBloquesProgramas { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -433,6 +438,51 @@ modelBuilder.Entity<RefreshToken>()
                 entity.HasOne(t => t.Unidad)
                       .WithMany(u => u.Temas)
                       .HasForeignKey(t => t.IdUnidad)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            /// Planificaciones
+
+            modelBuilder.Entity<BloquePrograma>(entity =>
+            {
+                entity.HasOne(b => b.Programa)
+                      .WithMany()
+                      .HasForeignKey(b => b.IdPrograma)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                // NoAction para evitar múltiples rutas de cascada desde Programa→Unidad→BloquePrograma
+                entity.HasOne(b => b.Unidad)
+                      .WithMany()
+                      .HasForeignKey(b => b.IdUnidad)
+                      .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(b => b.Tema)
+                      .WithMany()
+                      .HasForeignKey(b => b.IdTema)
+                      .IsRequired(false)
+                      .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            modelBuilder.Entity<Planificacion>(entity =>
+            {
+                entity.HasOne(p => p.Docente)
+                      .WithMany()
+                      .HasForeignKey(p => p.IdDocente)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ClaseBloquePrograma>(entity =>
+            {
+                entity.HasKey(cb => new { cb.IdClasePlanificacion, cb.IdBloquePrograma });
+
+                entity.HasOne(cb => cb.Planificacion)
+                      .WithMany(p => p.ClasesBloquePrograma)
+                      .HasForeignKey(cb => cb.IdClasePlanificacion)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(cb => cb.BloquePrograma)
+                      .WithMany(b => b.ClasesBloquePrograma)
+                      .HasForeignKey(cb => cb.IdBloquePrograma)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }
