@@ -89,12 +89,18 @@ namespace TesisGestorApi.Services
             if (ec.IdDocente != idDocente)
                 throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
 
-            // CDA016: validar que no exista programa para (IdEC, AnioLectivo)
-            var existe = await _context.Programas
-                .AnyAsync(p => p.IdEC == dto.IdEC && p.AnioLectivo == dto.AnioLectivo, ct);
+            // CDA016: validar que no exista programa no-novigente para (IdEC, AnioLectivo)
+            var programaExistente = await _context.Programas
+                .FirstOrDefaultAsync(p => p.IdEC == dto.IdEC && p.AnioLectivo == dto.AnioLectivo, ct);
 
-            if (existe)
-                throw new InvalidOperationException($"Ya existe un programa para este espacio curricular en el año lectivo {dto.AnioLectivo}.");
+            if (programaExistente != null)
+            {
+                if (programaExistente.Estado != EstadoPrograma.NoVigente)
+                    throw new InvalidOperationException($"Ya existe un programa para este espacio curricular en el año lectivo {dto.AnioLectivo}.");
+
+                // Eliminar el NoVigente existente para poder crear el nuevo
+                _context.Programas.Remove(programaExistente);
+            }
 
             var ahora = DateTime.UtcNow;
             var programa = new Programa
@@ -193,9 +199,9 @@ namespace TesisGestorApi.Services
             if (programa.Estado != EstadoPrograma.Borrador)
                 throw new InvalidOperationException("Solo se pueden editar programas en estado Borrador.");
 
-            // CDA016: si cambió EC o año, validar unicidad
+            // CDA016: si cambió EC o año, validar unicidad (excluyendo NoVigente)
             if ((programa.IdEC != dto.IdEC || programa.AnioLectivo != dto.AnioLectivo) &&
-                await _context.Programas.AnyAsync(p => p.IdEC == dto.IdEC && p.AnioLectivo == dto.AnioLectivo && p.IdPrograma != idPrograma, ct))
+                await _context.Programas.AnyAsync(p => p.IdEC == dto.IdEC && p.AnioLectivo == dto.AnioLectivo && p.IdPrograma != idPrograma && p.Estado != EstadoPrograma.NoVigente, ct))
             {
                 throw new InvalidOperationException($"Ya existe un programa para este espacio curricular en el año lectivo {dto.AnioLectivo}.");
             }
@@ -311,9 +317,10 @@ namespace TesisGestorApi.Services
                         ValidarCamposObligatorios(programa);
                         programa.Estado = EstadoPrograma.Confirmado;
                     }
-                    else if (programa.Estado == EstadoPrograma.Vigente)
+                    else if (programa.Estado == EstadoPrograma.Vigente || programa.Estado == EstadoPrograma.NoVigente)
                     {
                         // Vigente → Confirmado: revertir el programa activo
+                        // NoVigente → Confirmado: reestablecerse como historial activo
                         programa.Estado = EstadoPrograma.Confirmado;
                     }
                     else
@@ -416,11 +423,17 @@ namespace TesisGestorApi.Services
             if (ec.IdDocente != idDocente)
                 throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
 
-            var existe = await _context.Programas
-                .AnyAsync(p => p.IdEC == dto.IdEC && p.AnioLectivo == dto.AnioLectivo, ct);
-            if (existe)
-                throw new InvalidOperationException(
-                    $"Ya existe un programa para este espacio curricular en el año lectivo {dto.AnioLectivo}.");
+            var programaExistenteArchivo = await _context.Programas
+                .FirstOrDefaultAsync(p => p.IdEC == dto.IdEC && p.AnioLectivo == dto.AnioLectivo, ct);
+            if (programaExistenteArchivo != null)
+            {
+                if (programaExistenteArchivo.Estado != EstadoPrograma.NoVigente)
+                    throw new InvalidOperationException(
+                        $"Ya existe un programa para este espacio curricular en el año lectivo {dto.AnioLectivo}.");
+
+                // Eliminar el NoVigente existente para poder crear el nuevo
+                _context.Programas.Remove(programaExistenteArchivo);
+            }
 
             var ahora = DateTime.UtcNow;
             var programa = new Programa

@@ -44,6 +44,7 @@ builder.Services.AddScoped<IPreceptorService, PreceptorService>();
 builder.Services.AddScoped<IProgramaService, ProgramaService>();
 builder.Services.AddScoped<IPlanificacionService, PlanificacionService>();
 builder.Services.AddHttpClient<ISupabaseStorageService, SupabaseStorageService>();
+builder.Services.AddScoped<ICalificacionesService, CalificacionesService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
