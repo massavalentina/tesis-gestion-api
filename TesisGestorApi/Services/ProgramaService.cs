@@ -260,10 +260,9 @@ namespace TesisGestorApi.Services
                         ValidarCamposObligatorios(programa);
                         programa.Estado = EstadoPrograma.Confirmado;
                     }
-                    else if (programa.Estado == EstadoPrograma.Vigente || programa.Estado == EstadoPrograma.NoVigente)
+                    else if (programa.Estado == EstadoPrograma.Vigente)
                     {
                         // Vigente → Confirmado: revertir el programa activo
-                        // NoVigente → Confirmado: reestablecerse como historial activo
                         programa.Estado = EstadoPrograma.Confirmado;
                     }
                     else
@@ -424,6 +423,7 @@ namespace TesisGestorApi.Services
                 Origen = p.Origen.ToString(),
                 FechaVencimiento = p.FechaVencimiento.ToString("dd/MM/yyyy"),
                 FechaCreacion = p.FechaCreacion,
+                FechaUltimaModificacion = p.FechaUltimaModificacion,
                 NombreMateria = p.EspacioCurricular.Curricula.Nombre,
                 CodigoCurso = p.Curso.Codigo,
                 AnioNumero = p.Curso.Anio.Numero,
