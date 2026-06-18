@@ -11,11 +11,16 @@ namespace TesisGestorApi.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly ICurrentUserService _currentUser;
+        private readonly ICalificacionesWriteService _writeService;
 
-        public CalificacionesService(ApplicationDbContext context, ICurrentUserService currentUser)
+        public CalificacionesService(
+            ApplicationDbContext context,
+            ICurrentUserService currentUser,
+            ICalificacionesWriteService writeService)
         {
             _context = context;
             _currentUser = currentUser;
+            _writeService = writeService;
         }
 
         public async Task<List<InstanciaEvaluativaResumenDto>> GetInstanciasPorECAsync(Guid idEC, Guid idDocente, CancellationToken ct)
@@ -62,183 +67,31 @@ namespace TesisGestorApi.Services
             ValidateInstancias(instancias);
 
             var instanciasById = instancias.ToDictionary(i => i.IdIE);
-            var activeArchivoBySlot = BuildActiveArchivoDictionary(instancias);
             var estudiantes = await LoadEstudiantesAsync(espacio.IdCurso, ct);
             var estudiantesById = estudiantes.ToDictionary(e => e.IdEstudiante);
 
             var normalizedChanges = NormalizeAndValidatePayload(dto.Cambios, instanciasById, estudiantesById);
-            var instanceIds = normalizedChanges.Select(c => c.IdIE).Distinct().ToList();
-            var studentIds = normalizedChanges.Select(c => c.IdEstudiante).Distinct().ToList();
-
-            var calificacionesActuales = await _context.Calificaciones
-                .Where(c => c.Habilitada && instanceIds.Contains(c.IdIE) && studentIds.Contains(c.IdEstudiante))
-                .ToListAsync(ct);
-
-            if (calificacionesActuales
-                .GroupBy(c => new CalificacionKey(c.IdIE, c.IdEstudiante, c.TipoCalificacion))
-                .Any(group => group.Count() > 1))
-            {
-                throw new InvalidOperationException("Se detectaron múltiples calificaciones vigentes para la misma instancia, estudiante y tipo de calificación.");
-            }
-
-            var calificacionesByKey = calificacionesActuales.ToDictionary(
-                c => new CalificacionKey(c.IdIE, c.IdEstudiante, c.TipoCalificacion));
-
-            var pendingAuditDetails = new List<PendingAuditDetail>();
-            var instanciasAfectadas = new HashSet<Guid>();
-            var now = DateTime.UtcNow;
-
-            foreach (var change in normalizedChanges)
-            {
-                var key = new CalificacionKey(change.IdIE, change.IdEstudiante, change.TipoCalificacion);
-                calificacionesByKey.TryGetValue(key, out var vigente);
-
-                var valorAnterior = vigente?.Puntaje;
-                var valorNuevo = change.Puntaje;
-
-                if (valorAnterior == valorNuevo)
-                {
-                    continue;
-                }
-
-                if (valorAnterior == null && valorNuevo == null)
-                {
-                    continue;
-                }
-
-                if (!activeArchivoBySlot.TryGetValue(new ArchivoSlotKey(change.IdIE, change.TipoCalificacion), out var archivo))
-                {
-                    throw new InvalidOperationException($"No existe un ArchivoIE activo para la instancia '{change.IdIE}' y el tipo '{ToTipoCalificacionCode(change.TipoCalificacion)}'.");
-                }
-
-                if (vigente != null)
-                {
-                    vigente.Habilitada = false;
-                }
-
-                var nuevaCalificacion = new Calificacion
-                {
-                    IdCalificacion = Guid.NewGuid(),
-                    IdIE = change.IdIE,
-                    IdEstudiante = change.IdEstudiante,
-                    TipoCalificacion = change.TipoCalificacion,
-                    IdArchivoIE = archivo.IdArchivoIE,
-                    Puntaje = valorNuevo,
-                    Habilitada = true,
-                    FechaCarga = now,
-                    IdUsuarioCarga = idUsuario,
-                    Origen = OrigenCarga.Manual,
-                    IdCalificacionAnterior = vigente?.IdCalificacion,
-                };
-
-                _context.Calificaciones.Add(nuevaCalificacion);
-                calificacionesByKey[key] = nuevaCalificacion;
-                instanciasAfectadas.Add(change.IdIE);
-
-                var estudiante = estudiantesById[change.IdEstudiante];
-                var instancia = instanciasById[change.IdIE];
-                pendingAuditDetails.Add(new PendingAuditDetail(
-                    change.IdIE,
-                    change.IdEstudiante,
-                    change.TipoCalificacion,
-                    valorAnterior,
-                    valorNuevo,
-                    vigente?.IdCalificacion,
-                    nuevaCalificacion.IdCalificacion,
-                    $"Eval {instancia.Nro}",
-                    $"{estudiante.Apellido}, {estudiante.Nombre}",
-                    estudiante.Documento));
-            }
-
-            if (pendingAuditDetails.Count == 0)
-            {
-                return new GuardarCalificacionesManualResponseDto
-                {
-                    CambiosAplicados = 0,
-                };
-            }
-
-            AuditoriaCalificacionSesion? auditSession = null;
-
-            await using var transaction = await _context.Database.BeginTransactionAsync(ct);
-            try
-            {
-                auditSession = new AuditoriaCalificacionSesion
-                {
-                    IdSesionAuditoria = Guid.NewGuid(),
-                    IdEC = idEC,
-                    IdUsuario = idUsuario,
-                    Origen = OrigenCarga.Manual,
-                    FechaRegistro = now,
-                    Detalles = pendingAuditDetails.Select(detail => new AuditoriaCalificacionDetalle
-                    {
-                        IdDetalleAuditoria = Guid.NewGuid(),
-                        IdIE = detail.IdIE,
-                        IdEstudiante = detail.IdEstudiante,
-                        TipoCalificacion = detail.TipoCalificacion,
-                        ValorAnterior = detail.ValorAnterior,
-                        ValorNuevo = detail.ValorNuevo,
-                        IdCalificacionAnterior = detail.IdCalificacionAnterior,
-                        IdCalificacionNueva = detail.IdCalificacionNueva,
-                    }).ToList(),
-                };
-
-                _context.AuditoriasCalificacionesSesiones.Add(auditSession);
-                await _context.SaveChangesAsync(ct);
-
-                var instanciasEvaluadas = await _context.Calificaciones
-                    .AsNoTracking()
-                    .Where(c => c.Habilitada && c.Puntaje != null && instanciasAfectadas.Contains(c.IdIE))
-                    .Select(c => c.IdIE)
-                    .Distinct()
-                    .ToListAsync(ct);
-
-                var instanciasTrackeadas = await _context.InstanciasEvaluativas
-                    .Where(i => instanciasAfectadas.Contains(i.IdIE))
-                    .ToListAsync(ct);
-
-                var evaluadasSet = instanciasEvaluadas.ToHashSet();
-                foreach (var instancia in instanciasTrackeadas)
-                {
-                    instancia.Estado = evaluadasSet.Contains(instancia.IdIE)
-                        ? EstadoInstanciaEvaluativa.Evaluada
-                        : EstadoInstanciaEvaluativa.Pendiente;
-                    instancia.FechaModificacion = now;
-                }
-
-                await _context.SaveChangesAsync(ct);
-                await transaction.CommitAsync(ct);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(ct);
-                throw;
-            }
+            var result = await _writeService.ApplyChangesAsync(
+                new CalificacionesApplyRequest(
+                    idEC,
+                    idUsuario,
+                    docenteLabel,
+                    OrigenCarga.Manual,
+                    null,
+                    normalizedChanges
+                        .Select(change => new CalificacionApplyChange(
+                            change.IdIE,
+                            change.IdEstudiante,
+                            change.TipoCalificacion,
+                            change.Puntaje))
+                        .ToList()),
+                ct);
 
             return new GuardarCalificacionesManualResponseDto
             {
-                CambiosAplicados = pendingAuditDetails.Count,
-                InstanciasAfectadas = instanciasAfectadas.OrderBy(id => id).ToList(),
-                SesionAuditoria = new AuditoriaCalificacionSesionDto
-                {
-                    IdSesionAuditoria = auditSession!.IdSesionAuditoria,
-                    Timestamp = auditSession.FechaRegistro,
-                    Docente = docenteLabel,
-                    Origen = auditSession.Origen.ToString(),
-                    CantidadCambios = pendingAuditDetails.Count,
-                    Cambios = pendingAuditDetails.Select(detail => new AuditoriaCalificacionDetalleDto
-                    {
-                        IdDetalleAuditoria = auditSession.Detalles.First(d => d.IdCalificacionNueva == detail.IdCalificacionNueva).IdDetalleAuditoria,
-                        IdIE = detail.IdIE,
-                        IdEstudiante = detail.IdEstudiante,
-                        Estudiante = detail.Estudiante,
-                        Documento = detail.Documento,
-                        Evaluacion = detail.Evaluacion,
-                        TipoCalificacion = ToTipoCalificacionCode(detail.TipoCalificacion),
-                        ValorAnterior = detail.ValorAnterior,
-                        ValorNuevo = detail.ValorNuevo,
-                    }).ToList(),
-                },
+                CambiosAplicados = result.CambiosAplicados,
+                InstanciasAfectadas = result.InstanciasAfectadas.ToList(),
+                SesionAuditoria = result.SesionAuditoria,
             };
         }
 
@@ -285,7 +138,7 @@ namespace TesisGestorApi.Services
                             Estudiante = $"{d.Estudiante.Apellido}, {d.Estudiante.Nombre}",
                             Documento = d.Estudiante.Documento,
                             Evaluacion = $"Eval {d.InstanciaEvaluativa.Nro}",
-                            TipoCalificacion = ToTipoCalificacionCode(d.TipoCalificacion),
+                            TipoCalificacion = CalificacionesDomainHelper.ToTipoCalificacionCode(d.TipoCalificacion),
                             ValorAnterior = d.ValorAnterior,
                             ValorNuevo = d.ValorNuevo,
                         })
@@ -297,7 +150,7 @@ namespace TesisGestorApi.Services
             {
                 Items = items,
                 TotalSesiones = totalSesiones,
-                HasMore = skip + items.Count < totalSesiones,
+                HasMore = skip + items.Count() < totalSesiones,
             };
         }
 
@@ -397,13 +250,6 @@ namespace TesisGestorApi.Services
                 .ToListAsync(ct);
         }
 
-        private static Dictionary<ArchivoSlotKey, ArchivoReadModel> BuildActiveArchivoDictionary(IEnumerable<InstanciaReadModel> instancias)
-        {
-            return instancias
-                .SelectMany(i => i.Archivos.Select(a => new KeyValuePair<ArchivoSlotKey, ArchivoReadModel>(new ArchivoSlotKey(i.IdIE, a.TipoCalificacion), a)))
-                .ToDictionary(item => item.Key, item => item.Value);
-        }
-
         private static List<NormalizedChange> NormalizeAndValidatePayload(
             IEnumerable<GuardarCalificacionCambioDto> cambios,
             IReadOnlyDictionary<Guid, InstanciaReadModel> instanciasById,
@@ -485,7 +331,7 @@ namespace TesisGestorApi.Services
                     IdCalificacion = c.IdCalificacion,
                     IdIE = c.IdIE,
                     IdEstudiante = c.IdEstudiante,
-                    TipoCalificacion = ToTipoCalificacionCode(c.TipoCalificacion),
+                    TipoCalificacion = CalificacionesDomainHelper.ToTipoCalificacionCode(c.TipoCalificacion),
                     Puntaje = c.Puntaje,
                     FechaCarga = c.FechaCarga,
                     Origen = c.Origen.ToString(),
@@ -523,7 +369,7 @@ namespace TesisGestorApi.Services
             return new ArchivoIEResumenDto
             {
                 IdArchivoIE = archivo.IdArchivoIE,
-                TipoCalificacion = ToTipoCalificacionCode(archivo.TipoCalificacion),
+                TipoCalificacion = CalificacionesDomainHelper.ToTipoCalificacionCode(archivo.TipoCalificacion),
                 TipoIE = archivo.TipoIE.ToString(),
                 Titulo = archivo.Titulo,
                 FechaEjecucion = archivo.FechaEjecucion,
@@ -532,43 +378,9 @@ namespace TesisGestorApi.Services
             };
         }
 
-        private static string ToTipoCalificacionCode(TipoCalificacion tipoCalificacion)
-        {
-            return tipoCalificacion switch
-            {
-                TipoCalificacion.NotaOriginal => "N",
-                TipoCalificacion.Recuperatorio1 => "R1",
-                TipoCalificacion.Recuperatorio2 => "R2",
-                _ => tipoCalificacion.ToString(),
-            };
-        }
-
         private static bool TryParseTipoCalificacion(string rawValue, out TipoCalificacion tipoCalificacion)
         {
-            tipoCalificacion = default;
-            if (string.IsNullOrWhiteSpace(rawValue))
-            {
-                return false;
-            }
-
-            var normalized = rawValue.Trim().ToUpperInvariant();
-            switch (normalized)
-            {
-                case "N":
-                case "NOTAORIGINAL":
-                    tipoCalificacion = TipoCalificacion.NotaOriginal;
-                    return true;
-                case "R1":
-                case "RECUPERATORIO1":
-                    tipoCalificacion = TipoCalificacion.Recuperatorio1;
-                    return true;
-                case "R2":
-                case "RECUPERATORIO2":
-                    tipoCalificacion = TipoCalificacion.Recuperatorio2;
-                    return true;
-                default:
-                    return false;
-            }
+            return CalificacionesDomainHelper.TryParseTipoCalificacion(rawValue, out tipoCalificacion);
         }
 
         private sealed record EspacioContext(
@@ -603,19 +415,6 @@ namespace TesisGestorApi.Services
             TipoCalificacion TipoCalificacion,
             int? Puntaje);
 
-        private sealed record PendingAuditDetail(
-            Guid IdIE,
-            Guid IdEstudiante,
-            TipoCalificacion TipoCalificacion,
-            int? ValorAnterior,
-            int? ValorNuevo,
-            Guid? IdCalificacionAnterior,
-            Guid IdCalificacionNueva,
-            string Evaluacion,
-            string Estudiante,
-            string Documento);
-
         private readonly record struct CalificacionKey(Guid IdIE, Guid IdEstudiante, TipoCalificacion TipoCalificacion);
-        private readonly record struct ArchivoSlotKey(Guid IdIE, TipoCalificacion TipoCalificacion);
     }
 }

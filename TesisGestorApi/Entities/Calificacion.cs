@@ -29,6 +29,9 @@ namespace TesisGestorApi.Entities
 
         public OrigenCarga Origen { get; set; }
 
+        public Guid? IdImportacionCalificaciones { get; set; }
+        public ImportacionCalificaciones? ImportacionCalificaciones { get; set; }
+
         public Guid? IdCalificacionAnterior { get; set; }
         public Calificacion? CalificacionAnterior { get; set; }
 

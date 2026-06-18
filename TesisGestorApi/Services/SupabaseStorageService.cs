@@ -39,6 +39,22 @@ public class SupabaseStorageService : ISupabaseStorageService
         return rutaRelativa;
     }
 
+    public async Task EliminarArchivoAsync(string rutaRelativa, CancellationToken ct)
+    {
+        var endpoint = $"{_url}/storage/v1/object/{_bucket}/{rutaRelativa}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Delete, endpoint);
+        request.Headers.Add("Authorization", $"Bearer {_key}");
+
+        var response = await _http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(
+                $"Error al eliminar el archivo de Supabase Storage ({(int)response.StatusCode}): {body}");
+        }
+    }
+
     public string GetUrlPublica(string rutaRelativa)
         => $"{_url}/storage/v1/object/public/{_bucket}/{rutaRelativa}";
 }

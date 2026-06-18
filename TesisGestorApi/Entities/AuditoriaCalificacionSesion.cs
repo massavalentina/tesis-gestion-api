@@ -15,6 +15,9 @@ namespace TesisGestorApi.Entities
 
         public OrigenCarga Origen { get; set; } = OrigenCarga.Manual;
 
+        public Guid? IdImportacionCalificaciones { get; set; }
+        public ImportacionCalificaciones? ImportacionCalificaciones { get; set; }
+
         public DateTime FechaRegistro { get; set; }
 
         public ICollection<AuditoriaCalificacionDetalle> Detalles { get; set; } = new List<AuditoriaCalificacionDetalle>();
