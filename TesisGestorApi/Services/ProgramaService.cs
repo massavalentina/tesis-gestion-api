@@ -317,10 +317,9 @@ namespace TesisGestorApi.Services
                         ValidarCamposObligatorios(programa);
                         programa.Estado = EstadoPrograma.Confirmado;
                     }
-                    else if (programa.Estado == EstadoPrograma.Vigente || programa.Estado == EstadoPrograma.NoVigente)
+                    else if (programa.Estado == EstadoPrograma.Vigente)
                     {
                         // Vigente → Confirmado: revertir el programa activo
-                        // NoVigente → Confirmado: reestablecerse como historial activo
                         programa.Estado = EstadoPrograma.Confirmado;
                     }
                     else
