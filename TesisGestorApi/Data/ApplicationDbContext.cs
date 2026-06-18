@@ -494,6 +494,7 @@ modelBuilder.Entity<RefreshToken>()
                       .WithMany(b => b.ClasesBloquePrograma)
                       .HasForeignKey(cb => cb.IdBloquePrograma)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
 
             /// Calificaciones
 
