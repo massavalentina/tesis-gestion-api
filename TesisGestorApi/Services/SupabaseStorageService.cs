@@ -23,6 +23,7 @@ public class SupabaseStorageService : ISupabaseStorageService
 
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Headers.Add("Authorization", $"Bearer {_key}");
+        request.Headers.Add("apikey", _key);
         request.Content = new StreamContent(contenido);
         request.Content.Headers.ContentType =
             new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);

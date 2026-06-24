@@ -42,6 +42,8 @@ builder.Services.AddScoped<IUsuariosRolesService, UsuariosRolesService>();
 builder.Services.AddScoped<IDocenteService, DocenteService>();
 builder.Services.AddScoped<IPreceptorService, PreceptorService>();
 builder.Services.AddScoped<IProgramaService, ProgramaService>();
+builder.Services.AddScoped<IPlanificacionService, PlanificacionService>();
+builder.Services.AddScoped<IEvaluacionesService, EvaluacionesService>();
 builder.Services.AddHttpClient<ISupabaseStorageService, SupabaseStorageService>();
 builder.Services.AddScoped<ICalificacionesService, CalificacionesService>();
 builder.Services.AddScoped<ICalificacionesWriteService, CalificacionesWriteService>();
@@ -69,6 +71,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey         = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Clave"]!)),
             ClockSkew                = TimeSpan.Zero,
+            RoleClaimType            = "roles",
         };
     });
 

@@ -4,6 +4,7 @@ using System.Text;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Entities;
+using TesisGestorApi.Helpers;
 using TesisGestorApi.Interfaces;
 
 namespace TesisGestorApi.Services
@@ -17,7 +18,6 @@ namespace TesisGestorApi.Services
         private static readonly int[] UMBRALES = new[] { 10, 15, 20, 25 };
         private const string PDF_URL = "https://www.cba.gov.ar/wp-content/uploads/2019/11/318-Gestionar-Asistencias-NRA.pdf";
         private const string LOGO_CONTENT_ID = "institution-logo";
-        private static readonly Lazy<byte[]?> _logoBytes = new(LoadInstitutionLogo);
 
         public AsistenciaUmbralService(
             ApplicationDbContext db,
@@ -121,7 +121,7 @@ namespace TesisGestorApi.Services
             var nombreAlumno = alumno != null ? $"{alumno.Apellido}, {alumno.Nombre}" : estId.ToString();
             var tutorNombre = $"{tutorInfo.Nombre} {tutorInfo.Apellido}".Trim();
 
-            var logoBytes = _logoBytes.Value;
+            var (logoBytes, logoContentType) = EmailTemplateHelper.LoadLogoBytes();
             var logoId = logoBytes is { Length: > 0 } ? LOGO_CONTENT_ID : null;
 
             var (subject, body) = BuildEmailTemplate(umbral, tutorNombre, nombreAlumno, anioLectivo, logoId);
@@ -131,7 +131,7 @@ namespace TesisGestorApi.Services
             {
                 inlineResources = new List<EmailInlineResourceDto>
                 {
-                    new() { ContentId = logoId, ContentType = "image/png", Content = logoBytes }
+                    new() { ContentId = logoId, ContentType = logoContentType, Content = logoBytes }
                 };
             }
 
@@ -206,26 +206,5 @@ namespace TesisGestorApi.Services
             return (subject, html.ToString());
         }
 
-        private static byte[]? LoadInstitutionLogo()
-        {
-            var candidates = new[]
-            {
-                Path.Combine(AppContext.BaseDirectory, "utils", "robles.png"),
-                Path.Combine(Directory.GetCurrentDirectory(), "utils", "robles.png")
-            };
-
-            foreach (var candidate in candidates)
-            {
-                try
-                {
-                    var fullPath = Path.GetFullPath(candidate);
-                    if (File.Exists(fullPath))
-                        return File.ReadAllBytes(fullPath);
-                }
-                catch { }
-            }
-
-            return null;
-        }
     }
 }

@@ -40,5 +40,6 @@ namespace TesisGestorApi.Entities
 
         public ICollection<ArchivoIE> VersionesSiguientes { get; set; } = new List<ArchivoIE>();
         public ICollection<Calificacion> Calificaciones { get; set; } = new List<Calificacion>();
+        public ICollection<ArchivoIEBloquePrograma> BloquesPrograma { get; set; } = new List<ArchivoIEBloquePrograma>();
     }
 }

@@ -64,13 +64,21 @@ namespace TesisGestorApi.Data
         public DbSet<Unidad> Unidades { get; set; }
         public DbSet<Tema> Temas { get; set; }
 
+
+        // ===== Planificaciones =====
+        public DbSet<BloquePrograma> BloquesProgramas { get; set; }
+        public DbSet<Planificacion> Planificaciones { get; set; }
+        public DbSet<ClaseBloquePrograma> ClasesBloquesProgramas { get; set; }
+
         // ===== Calificaciones =====
         public DbSet<InstanciaEvaluativa> InstanciasEvaluativas { get; set; }
         public DbSet<ArchivoIE> ArchivosIE { get; set; }
+        public DbSet<ArchivoIEBloquePrograma> ArchivosIEBloquesProgramas { get; set; }
         public DbSet<Calificacion> Calificaciones { get; set; }
         public DbSet<AuditoriaCalificacionSesion> AuditoriasCalificacionesSesiones { get; set; }
         public DbSet<AuditoriaCalificacionDetalle> AuditoriasCalificacionesDetalles { get; set; }
         public DbSet<ImportacionCalificaciones> ImportacionesCalificaciones { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -444,6 +452,52 @@ modelBuilder.Entity<RefreshToken>()
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
+
+            /// Planificaciones
+
+            modelBuilder.Entity<BloquePrograma>(entity =>
+            {
+                entity.HasOne(b => b.Programa)
+                      .WithMany()
+                      .HasForeignKey(b => b.IdPrograma)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                // NoAction para evitar múltiples rutas de cascada desde Programa→Unidad→BloquePrograma
+                entity.HasOne(b => b.Unidad)
+                      .WithMany()
+                      .HasForeignKey(b => b.IdUnidad)
+                      .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(b => b.Tema)
+                      .WithMany()
+                      .HasForeignKey(b => b.IdTema)
+                      .IsRequired(false)
+                      .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            modelBuilder.Entity<Planificacion>(entity =>
+            {
+                entity.HasOne(p => p.Docente)
+                      .WithMany()
+                      .HasForeignKey(p => p.IdDocente)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ClaseBloquePrograma>(entity =>
+            {
+                entity.HasKey(cb => new { cb.IdClasePlanificacion, cb.IdBloquePrograma });
+
+                entity.HasOne(cb => cb.Planificacion)
+                      .WithMany(p => p.ClasesBloquePrograma)
+                      .HasForeignKey(cb => cb.IdClasePlanificacion)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(cb => cb.BloquePrograma)
+                      .WithMany(b => b.ClasesBloquePrograma)
+                      .HasForeignKey(cb => cb.IdBloquePrograma)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
             /// Calificaciones
 
             modelBuilder.Entity<InstanciaEvaluativa>(entity =>
@@ -483,6 +537,23 @@ modelBuilder.Entity<RefreshToken>()
                 entity.HasIndex(a => new { a.IdIE, a.TipoCalificacion })
                       .HasFilter("\"Habilitada\" = TRUE")
                       .IsUnique();
+            });
+
+            modelBuilder.Entity<ArchivoIEBloquePrograma>(entity =>
+            {
+                entity.ToTable("ArchivoIEBloquePrograma");
+
+                entity.HasKey(x => new { x.IdArchivoIE, x.IdBloquePrograma });
+
+                entity.HasOne(x => x.ArchivoIE)
+                      .WithMany(a => a.BloquesPrograma)
+                      .HasForeignKey(x => x.IdArchivoIE)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.BloquePrograma)
+                      .WithMany(b => b.ArchivosIE)
+                      .HasForeignKey(x => x.IdBloquePrograma)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<Calificacion>(entity =>
@@ -580,6 +651,7 @@ modelBuilder.Entity<RefreshToken>()
 
                 entity.HasIndex(d => d.IdSesionAuditoria);
                 entity.HasIndex(d => new { d.IdIE, d.IdEstudiante });
+
             });
 
             modelBuilder.Entity<ImportacionCalificaciones>(entity =>

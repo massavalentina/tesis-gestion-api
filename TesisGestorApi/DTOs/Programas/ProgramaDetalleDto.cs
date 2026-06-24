@@ -14,6 +14,7 @@ public class ProgramaDetalleDto
     public string? Url { get; set; }
     public string FechaVencimiento { get; set; } = null!;
     public DateTime FechaCreacion { get; set; }
+    public DateTime FechaUltimaModificacion { get; set; }
     public string NombreMateria { get; set; } = null!;
     public string CodigoCurso { get; set; } = null!;
     public int AnioNumero { get; set; }
