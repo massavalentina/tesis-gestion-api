@@ -268,30 +268,60 @@ namespace TesisGestorApi.Controllers
                 ? await _db.Asistencias
                     .AsNoTracking()
                     .Include(a => a.TipoManiana)
+                    .Include(a => a.TipoLlegadaManiana)
                     .Where(a => estudianteIds.Contains(a.EstudianteId) && fechasClases.Contains(a.Fecha))
                     .ToListAsync(ct)
                 : new List<Entities.Asistencia>();
+
+            // Mapear IdClaseDictada → Fecha para cruzar ausencias EC con asistencia general
+            var claseFechaMap = clasesDictadas.ToDictionary(cd => cd.IdClaseDictada, cd => cd.Fecha);
 
             var resultado = estudiantesInfo.Select(est =>
             {
                 var presencias = asistenciasPorEspacio
                     .Count(ae => ae.IdEstudiante == est.IdEstudiante && ae.Presente);
 
-                var inasistencias = totalClasesDictadas - presencias;
+                // Registros explícitos con Presente=false en este EC
+                var ausenciasEC = asistenciasPorEspacio
+                    .Where(ae => ae.IdEstudiante == est.IdEstudiante && !ae.Presente)
+                    .ToList();
 
                 var asistenciasEst = asistenciasGenerales
                     .Where(a => a.EstudianteId == est.IdEstudiante)
-                    .ToList();
+                    .ToDictionary(a => a.Fecha);
 
-                var nLLT = asistenciasEst.Count(a => a.TipoManiana != null &&
-                    string.Equals(a.TipoManiana.Codigo, "LLT", StringComparison.OrdinalIgnoreCase));
-                var nLLTE = asistenciasEst.Count(a => a.TipoManiana != null &&
-                    string.Equals(a.TipoManiana.Codigo, "LLTE", StringComparison.OrdinalIgnoreCase));
-                var llegadasTarde = nLLT + nLLTE;
+                // Clasificar cada ausencia EC según el tipo de la asistencia general de ese día
+                int llegadasTarde = 0;
+                int retirosAnticipados = 0;
+                int ausenciasEstandar = 0;
 
-                var retirosAnticipados = asistenciasEst.Count(a => a.TipoManiana != null &&
-                    (string.Equals(a.TipoManiana.Codigo, "RA", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(a.TipoManiana.Codigo, "RAE", StringComparison.OrdinalIgnoreCase)));
+                foreach (var ausencia in ausenciasEC)
+                {
+                    if (!claseFechaMap.TryGetValue(ausencia.IdClaseDictada, out var fecha)) continue;
+                    if (!asistenciasEst.TryGetValue(fecha, out var asistGen))
+                    {
+                        // Sin registro general → ausencia estándar
+                        ausenciasEstandar++;
+                        continue;
+                    }
+
+                    var llegada = asistGen.TipoLlegadaManiana ?? asistGen.TipoManiana;
+                    var codLlegada = llegada?.Codigo?.ToUpper();
+                    var codEstado = asistGen.TipoManiana?.Codigo?.ToUpper();
+
+                    // ANC no cuenta como ausencia (es no computable)
+                    if (codLlegada == "ANC") continue;
+
+                    if (codLlegada is "LLT" or "LLTE" or "LLTC")
+                        llegadasTarde++;
+                    else if (codEstado != codLlegada && codEstado is "RA" or "RAE" or "RE")
+                        retirosAnticipados++;
+                    else
+                        ausenciasEstandar++;
+                }
+
+                // Inasistencias = total (ausencias + llegadas tarde + retiros)
+                var inasistencias = ausenciasEstandar + llegadasTarde + retirosAnticipados;
 
                 var porcentaje = totalClasesDictadas > 0
                     ? Math.Round((decimal)presencias / totalClasesDictadas * 100, 0)
