@@ -73,6 +73,7 @@ namespace TesisGestorApi.Data
         // ===== Calificaciones =====
         public DbSet<InstanciaEvaluativa> InstanciasEvaluativas { get; set; }
         public DbSet<ArchivoIE> ArchivosIE { get; set; }
+        public DbSet<ArchivoIEBloquePrograma> ArchivosIEBloquesProgramas { get; set; }
         public DbSet<Calificacion> Calificaciones { get; set; }
         public DbSet<AuditoriaCalificacionSesion> AuditoriasCalificacionesSesiones { get; set; }
         public DbSet<AuditoriaCalificacionDetalle> AuditoriasCalificacionesDetalles { get; set; }
@@ -535,6 +536,23 @@ modelBuilder.Entity<RefreshToken>()
                 entity.HasIndex(a => new { a.IdIE, a.TipoCalificacion })
                       .HasFilter("\"Habilitada\" = TRUE")
                       .IsUnique();
+            });
+
+            modelBuilder.Entity<ArchivoIEBloquePrograma>(entity =>
+            {
+                entity.ToTable("ArchivoIEBloquePrograma");
+
+                entity.HasKey(x => new { x.IdArchivoIE, x.IdBloquePrograma });
+
+                entity.HasOne(x => x.ArchivoIE)
+                      .WithMany(a => a.BloquesPrograma)
+                      .HasForeignKey(x => x.IdArchivoIE)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.BloquePrograma)
+                      .WithMany(b => b.ArchivosIE)
+                      .HasForeignKey(x => x.IdBloquePrograma)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<Calificacion>(entity =>

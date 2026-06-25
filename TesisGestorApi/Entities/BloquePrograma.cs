@@ -23,4 +23,5 @@ public class BloquePrograma
     public EstadoBloque Estado { get; set; } = EstadoBloque.PendienteDar;
 
     public ICollection<ClaseBloquePrograma> ClasesBloquePrograma { get; set; } = new List<ClaseBloquePrograma>();
+    public ICollection<ArchivoIEBloquePrograma> ArchivosIE { get; set; } = new List<ArchivoIEBloquePrograma>();
 }

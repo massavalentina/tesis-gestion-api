@@ -43,6 +43,7 @@ builder.Services.AddScoped<IDocenteService, DocenteService>();
 builder.Services.AddScoped<IPreceptorService, PreceptorService>();
 builder.Services.AddScoped<IProgramaService, ProgramaService>();
 builder.Services.AddScoped<IPlanificacionService, PlanificacionService>();
+builder.Services.AddScoped<IEvaluacionesService, EvaluacionesService>();
 builder.Services.AddHttpClient<ISupabaseStorageService, SupabaseStorageService>();
 builder.Services.AddScoped<ICalificacionesService, CalificacionesService>();
 
