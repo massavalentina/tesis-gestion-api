@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
+using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Controllers
 {
@@ -440,6 +441,225 @@ namespace TesisGestorApi.Controllers
             DistribucionInasistencias = new DistribucionInasistenciasDto(),
             DistribucionSubtipos = new DistribucionSubtiposDto(),
             DistribucionInasistenciasEC = new DistribucionInasistenciasECDto(),
+        };
+
+        // GET /api/reportes-estrategicos/calificaciones?anioLectivo=2026
+        [HttpGet("calificaciones")]
+        public async Task<IActionResult> GetDashboardCalificaciones(
+            [FromQuery] int anioLectivo = 2026,
+            CancellationToken ct = default)
+        {
+            // ── 1. Avance de programas (solo Origen=Manual, Vigente o Confirmado) ─
+            var bloquesPorPrograma = await _db.BloquesProgramas
+                .AsNoTracking()
+                .Where(b => b.Tipo == TipoBloquePrograma.Tema
+                         && b.Programa.AnioLectivo == anioLectivo
+                         && b.Programa.Origen == OrigenPrograma.Manual
+                         && (b.Programa.Estado == EstadoPrograma.Vigente
+                             || b.Programa.Estado == EstadoPrograma.Confirmado))
+                .GroupBy(b => b.IdPrograma)
+                .Select(g => new
+                {
+                    Total = g.Count(),
+                    Dados = g.Count(b => b.Estado == EstadoBloque.Dado),
+                })
+                .ToListAsync(ct);
+
+            decimal? avanceProgramas = null;
+            if (bloquesPorPrograma.Any())
+            {
+                avanceProgramas = Math.Round(
+                    (decimal)bloquesPorPrograma.Average(g =>
+                        g.Total > 0 ? (double)g.Dados / g.Total * 100 : 0),
+                    1);
+            }
+
+            // ── 2. ECs del año lectivo ───────────────────────────────────────────
+            var ecIds = await _db.EspaciosCurriculares
+                .AsNoTracking()
+                .Where(ec => ec.Curso.AñoLectivo.Year == anioLectivo)
+                .Select(ec => new
+                {
+                    ec.IdEC,
+                    NombreEC = ec.Curricula.Nombre + " " + ec.Curso.Anio.Numero.ToString() + ec.Curso.Division.Nombre,
+                    NombreCurso = ec.Curso.Anio.Numero.ToString() + ec.Curso.Division.Nombre,
+                })
+                .ToListAsync(ct);
+
+            if (!ecIds.Any())
+                return Ok(BuildEmptyCalificacionesDashboard(avanceProgramas));
+
+            var ecIdSet = ecIds.Select(e => e.IdEC).ToHashSet();
+            var ecNombreMap = ecIds.ToDictionary(e => e.IdEC, e => e.NombreEC);
+            var ecCursoMap = ecIds.ToDictionary(e => e.IdEC, e => e.NombreCurso);
+
+            // ── 3. Instancias evaluativas del año ────────────────────────────────
+            var instancias = await _db.InstanciasEvaluativas
+                .AsNoTracking()
+                .Where(i => ecIdSet.Contains(i.IdEC))
+                .Select(i => new { i.IdIE, i.IdEC })
+                .ToListAsync(ct);
+
+            if (!instancias.Any())
+                return Ok(BuildEmptyCalificacionesDashboard(avanceProgramas));
+
+            var ieSet = instancias.Select(i => i.IdIE).ToHashSet();
+            var ieEcMap = instancias.ToDictionary(i => i.IdIE, i => i.IdEC);
+
+            // ── 4. Calificaciones vigentes del año ───────────────────────────────
+            var calificaciones = await _db.Calificaciones
+                .AsNoTracking()
+                .Where(c => c.Habilitada && c.Puntaje != null && ieSet.Contains(c.IdIE))
+                .Select(c => new
+                {
+                    c.IdIE,
+                    c.IdEstudiante,
+                    c.TipoCalificacion,
+                    c.Puntaje,
+                })
+                .ToListAsync(ct);
+
+            if (!calificaciones.Any())
+                return Ok(BuildEmptyCalificacionesDashboard(avanceProgramas));
+
+            // ── 5. Agrupar por (IE, Estudiante) → puntaje final y tipo ──────────
+            // "Final" = la calificación de mayor tipo presente (Rec2 > Rec1 > Original)
+            var porExamen = calificaciones
+                .GroupBy(c => (c.IdIE, c.IdEstudiante))
+                .Select(g =>
+                {
+                    var rec2 = g.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.Recuperatorio2);
+                    var rec1 = g.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.Recuperatorio1);
+                    var orig = g.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.NotaOriginal);
+
+                    var final = rec2 ?? rec1 ?? orig;
+                    bool tieneRec1 = rec1 != null;
+                    bool tieneRec2 = rec2 != null;
+
+                    return new
+                    {
+                        g.Key.IdIE,
+                        g.Key.IdEstudiante,
+                        PuntajeFinal = final!.Puntaje!.Value,
+                        TieneRec1 = tieneRec1,
+                        TieneRec2 = tieneRec2,
+                        IdEC = ieEcMap.GetValueOrDefault(g.Key.IdIE),
+                    };
+                })
+                .ToList();
+
+            int totalExamenes = porExamen.Count;
+
+            // ── 6. KPIs ──────────────────────────────────────────────────────────
+            var puntajes = porExamen.Select(e => (double)e.PuntajeFinal).ToList();
+
+            decimal promedioGeneral = totalExamenes > 0
+                ? Math.Round((decimal)puntajes.Average(), 2)
+                : 0m;
+
+            int calificacionMasFrecuente = totalExamenes > 0
+                ? porExamen.GroupBy(e => e.PuntajeFinal)
+                           .OrderByDescending(g => g.Count())
+                           .First().Key
+                : 0;
+
+            double desviacionEstandar = 0;
+            if (totalExamenes > 1)
+            {
+                var avg = puntajes.Average();
+                desviacionEstandar = Math.Sqrt(puntajes.Sum(p => Math.Pow(p - avg, 2)) / totalExamenes);
+            }
+
+            // ── 7. Recuperatorios ────────────────────────────────────────────────
+            int sinRec = porExamen.Count(e => !e.TieneRec1 && !e.TieneRec2);
+            int con1   = porExamen.Count(e => e.TieneRec1 && !e.TieneRec2);
+            int con2   = porExamen.Count(e => e.TieneRec2);
+
+            decimal pctSinRec = totalExamenes > 0 ? Math.Round((decimal)sinRec / totalExamenes * 100, 1) : 0m;
+            decimal pctCon1   = totalExamenes > 0 ? Math.Round((decimal)con1   / totalExamenes * 100, 1) : 0m;
+            decimal pctCon2   = totalExamenes > 0 ? Math.Round((decimal)con2   / totalExamenes * 100, 1) : 0m;
+
+            // ── 8. Distribución de estados ───────────────────────────────────────
+            // Aprobado: puntaje >= 7  |  Desaprobado por Tema: 4..6  |  Desaprobado: <= 3
+            int aprobados      = porExamen.Count(e => e.PuntajeFinal >= 7);
+            int desapTema      = porExamen.Count(e => e.PuntajeFinal >= 4 && e.PuntajeFinal < 7);
+            int desaprobados   = porExamen.Count(e => e.PuntajeFinal < 4);
+
+            decimal pctAprobado    = totalExamenes > 0 ? Math.Round((decimal)aprobados    / totalExamenes * 100, 1) : 0m;
+            decimal pctDesapTema   = totalExamenes > 0 ? Math.Round((decimal)desapTema    / totalExamenes * 100, 1) : 0m;
+            decimal pctDesaprobado = totalExamenes > 0 ? Math.Round((decimal)desaprobados / totalExamenes * 100, 1) : 0m;
+
+            // ── 9. Top 5 EC Mayor Desaprobación ──────────────────────────────────
+            var top5EcDesap = porExamen
+                .Where(e => e.PuntajeFinal < 7 && e.IdEC != Guid.Empty)
+                .GroupBy(e => e.IdEC)
+                .Select(g => new EcDesaprobacionDto
+                {
+                    Nombre = ecNombreMap.GetValueOrDefault(g.Key, g.Key.ToString()),
+                    CantidadDesaprobados = g.Count(),
+                })
+                .OrderByDescending(e => e.CantidadDesaprobados)
+                .Take(5)
+                .ToList();
+
+            // ── 10. Top 5 EC Mejor Promedio ──────────────────────────────────────
+            var top5EcPromedio = porExamen
+                .Where(e => e.IdEC != Guid.Empty)
+                .GroupBy(e => e.IdEC)
+                .Where(g => g.Count() >= 3)
+                .Select(g => new EcPromedioDto
+                {
+                    Nombre = ecNombreMap.GetValueOrDefault(g.Key, g.Key.ToString()),
+                    Promedio = Math.Round((decimal)g.Average(e => e.PuntajeFinal), 2),
+                })
+                .OrderByDescending(e => e.Promedio)
+                .Take(5)
+                .ToList();
+
+            // ── 11. Top 5 Cursos Mayor Tasa Desaprobación ─────────────────────────
+            var top5CursosTasa = porExamen
+                .Where(e => e.IdEC != Guid.Empty)
+                .GroupBy(e => ecCursoMap.GetValueOrDefault(e.IdEC, ""))
+                .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() >= 3)
+                .Select(g =>
+                {
+                    int desap = g.Count(e => e.PuntajeFinal < 7);
+                    return new CursoTasaDesaprobacionDto
+                    {
+                        Curso = g.Key,
+                        TasaDesaprobacion = Math.Round((decimal)desap / g.Count() * 100, 1),
+                    };
+                })
+                .OrderByDescending(c => c.TasaDesaprobacion)
+                .Take(5)
+                .ToList();
+
+            return Ok(new DashboardCalificacionesDto
+            {
+                AvanceProgramas            = avanceProgramas,
+                PromedioGeneral            = promedioGeneral,
+                CalificacionMasFrecuente   = calificacionMasFrecuente,
+                DesviacionEstandar         = Math.Round((decimal)desviacionEstandar, 2),
+                ExamenesRealizados         = totalExamenes,
+                PorcentajeSinRecuperatorio = pctSinRec,
+                PorcentajeConRecuperatorio1 = pctCon1,
+                PorcentajeConRecuperatorio2 = pctCon2,
+                Top5EcMayorDesaprobacion   = top5EcDesap,
+                Top5EcMejorPromedio        = top5EcPromedio,
+                Top5CursosMayorTasa        = top5CursosTasa,
+                DistribucionEstados = new DistribucionEstadosDto
+                {
+                    Aprobado          = pctAprobado,
+                    Desaprobado       = pctDesaprobado,
+                    DesaprobadoPorTema = pctDesapTema,
+                },
+            });
+        }
+
+        private static DashboardCalificacionesDto BuildEmptyCalificacionesDashboard(decimal? avanceProgramas) => new()
+        {
+            AvanceProgramas   = avanceProgramas,
+            DistribucionEstados = new DistribucionEstadosDto(),
         };
     }
 }
