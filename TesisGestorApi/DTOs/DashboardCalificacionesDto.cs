@@ -3,9 +3,9 @@ namespace TesisGestorApi.DTOs
     public class DashboardCalificacionesDto
     {
         public decimal? AvanceProgramas { get; set; }
-        public decimal PromedioGeneral { get; set; }
-        public int CalificacionMasFrecuente { get; set; }
-        public decimal DesviacionEstandar { get; set; }
+        public decimal? PromedioGeneral { get; set; }
+        public decimal TasaAprobacionGeneral { get; set; }
+        public int? AlumnosEnRiesgo { get; set; }
         public int ExamenesRealizados { get; set; }
 
         public decimal PorcentajeSinRecuperatorio { get; set; }
@@ -21,7 +21,8 @@ namespace TesisGestorApi.DTOs
     public class EcDesaprobacionDto
     {
         public string Nombre { get; set; } = null!;
-        public int CantidadDesaprobados { get; set; }
+        // Tasa de desaprobación = (desaprobados + desap. por tema) / total × 100
+        public decimal TasaDesaprobacion { get; set; }
     }
 
     public class EcPromedioDto
@@ -41,5 +42,11 @@ namespace TesisGestorApi.DTOs
         public decimal Aprobado { get; set; }
         public decimal Desaprobado { get; set; }
         public decimal DesaprobadoPorTema { get; set; }
+    }
+
+    public class CursoLabelDto
+    {
+        public Guid Id { get; set; }
+        public string Label { get; set; } = null!;
     }
 }
