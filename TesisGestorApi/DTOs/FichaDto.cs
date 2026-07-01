@@ -7,6 +7,7 @@ namespace TesisGestorApi.DTOs
         public string Documento { get; set; } = null!;
         public string FechaNacimiento { get; set; } = null!;
         public string? Domicilio { get; set; }
+        public string? Sexo { get; set; } // "M" o "F" (null = sin dato)
     }
 
     public class UpdateTutorDto

@@ -85,6 +85,8 @@ namespace TesisGestorApi.Controllers
                 documento = estudiante.Documento,
                 fechaNacimiento = estudiante.FechaNacimiento,
                 domicilio = estudiante.Domicilio,
+                sexo = estudiante.Sexo == Sexo.Masculino ? "M" :
+                       estudiante.Sexo == Sexo.Femenino  ? "F" : null,
                 codigoCurso = cursado?.Curso.Codigo,
                 credencialQrActiva = credencial == null ? (bool?)null : credencial.Activo,
                 tutores = estudiante.TutorEstudiantes
@@ -126,6 +128,12 @@ namespace TesisGestorApi.Controllers
             est.Documento = req.Documento;
             est.FechaNacimiento = DateTime.SpecifyKind(DateTime.Parse(req.FechaNacimiento), DateTimeKind.Utc);
             est.Domicilio = req.Domicilio;
+            est.Sexo = req.Sexo switch
+            {
+                "M" => Sexo.Masculino,
+                "F" => Sexo.Femenino,
+                _   => default
+            };
 
             await _db.SaveChangesAsync(ct);
             return NoContent();
