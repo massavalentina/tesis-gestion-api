@@ -1161,6 +1161,8 @@ namespace TesisGestorApi.Services
                 query = query.Where(c => c.EspaciosCurriculares.Any(ec => ec.IdDocente == idDocente));
 
             return await query
+                .OrderBy(c => c.Anio.Numero)
+                .ThenBy(c => c.Division.Nombre)
                 .Select(c => new OpcionSeleccionDto
                 {
                     Id = c.IdCurso.ToString(),

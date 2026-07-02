@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
+using TesisGestorApi.Entities;
 
 namespace TesisGestorApi.Controllers
 {
@@ -18,14 +19,15 @@ namespace TesisGestorApi.Controllers
             _db = db;
         }
 
-        // GET /api/reportes-estrategicos/asistencia?anioLectivo=2026&desde=&hasta=&cursoId=&ecId=
+        // GET /api/reportes-estrategicos/asistencia?anioLectivo=2026&desde=&hasta=&cursoId=&ecId=&turno=GENERAL
         [HttpGet("asistencia")]
         public async Task<IActionResult> GetDashboard(
             [FromQuery] int anioLectivo = 2026,
             [FromQuery] DateOnly? desde = null,
             [FromQuery] DateOnly? hasta = null,
-            [FromQuery] Guid? cursoId = null,
+            [FromQuery(Name = "cursoId")] List<Guid>? cursoIds = null,
             [FromQuery] Guid? ecId = null,
+            [FromQuery] string turno = "GENERAL",
             CancellationToken ct = default)
         {
             // ── 1. Cursos del año lectivo ────────────────────────────────────────
@@ -35,19 +37,19 @@ namespace TesisGestorApi.Controllers
                 .Include(c => c.Division)
                 .Where(c => c.AñoLectivo.Year == anioLectivo);
 
-            if (cursoId.HasValue)
-                cursosQuery = cursosQuery.Where(c => c.IdCurso == cursoId.Value);
+            if (cursoIds != null && cursoIds.Count > 0)
+                cursosQuery = cursosQuery.Where(c => cursoIds.Contains(c.IdCurso));
 
             var cursos = await cursosQuery.ToListAsync(ct);
             if (!cursos.Any())
                 return Ok(BuildEmptyDashboard());
 
-            var cursoIds = cursos.Select(c => c.IdCurso).ToHashSet();
+            var cursoIdSet = cursos.Select(c => c.IdCurso).ToHashSet();
 
             // ── 2. Estudiantes activos por curso ─────────────────────────────────
             var detallesCursado = await _db.DetallesCursado
                 .AsNoTracking()
-                .Where(dc => cursoIds.Contains(dc.IdCurso) && dc.Estado)
+                .Where(dc => cursoIdSet.Contains(dc.IdCurso) && dc.Estado)
                 .Select(dc => new { dc.IdCurso, dc.IdEstudiante })
                 .ToListAsync(ct);
 
@@ -71,42 +73,97 @@ namespace TesisGestorApi.Controllers
             var asistencias = await asistQuery.ToListAsync(ct);
 
             // ── 4. KPIs generales ────────────────────────────────────────────────
-            var totalRegistros = asistencias.Count;
+            bool esTarde = turno.ToUpper() == "TARDE";
 
-            var presenciasGenerales = asistencias.Count(a =>
+            // Helper: valor de inasistencia por turno tarde de un registro
+            static decimal ValorTarde(Asistencia a)
             {
-                var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
-                if (llegada == null) return false;
-                var codigo = llegada.Codigo?.ToUpper();
-                return codigo != "A" && codigo != "ANC";
-            });
+                var codT = a.TipoTarde?.Codigo?.ToUpper();
+                if (codT == null) return 0m;
+                return codT is "P" or "RE" or "ANC" ? 0m : 0.5m;
+            }
 
-            var porcentajeAsistenciaGeneral = totalRegistros > 0
-                ? Math.Round((decimal)presenciasGenerales / totalRegistros * 100, 1)
-                : 0m;
+            decimal porcentajeAsistenciaGeneral;
+            decimal porcentajeLlegadasTarde;
+            decimal porcentajeRetiros;
 
-            var llegadasTarde = asistencias.Count(a =>
+            if (!esTarde)
             {
-                var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
-                var codigo = llegada?.Codigo?.ToUpper();
-                return codigo is "LLT" or "LLTE" or "LLTC";
-            });
+                // GENERAL: combina mañana + tarde
+                var nManiana = asistencias.Count(a =>
+                {
+                    var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    var codigo = llegada?.Codigo?.ToUpper();
+                    return codigo != null && codigo != "A" && codigo != "ANC";
+                });
+                var nTarde = asistencias.Count(a =>
+                {
+                    var codT = a.TipoTarde?.Codigo?.ToUpper();
+                    return codT != null && codT != "A" && codT != "ANC";
+                });
+                var numeradorAsist = nManiana + nTarde;
+                // Denominador: slots con registro real (no multiplicar x2 si no hay turno tarde)
+                var denominadorAsist = asistencias.Count(a => a.TipoManiana != null)
+                                     + asistencias.Count(a => a.TipoTarde != null);
+                porcentajeAsistenciaGeneral = denominadorAsist > 0
+                    ? Math.Round((decimal)numeradorAsist / denominadorAsist * 100, 1)
+                    : 0m;
 
-            var porcentajeLlegadasTarde = presenciasGenerales > 0
-                ? Math.Round((decimal)llegadasTarde / presenciasGenerales * 100, 1)
-                : 0m;
+                // Presencias combinadas (denominador para LLT y retiros)
+                var presenciasManiana = asistencias.Count(a =>
+                {
+                    var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    var codigo = llegada?.Codigo?.ToUpper();
+                    return codigo != null && codigo != "A" && codigo != "ANC";
+                });
+                var presenciasTardeG = asistencias.Count(a =>
+                {
+                    var codT = a.TipoTarde?.Codigo?.ToUpper();
+                    return codT != null && codT != "A" && codT != "ANC";
+                });
+                var presenciasGenerales = presenciasManiana + presenciasTardeG;
 
-            var retirosAnticipados = asistencias.Count(a =>
+                var ltManiana = asistencias.Count(a =>
+                {
+                    var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    return llegada?.Codigo?.ToUpper() is "LLT" or "LLTE" or "LLTC";
+                });
+                var ltTarde = asistencias.Count(a => a.TipoTarde?.Codigo?.ToUpper() is "LLT" or "LLTE" or "LLTC");
+                porcentajeLlegadasTarde = presenciasGenerales > 0
+                    ? Math.Round((decimal)(ltManiana + ltTarde) / presenciasGenerales * 100, 1)
+                    : 0m;
+
+                var retirosM = asistencias.Count(a => a.TipoManiana?.Codigo?.ToUpper() is "RA" or "RAE" or "RE");
+                var retirosT = asistencias.Count(a => a.TipoTarde?.Codigo?.ToUpper() is "RA" or "RAE" or "RE");
+                porcentajeRetiros = presenciasGenerales > 0
+                    ? Math.Round((decimal)(retirosM + retirosT) / presenciasGenerales * 100, 1)
+                    : 0m;
+            }
+            else
             {
-                var codigoM = a.TipoManiana?.Codigo?.ToUpper();
-                var codigoT = a.TipoTarde?.Codigo?.ToUpper();
-                return codigoM is "RA" or "RAE" or "RE" ||
-                       codigoT is "RA" or "RAE" or "RE";
-            });
+                // TARDE
+                var conTarde = asistencias.Where(a => a.TipoTarde != null).ToList();
+                var denominadorTarde = conTarde.Count;
 
-            var porcentajeRetiros = presenciasGenerales > 0
-                ? Math.Round((decimal)retirosAnticipados / presenciasGenerales * 100, 1)
-                : 0m;
+                var presenciasTarde = conTarde.Count(a =>
+                {
+                    var codT = a.TipoTarde?.Codigo?.ToUpper();
+                    return codT != null && codT != "A" && codT != "ANC";
+                });
+                porcentajeAsistenciaGeneral = denominadorTarde > 0
+                    ? Math.Round((decimal)presenciasTarde / denominadorTarde * 100, 1)
+                    : 0m;
+
+                var ltTardeOnly = conTarde.Count(a => a.TipoTarde?.Codigo?.ToUpper() is "LLT" or "LLTE" or "LLTC");
+                porcentajeLlegadasTarde = presenciasTarde > 0
+                    ? Math.Round((decimal)ltTardeOnly / presenciasTarde * 100, 1)
+                    : 0m;
+
+                var retirosTardeOnly = conTarde.Count(a => a.TipoTarde?.Codigo?.ToUpper() is "RA" or "RAE" or "RE");
+                porcentajeRetiros = presenciasTarde > 0
+                    ? Math.Round((decimal)retirosTardeOnly / presenciasTarde * 100, 1)
+                    : 0m;
+            }
 
             var alumnosTeaGeneral = await _db.AsistenciasResumenAnual
                 .AsNoTracking()
@@ -141,11 +198,12 @@ namespace TesisGestorApi.Controllers
                     if (!asistPorEstudiante.TryGetValue(estId, out var asisEst)) continue;
                     foreach (var a in asisEst)
                     {
-                        totalInasistencias += a.ValorTotalInasistencia;
+                        var valorInasist = esTarde ? ValorTarde(a) : a.ValorTotalInasistencia;
+                        totalInasistencias += valorInasist;
                         var idx = a.Fecha.Month - 3;
                         if (idx >= 0 && idx < 10)
                         {
-                            inasistMesCurso[idx] += a.ValorTotalInasistencia;
+                            inasistMesCurso[idx] += valorInasist;
                             mesTieneDatos[idx] = true;
                         }
                     }
@@ -157,11 +215,21 @@ namespace TesisGestorApi.Controllers
                     Promedio = Math.Round(totalInasistencias / estIds.Count, 1)
                 });
 
+                // Tendencia acumulativa
+                decimal acum = 0m;
                 var valoresMensuales = new List<decimal?>();
                 for (int i = 0; i < 10; i++)
-                    valoresMensuales.Add(mesTieneDatos[i]
-                        ? Math.Round(inasistMesCurso[i] / estIds.Count, 2)
-                        : null);
+                {
+                    if (mesTieneDatos[i])
+                    {
+                        acum += inasistMesCurso[i] / estIds.Count;
+                        valoresMensuales.Add(Math.Round(acum, 2));
+                    }
+                    else
+                    {
+                        valoresMensuales.Add(null);
+                    }
+                }
 
                 tendenciaMensual.Add(new TendenciaMensualDto
                 {
@@ -170,16 +238,27 @@ namespace TesisGestorApi.Controllers
                 });
             }
 
-            var totalInasistenciasGlobal = asistencias.Sum(a => a.ValorTotalInasistencia);
-            var promedioGeneralInasistencias = estudianteIds.Count > 0
-                ? Math.Round(totalInasistenciasGlobal / estudianteIds.Count, 1)
-                : 0m;
+            decimal promedioGeneralInasistencias;
+            if (!esTarde)
+            {
+                var totalInasistenciasGlobal = asistencias.Sum(a => a.ValorTotalInasistencia);
+                promedioGeneralInasistencias = estudianteIds.Count > 0
+                    ? Math.Round(totalInasistenciasGlobal / estudianteIds.Count, 1)
+                    : 0m;
+            }
+            else
+            {
+                var totalInasistTarde = asistencias.Sum(ValorTarde);
+                promedioGeneralInasistencias = estudianteIds.Count > 0
+                    ? Math.Round(totalInasistTarde / estudianteIds.Count, 1)
+                    : 0m;
+            }
 
             // ── 6. Asistencia por EC ─────────────────────────────────────────────
             var ecsQuery = _db.EspaciosCurriculares
                 .AsNoTracking()
                 .Include(ec => ec.Curricula)
-                .Where(ec => cursoIds.Contains(ec.IdCurso));
+                .Where(ec => cursoIdSet.Contains(ec.IdCurso));
 
             if (ecId.HasValue)
                 ecsQuery = ecsQuery.Where(ec => ec.IdEC == ecId.Value);
@@ -330,80 +409,115 @@ namespace TesisGestorApi.Controllers
             // ── 7. Distribución de inasistencias (por valor, ambos turnos) ───────
             decimal sumaAusencias = 0m, sumaLlegadasTarde = 0m, sumaRetiros = 0m;
 
-            foreach (var a in asistencias)
+            if (!esTarde)
             {
-                if (a.ValorTotalInasistencia == 0) continue;
-
-                var llegadaM = a.TipoLlegadaManiana ?? a.TipoManiana;
-                var codigoLlegadaM = llegadaM?.Codigo?.ToUpper();
-                var codigoEstadoM = a.TipoManiana?.Codigo?.ToUpper();
-                var codigoT = a.TipoTarde?.Codigo?.ToUpper();
-
-                bool tardeGeneraInasistencia = codigoT != null
-                    && codigoT != "P" && codigoT != "RE" && codigoT != "ANC";
-                decimal valorTarde = tardeGeneraInasistencia ? 0.5m : 0m;
-                decimal valorManiana = Math.Max(0m, a.ValorTotalInasistencia - valorTarde);
-                if (valorManiana + valorTarde > a.ValorTotalInasistencia)
-                    valorTarde = a.ValorTotalInasistencia - valorManiana;
-
-                if (codigoLlegadaM == "A" || codigoLlegadaM == "ANC")
+                foreach (var a in asistencias)
                 {
-                    sumaAusencias += valorManiana;
-                }
-                else
-                {
-                    decimal valorLlegada = codigoLlegadaM switch
-                    {
-                        "LLT"  => 0.25m,
-                        "LLTE" => 0.50m,
-                        "LLTC" => 1.00m,
-                        _      => 0m,
-                    };
-                    sumaLlegadasTarde += Math.Min(valorLlegada, valorManiana);
+                    if (a.ValorTotalInasistencia == 0) continue;
 
-                    var restoManiana = valorManiana - Math.Min(valorLlegada, valorManiana);
-                    if (restoManiana > 0 && codigoEstadoM != codigoLlegadaM
-                        && codigoEstadoM is "RA" or "RAE" or "RE")
+                    var llegadaM = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    var codigoLlegadaM = llegadaM?.Codigo?.ToUpper();
+                    var codigoEstadoM = a.TipoManiana?.Codigo?.ToUpper();
+                    var codigoT = a.TipoTarde?.Codigo?.ToUpper();
+
+                    bool tardeGeneraInasistencia = codigoT != null
+                        && codigoT != "P" && codigoT != "RE" && codigoT != "ANC";
+                    decimal valorTarde = tardeGeneraInasistencia ? 0.5m : 0m;
+                    decimal valorManiana = Math.Max(0m, a.ValorTotalInasistencia - valorTarde);
+                    if (valorManiana + valorTarde > a.ValorTotalInasistencia)
+                        valorTarde = a.ValorTotalInasistencia - valorManiana;
+
+                    if (codigoLlegadaM == "A" || codigoLlegadaM == "ANC")
                     {
-                        sumaRetiros += restoManiana;
+                        sumaAusencias += valorManiana;
+                    }
+                    else
+                    {
+                        decimal valorLlegada = codigoLlegadaM switch
+                        {
+                            "LLT"  => 0.25m,
+                            "LLTE" => 0.50m,
+                            "LLTC" => 1.00m,
+                            _      => 0m,
+                        };
+                        sumaLlegadasTarde += Math.Min(valorLlegada, valorManiana);
+
+                        var restoManiana = valorManiana - Math.Min(valorLlegada, valorManiana);
+                        if (restoManiana > 0 && codigoEstadoM != codigoLlegadaM
+                            && codigoEstadoM is "RA" or "RAE" or "RE")
+                        {
+                            sumaRetiros += restoManiana;
+                        }
+                    }
+
+                    if (valorTarde > 0 && tardeGeneraInasistencia)
+                    {
+                        if (codigoT == "A")
+                            sumaAusencias += valorTarde;
+                        else if (codigoT is "LLT" or "LLTE" or "LLTC")
+                            sumaLlegadasTarde += valorTarde;
+                        else if (codigoT is "RA" or "RAE")
+                            sumaRetiros += valorTarde;
                     }
                 }
-
-                if (valorTarde > 0 && tardeGeneraInasistencia)
+            }
+            else
+            {
+                foreach (var a in asistencias)
                 {
-                    if (codigoT == "A")
-                        sumaAusencias += valorTarde;
-                    else if (codigoT is "LLT" or "LLTE" or "LLTC")
-                        sumaLlegadasTarde += valorTarde;
-                    else if (codigoT is "RA" or "RAE")
-                        sumaRetiros += valorTarde;
+                    var codT = a.TipoTarde?.Codigo?.ToUpper();
+                    if (codT == null) continue;
+
+                    if (codT == "A")
+                        sumaAusencias += 0.5m;
+                    else if (codT is "LLT" or "LLTE" or "LLTC")
+                        sumaLlegadasTarde += 0.5m;
+                    else if (codT is "RA" or "RAE")
+                        sumaRetiros += 0.5m;
                 }
             }
 
             // ── 8. Distribución por subtipo ──────────────────────────────────────
             var subtipos = new DistribucionSubtiposDto();
-            foreach (var a in asistencias)
+            if (!esTarde)
             {
-                var codLlegM = (a.TipoLlegadaManiana ?? a.TipoManiana)?.Codigo?.ToUpper();
-                if (codLlegM == "LLT") subtipos.LLT++;
-                else if (codLlegM == "LLTE") subtipos.LLTE++;
-                else if (codLlegM == "LLTC") subtipos.LLTC++;
-
-                var codEstM = a.TipoManiana?.Codigo?.ToUpper();
-                if (codEstM != codLlegM)
+                foreach (var a in asistencias)
                 {
-                    if (codEstM == "RE") subtipos.RE++;
-                    else if (codEstM == "RA") subtipos.RA++;
-                    else if (codEstM == "RAE") subtipos.RAE++;
-                }
+                    var codLlegM = (a.TipoLlegadaManiana ?? a.TipoManiana)?.Codigo?.ToUpper();
+                    if (codLlegM == "LLT") subtipos.LLT++;
+                    else if (codLlegM == "LLTE") subtipos.LLTE++;
+                    else if (codLlegM == "LLTC") subtipos.LLTC++;
 
-                var codT = a.TipoTarde?.Codigo?.ToUpper();
-                if (codT == "LLT") subtipos.LLT++;
-                else if (codT == "LLTE") subtipos.LLTE++;
-                else if (codT == "LLTC") subtipos.LLTC++;
-                else if (codT == "RE") subtipos.RE++;
-                else if (codT == "RA") subtipos.RA++;
-                else if (codT == "RAE") subtipos.RAE++;
+                    var codEstM = a.TipoManiana?.Codigo?.ToUpper();
+                    if (codEstM != codLlegM)
+                    {
+                        if (codEstM == "RE") subtipos.RE++;
+                        else if (codEstM == "RA") subtipos.RA++;
+                        else if (codEstM == "RAE") subtipos.RAE++;
+                    }
+
+                    var codT = a.TipoTarde?.Codigo?.ToUpper();
+                    if (codT == "LLT") subtipos.LLT++;
+                    else if (codT == "LLTE") subtipos.LLTE++;
+                    else if (codT == "LLTC") subtipos.LLTC++;
+                    else if (codT == "RE") subtipos.RE++;
+                    else if (codT == "RA") subtipos.RA++;
+                    else if (codT == "RAE") subtipos.RAE++;
+                }
+            }
+            else
+            {
+                foreach (var a in asistencias)
+                {
+                    var codT = a.TipoTarde?.Codigo?.ToUpper();
+                    if (codT == null) continue;
+                    if (codT == "LLT") subtipos.LLT++;
+                    else if (codT == "LLTE") subtipos.LLTE++;
+                    else if (codT == "LLTC") subtipos.LLTC++;
+                    else if (codT == "RE") subtipos.RE++;
+                    else if (codT == "RA") subtipos.RA++;
+                    else if (codT == "RAE") subtipos.RAE++;
+                }
             }
 
             // ── 9. Respuesta ─────────────────────────────────────────────────────
