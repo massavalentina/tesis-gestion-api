@@ -1024,6 +1024,85 @@ namespace TesisGestorApi.Services
             }
         }
 
+        // ── Reporte de retiros ────────────────────────────────────────────────
+
+        public async Task<List<RetiroReporteItemDto>> ObtenerReporteAsync(DateOnly? desde, DateOnly? hasta, Guid? cursoId)
+        {
+            var query = _context.RetirosAnticipados
+                .AsNoTracking()
+                .Include(r => r.Estudiante)
+                    .ThenInclude(e => e.DetallesCursado)
+                        .ThenInclude(dc => dc.Curso)
+                            .ThenInclude(c => c.Anio)
+                .Include(r => r.Estudiante)
+                    .ThenInclude(e => e.DetallesCursado)
+                        .ThenInclude(dc => dc.Curso)
+                            .ThenInclude(c => c.Division)
+                .Include(r => r.Tutor)
+                .Include(r => r.Asistencia)
+                    .ThenInclude(a => a.TipoManiana)
+                .Include(r => r.Asistencia)
+                    .ThenInclude(a => a.TipoTarde)
+                .AsQueryable();
+
+            if (desde.HasValue)
+                query = query.Where(r => r.Asistencia.Fecha >= desde.Value);
+
+            if (hasta.HasValue)
+                query = query.Where(r => r.Asistencia.Fecha <= hasta.Value);
+
+            if (cursoId.HasValue)
+                query = query.Where(r => r.Estudiante.DetallesCursado
+                    .Any(dc => dc.Estado == true && dc.IdCurso == cursoId.Value));
+
+            var retiros = await query
+                .OrderBy(r => r.Asistencia.Fecha)
+                .ThenBy(r => r.Estudiante.Apellido)
+                .ToListAsync();
+
+            return retiros.Select(r =>
+            {
+                var dc = r.Estudiante.DetallesCursado.FirstOrDefault(d => d.Estado == true);
+                string curso = dc != null
+                    ? $"{dc.Curso.Anio.Numero}{dc.Curso.Division.Nombre}"
+                    : "—";
+
+                string? codigoTipoR = r.Turno == "MANANA"
+                    ? r.Asistencia.TipoManiana?.Codigo
+                    : r.Asistencia.TipoTarde?.Codigo;
+
+                bool esTutor = r.IdTutor.HasValue;
+                var  tutor   = r.Tutor;
+
+                return new RetiroReporteItemDto
+                {
+                    IdRetiro               = r.IdRetiro,
+                    Fecha                  = r.Asistencia.Fecha,
+                    EstudianteId           = r.IdEstudiante,
+                    Nombre                 = r.Estudiante.Nombre,
+                    Apellido               = r.Estudiante.Apellido,
+                    Documento              = r.Estudiante.Documento,
+                    Curso                  = curso,
+                    Turno                  = r.Turno,
+                    HorarioRetiro          = r.HorarioRetiro.ToString(@"HH:mm"),
+                    ConReingreso           = r.ConReingreso,
+                    HorarioLimiteReingreso = r.HorarioLimiteReingreso?.ToString(@"HH:mm"),
+                    HorarioReingreso       = r.HorarioReingreso?.ToString(@"HH:mm"),
+                    EtiquetaEstado         = ComputarEtiqueta(r),
+                    TipoRetiro             = codigoTipoR,
+                    Motivo                 = r.Motivo,
+                    NombrePreceptor        = r.NombrePreceptor,
+                    IdTutor                = r.IdTutor,
+                    NombreResponsable      = esTutor ? tutor?.Nombre             : r.NombreResponsable,
+                    ApellidoResponsable    = esTutor ? tutor?.Apellido           : r.ApellidoResponsable,
+                    DniResponsable         = esTutor ? tutor?.Documento          : r.DNIResponsable,
+                    RelacionResponsable    = esTutor ? tutor?.RelacionEstudiante : r.RelacionResponsable,
+                    TelefonoResponsable    = esTutor ? (tutor?.Telefono == 0 ? null : tutor?.Telefono.ToString()) : r.TelefonoResponsable,
+                    CorreoResponsable      = esTutor ? tutor?.Correo             : r.CorreoResponsable,
+                };
+            }).ToList();
+        }
+
         private static RetiroActivoDto MapToDto(RetiroAnticipado retiro, string? codigoTipo)
         {
             bool esTutor = retiro.IdTutor.HasValue;

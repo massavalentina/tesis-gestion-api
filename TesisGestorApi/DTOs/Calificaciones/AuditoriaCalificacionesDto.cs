@@ -14,6 +14,7 @@ namespace TesisGestorApi.DTOs.Calificaciones
         public string Docente { get; set; } = null!;
         public string Origen { get; set; } = null!;
         public int CantidadCambios { get; set; }
+        public string? RutaArchivoImportacion { get; set; }
         public List<AuditoriaCalificacionDetalleDto> Cambios { get; set; } = new();
     }
 

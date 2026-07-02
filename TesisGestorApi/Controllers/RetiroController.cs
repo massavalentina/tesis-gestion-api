@@ -117,6 +117,25 @@ namespace TesisGestorApi.Controllers
             }
         }
 
+        /// <summary>Reporte de retiros anticipados con filtros opcionales.</summary>
+        [HttpGet("reporte")]
+        public async Task<ActionResult<List<RetiroReporteItemDto>>> ObtenerReporte(
+            [FromQuery] DateOnly? desde,
+            [FromQuery] DateOnly? hasta,
+            [FromQuery] Guid? cursoId)
+        {
+            try
+            {
+                var resultado = await _retiroService.ObtenerReporteAsync(desde, hasta, cursoId);
+                return Ok(resultado);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener reporte de retiros.");
+                return StatusCode(500, "Error interno al obtener el reporte.");
+            }
+        }
+
         /// <summary>Registrar el reingreso de un retiro con reingreso.</summary>
         [HttpPost("reingreso")]
         public async Task<ActionResult<RetiroActivoDto>> RegistrarReingreso([FromBody] RegistrarReingresoDto dto)

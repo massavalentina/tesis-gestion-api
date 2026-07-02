@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260614011346_FeatImportacionCalificacionesCidi")]
+    partial class FeatImportacionCalificacionesCidi
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -150,21 +153,6 @@ namespace TesisGestorApi.Migrations
                     b.HasIndex("IdIE", "TipoCalificacion", "FechaCarga");
 
                     b.ToTable("ArchivoIE", (string)null);
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.ArchivoIEBloquePrograma", b =>
-                {
-                    b.Property<Guid>("IdArchivoIE")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("IdBloquePrograma")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("IdArchivoIE", "IdBloquePrograma");
-
-                    b.HasIndex("IdBloquePrograma");
-
-                    b.ToTable("ArchivoIEBloquePrograma", (string)null);
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.Asistencia", b =>
@@ -430,38 +418,6 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("AuditoriaCalificacionSesion", (string)null);
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.BloquePrograma", b =>
-                {
-                    b.Property<Guid>("IdBloquePrograma")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Estado")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("IdPrograma")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("IdTema")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("IdUnidad")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Tipo")
-                        .HasColumnType("integer");
-
-                    b.HasKey("IdBloquePrograma");
-
-                    b.HasIndex("IdPrograma");
-
-                    b.HasIndex("IdTema");
-
-                    b.HasIndex("IdUnidad");
-
-                    b.ToTable("BloquesProgramas");
-                });
-
             modelBuilder.Entity("TesisGestorApi.Entities.Calificacion", b =>
                 {
                     b.Property<Guid>("IdCalificacion")
@@ -522,21 +478,6 @@ namespace TesisGestorApi.Migrations
                         .HasFilter("\"Habilitada\" = TRUE");
 
                     b.ToTable("Calificacion", (string)null);
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.ClaseBloquePrograma", b =>
-                {
-                    b.Property<Guid>("IdClasePlanificacion")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("IdBloquePrograma")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("IdClasePlanificacion", "IdBloquePrograma");
-
-                    b.HasIndex("IdBloquePrograma");
-
-                    b.ToTable("ClasesBloquesProgramas");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.ClaseDictada", b =>
@@ -1066,47 +1007,6 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("Permisos");
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.Planificacion", b =>
-                {
-                    b.Property<Guid>("IdPlanificacion")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Descripcion")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<int>("Estado")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("FechaCreacion")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateOnly?>("FechaDesde")
-                        .HasColumnType("date");
-
-                    b.Property<DateOnly?>("FechaHasta")
-                        .HasColumnType("date");
-
-                    b.Property<Guid>("IdDocente")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Titulo")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<string>("Url")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.HasKey("IdPlanificacion");
-
-                    b.HasIndex("IdDocente");
-
-                    b.ToTable("Planificaciones");
-                });
-
             modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
                 {
                     b.Property<Guid>("IdPreceptor")
@@ -1632,25 +1532,6 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("UsuarioCarga");
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.ArchivoIEBloquePrograma", b =>
-                {
-                    b.HasOne("TesisGestorApi.Entities.ArchivoIE", "ArchivoIE")
-                        .WithMany("BloquesPrograma")
-                        .HasForeignKey("IdArchivoIE")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TesisGestorApi.Entities.BloquePrograma", "BloquePrograma")
-                        .WithMany("ArchivosIE")
-                        .HasForeignKey("IdBloquePrograma")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ArchivoIE");
-
-                    b.Navigation("BloquePrograma");
-                });
-
             modelBuilder.Entity("TesisGestorApi.Entities.Asistencia", b =>
                 {
                     b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
@@ -1820,32 +1701,6 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Usuario");
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.BloquePrograma", b =>
-                {
-                    b.HasOne("TesisGestorApi.Entities.Programa", "Programa")
-                        .WithMany()
-                        .HasForeignKey("IdPrograma")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TesisGestorApi.Entities.Tema", "Tema")
-                        .WithMany()
-                        .HasForeignKey("IdTema")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.HasOne("TesisGestorApi.Entities.Unidad", "Unidad")
-                        .WithMany()
-                        .HasForeignKey("IdUnidad")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Programa");
-
-                    b.Navigation("Tema");
-
-                    b.Navigation("Unidad");
-                });
-
             modelBuilder.Entity("TesisGestorApi.Entities.Calificacion", b =>
                 {
                     b.HasOne("TesisGestorApi.Entities.ArchivoIE", "ArchivoIE")
@@ -1893,25 +1748,6 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("InstanciaEvaluativa");
 
                     b.Navigation("UsuarioCarga");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.ClaseBloquePrograma", b =>
-                {
-                    b.HasOne("TesisGestorApi.Entities.BloquePrograma", "BloquePrograma")
-                        .WithMany("ClasesBloquePrograma")
-                        .HasForeignKey("IdBloquePrograma")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TesisGestorApi.Entities.Planificacion", "Planificacion")
-                        .WithMany("ClasesBloquePrograma")
-                        .HasForeignKey("IdClasePlanificacion")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("BloquePrograma");
-
-                    b.Navigation("Planificacion");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.ClaseDictada", b =>
@@ -2132,17 +1968,6 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Usuario");
                 });
 
-            modelBuilder.Entity("TesisGestorApi.Entities.Planificacion", b =>
-                {
-                    b.HasOne("TesisGestorApi.Entities.Docente", "Docente")
-                        .WithMany()
-                        .HasForeignKey("IdDocente")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Docente");
-                });
-
             modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>
                 {
                     b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
@@ -2332,8 +2157,6 @@ namespace TesisGestorApi.Migrations
 
             modelBuilder.Entity("TesisGestorApi.Entities.ArchivoIE", b =>
                 {
-                    b.Navigation("BloquesPrograma");
-
                     b.Navigation("Calificaciones");
 
                     b.Navigation("VersionesSiguientes");
@@ -2342,13 +2165,6 @@ namespace TesisGestorApi.Migrations
             modelBuilder.Entity("TesisGestorApi.Entities.AuditoriaCalificacionSesion", b =>
                 {
                     b.Navigation("Detalles");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.BloquePrograma", b =>
-                {
-                    b.Navigation("ArchivosIE");
-
-                    b.Navigation("ClasesBloquePrograma");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.Calificacion", b =>
@@ -2437,11 +2253,6 @@ namespace TesisGestorApi.Migrations
             modelBuilder.Entity("TesisGestorApi.Entities.Permiso", b =>
                 {
                     b.Navigation("RolPermisos");
-                });
-
-            modelBuilder.Entity("TesisGestorApi.Entities.Planificacion", b =>
-                {
-                    b.Navigation("ClasesBloquePrograma");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.Preceptor", b =>

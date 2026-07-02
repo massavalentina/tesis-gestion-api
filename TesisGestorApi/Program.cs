@@ -46,6 +46,9 @@ builder.Services.AddScoped<IPlanificacionService, PlanificacionService>();
 builder.Services.AddScoped<IEvaluacionesService, EvaluacionesService>();
 builder.Services.AddHttpClient<ISupabaseStorageService, SupabaseStorageService>();
 builder.Services.AddScoped<ICalificacionesService, CalificacionesService>();
+builder.Services.AddScoped<ICalificacionesWriteService, CalificacionesWriteService>();
+builder.Services.AddScoped<ICalificacionesImportacionService, CalificacionesImportacionService>();
+builder.Services.AddScoped<ICidiCalificacionesPdfParser, CidiCalificacionesPdfParser>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
