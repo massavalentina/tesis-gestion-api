@@ -7,6 +7,8 @@ namespace TesisGestorApi.Services
     public class CidiCalificacionesPdfParser : ICidiCalificacionesPdfParser
     {
         private const double LineTolerance = 2.5;
+        private const double RowMatchTolerance = 3.5;
+        private const double FallbackLineTolerance = 5.5;
         private static readonly string[] RequiredFormatMarkers =
         {
             "listado de calificaciones",
@@ -57,11 +59,7 @@ namespace TesisGestorApi.Services
                 return new List<CidiCalificacionesParsedRow>();
             }
 
-            var lines = words
-                .GroupBy(word => FindLineAnchor(words, word))
-                .OrderByDescending(group => group.Key)
-                .Select(group => group.OrderBy(w => w.BoundingBox.Left).ToList())
-                .ToList();
+            var lines = GroupWordsIntoLines(words);
 
             var subHeaderLine = lines
                 .Select(line => new
@@ -94,23 +92,26 @@ namespace TesisGestorApi.Services
             gradeColumns = gradeColumns.Take(24).ToList();
             var firstGradeColumnX = gradeColumns.Min(column => column.CenterX) - 8;
             var headerY = subHeaderLine.Average(word => word.BoundingBox.Bottom);
+            var dataWords = words
+                .Where(word => word.BoundingBox.Bottom < headerY - LineTolerance)
+                .ToList();
+
+            var studentLines = GroupWordsIntoLines(dataWords.Where(word => word.BoundingBox.Left < firstGradeColumnX), FallbackLineTolerance)
+                .Select(line => new
+                {
+                    Words = line.OrderBy(word => word.BoundingBox.Left).ToList(),
+                    AnchorY = line.Average(word => word.BoundingBox.Bottom),
+                })
+                .ToList();
 
             var parsedRows = new List<CidiCalificacionesParsedRow>();
-            foreach (var line in lines)
+            foreach (var studentLine in studentLines)
             {
-                var lineY = line.Average(word => word.BoundingBox.Bottom);
-                if (lineY >= headerY - LineTolerance)
-                {
-                    continue;
-                }
-
-                var studentWords = line
-                    .Where(word => word.BoundingBox.Left < firstGradeColumnX)
-                    .OrderBy(word => word.BoundingBox.Left)
-                    .ToList();
-
-                var gradeWords = line
-                    .Where(word => word.BoundingBox.Left >= firstGradeColumnX)
+                var studentWords = studentLine.Words;
+                var gradeWords = dataWords
+                    .Where(word =>
+                        word.BoundingBox.Left >= firstGradeColumnX
+                        && Math.Abs(word.BoundingBox.Bottom - studentLine.AnchorY) <= RowMatchTolerance)
                     .ToList();
 
                 if (studentWords.Count == 0)
@@ -149,6 +150,11 @@ namespace TesisGestorApi.Services
 
                 rowOrder += 1;
                 parsedRows.Add(new CidiCalificacionesParsedRow(rowOrder, studentRaw, cells));
+            }
+
+            if (parsedRows.Count == 0)
+            {
+                parsedRows = ParseRowsWithFallbackLineGrouping(dataWords, gradeColumns, firstGradeColumnX, ref rowOrder);
             }
 
             return parsedRows;
@@ -205,6 +211,94 @@ namespace TesisGestorApi.Services
                 .OrderBy(column => Math.Abs(column.CenterX - centerX))
                 .First()
                 .Index;
+        }
+
+        private static List<CidiCalificacionesParsedRow> ParseRowsWithFallbackLineGrouping(
+            IReadOnlyList<Word> dataWords,
+            IReadOnlyList<GradeColumn> gradeColumns,
+            double firstGradeColumnX,
+            ref int rowOrder)
+        {
+            var parsedRows = new List<CidiCalificacionesParsedRow>();
+            var lines = GroupWordsIntoLines(dataWords, FallbackLineTolerance);
+
+            foreach (var line in lines)
+            {
+                var orderedWords = line.OrderBy(word => word.BoundingBox.Left).ToList();
+                var studentWords = orderedWords
+                    .Where(word => word.BoundingBox.Left < firstGradeColumnX + 10)
+                    .OrderBy(word => word.BoundingBox.Left)
+                    .ToList();
+
+                if (studentWords.Count == 0)
+                {
+                    continue;
+                }
+
+                var studentRaw = string.Join(' ', studentWords.Select(word => word.Text)).Trim();
+                if (string.IsNullOrWhiteSpace(studentRaw) || LooksLikeNonStudentLine(studentRaw))
+                {
+                    continue;
+                }
+
+                var gradeWords = orderedWords
+                    .Where(word => word.BoundingBox.Left >= firstGradeColumnX - 4)
+                    .ToList();
+
+                var groupedByColumn = gradeWords
+                    .GroupBy(word => FindClosestColumn(word, gradeColumns))
+                    .ToDictionary(
+                        group => group.Key,
+                        group => string.Join(' ', group.OrderBy(word => word.BoundingBox.Left).Select(word => word.Text)).Trim());
+
+                var cells = new Dictionary<string, string?>();
+                for (var columnIndex = 0; columnIndex < 24; columnIndex++)
+                {
+                    var evaluacionNumero = (columnIndex / 3) + 1;
+                    var tipo = (columnIndex % 3) switch
+                    {
+                        0 => "N",
+                        1 => "R1",
+                        _ => "R2",
+                    };
+
+                    var slotKey = $"E{evaluacionNumero}_{tipo}";
+                    cells[slotKey] = groupedByColumn.TryGetValue(columnIndex, out var value) && !string.IsNullOrWhiteSpace(value)
+                        ? value
+                        : null;
+                }
+
+                rowOrder += 1;
+                parsedRows.Add(new CidiCalificacionesParsedRow(rowOrder, studentRaw, cells));
+            }
+
+            return parsedRows;
+        }
+
+        private static List<List<Word>> GroupWordsIntoLines(IEnumerable<Word> sourceWords, double tolerance = LineTolerance)
+        {
+            var ordered = sourceWords
+                .OrderByDescending(word => word.BoundingBox.Bottom)
+                .ThenBy(word => word.BoundingBox.Left)
+                .ToList();
+
+            var lines = new List<(double AnchorY, List<Word> Words)>();
+            foreach (var word in ordered)
+            {
+                var matchIndex = lines.FindIndex(line => Math.Abs(line.AnchorY - word.BoundingBox.Bottom) <= tolerance);
+                if (matchIndex >= 0)
+                {
+                    lines[matchIndex].Words.Add(word);
+                    continue;
+                }
+
+                lines.Add((word.BoundingBox.Bottom, new List<Word> { word }));
+            }
+
+            return lines
+                .OrderByDescending(line => line.AnchorY)
+                .Select(line => line.Words.OrderBy(word => word.BoundingBox.Left).ToList())
+                .ToList();
         }
 
         private sealed record GradeColumn(int Index, double CenterX);

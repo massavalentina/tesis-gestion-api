@@ -12,15 +12,18 @@ namespace TesisGestorApi.Services
         private readonly ApplicationDbContext _context;
         private readonly ICurrentUserService _currentUser;
         private readonly ICalificacionesWriteService _writeService;
+        private readonly ISupabaseStorageService _storageService;
 
         public CalificacionesService(
             ApplicationDbContext context,
             ICurrentUserService currentUser,
-            ICalificacionesWriteService writeService)
+            ICalificacionesWriteService writeService,
+            ISupabaseStorageService storageService)
         {
             _context = context;
             _currentUser = currentUser;
             _writeService = writeService;
+            _storageService = storageService;
         }
 
         public async Task<List<InstanciaEvaluativaResumenDto>> GetInstanciasPorECAsync(Guid idEC, Guid idDocente, CancellationToken ct)
@@ -71,142 +74,21 @@ namespace TesisGestorApi.Services
             var estudiantesById = estudiantes.ToDictionary(e => e.IdEstudiante);
 
             var normalizedChanges = NormalizeAndValidatePayload(dto.Cambios, instanciasById, estudiantesById);
-            var instanceIds = normalizedChanges.Select(c => c.IdIE).Distinct().ToList();
-            var studentIds = normalizedChanges.Select(c => c.IdEstudiante).Distinct().ToList();
-
-            var calificacionesActuales = await _context.Calificaciones
-                .Where(c => c.Habilitada && instanceIds.Contains(c.IdIE) && studentIds.Contains(c.IdEstudiante))
-                .ToListAsync(ct);
-
-            if (calificacionesActuales
-                .GroupBy(c => new CalificacionKey(c.IdIE, c.IdEstudiante, c.TipoCalificacion))
-                .Any(group => group.Count() > 1))
-            {
-                throw new InvalidOperationException("Se detectaron múltiples calificaciones vigentes para la misma instancia, estudiante y tipo de calificación.");
-            }
-
-            var calificacionesByKey = calificacionesActuales.ToDictionary(
-                c => new CalificacionKey(c.IdIE, c.IdEstudiante, c.TipoCalificacion));
-
-            var pendingAuditDetails = new List<PendingAuditDetail>();
-            var instanciasAfectadas = new HashSet<Guid>();
-            var now = DateTime.UtcNow;
-
-            foreach (var change in normalizedChanges)
-            {
-                var key = new CalificacionKey(change.IdIE, change.IdEstudiante, change.TipoCalificacion);
-                calificacionesByKey.TryGetValue(key, out var vigente);
-
-                var valorAnterior = vigente?.Puntaje;
-                var valorNuevo = change.Puntaje;
-
-                if (valorAnterior == valorNuevo)
-                {
-                    continue;
-                }
-
-                if (valorAnterior == null && valorNuevo == null)
-                {
-                    continue;
-                }
-
-                if (!activeArchivoBySlot.TryGetValue(new ArchivoSlotKey(change.IdIE, change.TipoCalificacion), out var archivo))
-                {
-                    throw new InvalidOperationException($"No existe un ArchivoIE activo para la instancia '{change.IdIE}' y el tipo '{ToTipoCalificacionCode(change.TipoCalificacion)}'.");
-                }
-
-                if (vigente != null)
-                {
-                    vigente.Habilitada = false;
-                }
-
-                var nuevaCalificacion = new Calificacion
-                {
-                    IdCalificacion = Guid.NewGuid(),
-                    IdIE = change.IdIE,
-                    IdEstudiante = change.IdEstudiante,
-                    TipoCalificacion = change.TipoCalificacion,
-                    IdArchivoIE = archivo.IdArchivoIE,
-                    Puntaje = valorNuevo,
-                    Habilitada = true,
-                    FechaCarga = now,
-                    IdUsuarioCarga = idUsuario,
-                    Origen = OrigenCarga.Manual,
-                    IdCalificacionAnterior = vigente?.IdCalificacion,
-                };
-
-                _context.Calificaciones.Add(nuevaCalificacion);
-                calificacionesByKey[key] = nuevaCalificacion;
-                instanciasAfectadas.Add(change.IdIE);
-
-                var estudiante = estudiantesById[change.IdEstudiante];
-                var instancia = instanciasById[change.IdIE];
-                pendingAuditDetails.Add(new PendingAuditDetail(
-                    change.IdIE,
-                    change.IdEstudiante,
-                    change.TipoCalificacion,
-                    valorAnterior,
-                    valorNuevo,
-                    vigente?.IdCalificacion,
-                    nuevaCalificacion.IdCalificacion,
-                    $"Eval {instancia.Nro}",
-                    $"{estudiante.Apellido}, {estudiante.Nombre}",
-                    estudiante.Documento));
-            }
-
-            if (pendingAuditDetails.Count == 0)
-            {
-                return new GuardarCalificacionesManualResponseDto
-                {
-                    CambiosAplicados = 0,
-                };
-            }
-
-            AuditoriaCalificacionSesion? auditSession = null;
-
-            await using var transaction = await _context.Database.BeginTransactionAsync(ct);
-            try
-            {
-                auditSession = new AuditoriaCalificacionSesion
-                {
-                    IdSesionAuditoria = Guid.NewGuid(),
-                    IdEC = idEC,
-                    IdUsuario = idUsuario,
-                    Origen = OrigenCarga.Manual,
-                    FechaRegistro = now,
-                    Detalles = pendingAuditDetails.Select(detail => new AuditoriaCalificacionDetalle
-                    {
-                        IdDetalleAuditoria = Guid.NewGuid(),
-                        IdIE = detail.IdIE,
-                        IdEstudiante = detail.IdEstudiante,
-                        TipoCalificacion = detail.TipoCalificacion,
-                        ValorAnterior = detail.ValorAnterior,
-                        ValorNuevo = detail.ValorNuevo,
-                        IdCalificacionAnterior = detail.IdCalificacionAnterior,
-                        IdCalificacionNueva = detail.IdCalificacionNueva,
-                    }).ToList(),
-                };
-
-                _context.AuditoriasCalificacionesSesiones.Add(auditSession);
-                await _context.SaveChangesAsync(ct);
-
-                var instanciasTrackeadas = await _context.InstanciasEvaluativas
-                    .Where(i => instanciasAfectadas.Contains(i.IdIE))
-                    .ToListAsync(ct);
-
-                foreach (var instancia in instanciasTrackeadas)
-                {
-                    instancia.FechaModificacion = now;
-                }
-
-                await _context.SaveChangesAsync(ct);
-                await transaction.CommitAsync(ct);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(ct);
-                throw;
-            }
+            var result = await _writeService.ApplyChangesAsync(
+                new CalificacionesApplyRequest(
+                    idEC,
+                    idUsuario,
+                    docenteLabel,
+                    OrigenCarga.Manual,
+                    null,
+                    normalizedChanges
+                        .Select(change => new CalificacionApplyChange(
+                            change.IdIE,
+                            change.IdEstudiante,
+                            change.TipoCalificacion,
+                            change.Puntaje))
+                        .ToList()),
+                ct);
 
             return new GuardarCalificacionesManualResponseDto
             {
@@ -249,6 +131,11 @@ namespace TesisGestorApi.Services
                     Docente = $"{s.Usuario.Nombre} {s.Usuario.Apellido}",
                     Origen = s.Origen.ToString(),
                     CantidadCambios = s.Detalles.Count,
+                    RutaArchivoImportacion = s.IdImportacionCalificaciones.HasValue
+                        && s.ImportacionCalificaciones != null
+                        && !string.IsNullOrWhiteSpace(s.ImportacionCalificaciones.RutaArchivoFinal)
+                            ? _storageService.GetUrlPublica(s.ImportacionCalificaciones.RutaArchivoFinal)
+                            : null,
                     Cambios = s.Detalles
                         .OrderBy(d => d.IdDetalleAuditoria)
                         .Select(d => new AuditoriaCalificacionDetalleDto

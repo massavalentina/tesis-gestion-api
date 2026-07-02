@@ -52,21 +52,21 @@ namespace TesisGestorApi.Services
         {
             if (dto.Archivo == null || dto.Archivo.Length == 0)
             {
-                throw new ValidationException("Debés seleccionar un PDF exportado desde CiDi.");
+                throw new ValidationException("Seleccioná el PDF exportado desde CiDi para continuar.");
             }
 
             if (!dto.Archivo.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase)
                 && !dto.Archivo.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
             {
-                throw new ValidationException("El archivo debe ser un PDF.");
+                throw new ValidationException("El archivo elegido no es un PDF. Cargá el PDF exportado desde CiDi.");
             }
 
             if (dto.Archivo.Length > 50 * 1024 * 1024)
             {
-                throw new ValidationException("El archivo no puede superar los 50 MB.");
+                throw new ValidationException("El archivo supera el tamaño permitido. Probá con un PDF más liviano.");
             }
 
-            var userId = _currentUser.UserId ?? throw new UnauthorizedAccessException("Usuario no autenticado.");
+            var userId = _currentUser.UserId ?? throw new UnauthorizedAccessException("Tu sesión no es válida. Volvé a ingresar para continuar.");
             var espacio = await GetEspacioContextAsync(idEC, idDocente, ct);
             var fileBytes = await ReadFileBytesAsync(dto.Archivo, ct);
             var hash = ComputeSha256(fileBytes);
@@ -113,12 +113,12 @@ namespace TesisGestorApi.Services
             var entity = await GetOwnedImportacionAsync(idImportacion, idDocente, ct);
             if (entity.Estado == EstadoImportacionCalificaciones.Confirmada || entity.Estado == EstadoImportacionCalificaciones.Cancelada)
             {
-                throw new InvalidOperationException("La importación ya no puede reanalizarse.");
+                throw new InvalidOperationException("Esta importación ya no se puede volver a analizar.");
             }
 
             if (entity.ArchivoTemporalContenido == null || entity.ArchivoTemporalContenido.Length == 0)
             {
-                throw new InvalidOperationException("No se encontró el archivo temporal de esta importación.");
+                throw new InvalidOperationException("No se pudo recuperar el archivo cargado para esta importación. Volvé a cargar el PDF.");
             }
 
             var espacio = await GetEspacioContextAsync(entity.IdEC, idDocente, ct);
@@ -147,13 +147,13 @@ namespace TesisGestorApi.Services
             var entity = await GetOwnedImportacionAsync(idImportacion, idDocente, ct);
             if (entity.Estado == EstadoImportacionCalificaciones.Confirmada || entity.Estado == EstadoImportacionCalificaciones.Cancelada)
             {
-                throw new InvalidOperationException("La importación ya no admite cambios.");
+                throw new InvalidOperationException("Esta importación ya no admite cambios.");
             }
 
             var revision = GetRevisionOrThrow(entity);
             if (revision.Bloqueos.Count > 0)
             {
-                throw new InvalidOperationException("La importación tiene bloqueos técnicos pendientes y no puede editarse.");
+                throw new InvalidOperationException("Esta importación todavía tiene problemas por resolver y no se puede editar.");
             }
 
             var rowsById = revision.Rows.ToDictionary(row => row.RowId);
@@ -163,12 +163,12 @@ namespace TesisGestorApi.Services
             {
                 if (!rowsById.TryGetValue(rowUpdate.RowId, out var row))
                 {
-                    throw new ValidationException($"La fila '{rowUpdate.RowId}' no existe en la sesión de importación.");
+                    throw new ValidationException("No se pudo reconocer una de las filas que querés modificar. Volvé a analizar el archivo.");
                 }
 
                 if (rowUpdate.EstudianteAsociadoId.HasValue && !estudianteIdsValidos.Contains(rowUpdate.EstudianteAsociadoId.Value))
                 {
-                    throw new ValidationException($"El estudiante '{rowUpdate.EstudianteAsociadoId}' no pertenece al curso del espacio curricular.");
+                    throw new ValidationException("El estudiante seleccionado no pertenece a este curso.");
                 }
 
                 row.EstudianteAsociadoId = rowUpdate.EstudianteAsociadoId;
@@ -179,12 +179,12 @@ namespace TesisGestorApi.Services
                 {
                     if (!cellsBySlot.TryGetValue(cellUpdate.SlotKey, out var cell))
                     {
-                        throw new ValidationException($"La celda '{cellUpdate.SlotKey}' no existe en la fila '{row.RowId}'.");
+                        throw new ValidationException("No se pudo reconocer una de las notas que querés modificar. Volvé a analizar el archivo.");
                     }
 
                     if (cellUpdate.ValorFinal is < 1 or > 10)
                     {
-                        throw new ValidationException("Las notas importadas corregidas solo permiten enteros de 1 a 10.");
+                        throw new ValidationException("Las notas corregidas solo permiten números enteros del 1 al 10.");
                     }
 
                     cell.Resolucion = cellUpdate.Resolucion?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -226,23 +226,23 @@ namespace TesisGestorApi.Services
             var entity = await GetOwnedImportacionAsync(idImportacion, idDocente, ct);
             if (entity.Estado == EstadoImportacionCalificaciones.Confirmada)
             {
-                throw new InvalidOperationException("La importación ya fue confirmada.");
+                throw new InvalidOperationException("Esta importación ya fue confirmada.");
             }
 
             if (entity.Estado == EstadoImportacionCalificaciones.Cancelada)
             {
-                throw new InvalidOperationException("La importación fue cancelada.");
+                throw new InvalidOperationException("Esta importación ya fue cancelada.");
             }
 
             if (entity.ArchivoTemporalContenido == null || entity.ArchivoTemporalContenido.Length == 0)
             {
-                throw new InvalidOperationException("No se encontró el PDF temporal de esta importación.");
+                throw new InvalidOperationException("No se pudo recuperar el archivo cargado para esta importación. Volvé a cargar el PDF.");
             }
 
             var revision = await RecomputeRevisionAsync(entity, GetRevisionOrThrow(entity), ct);
             if (!revision.PuedeConfirmar)
             {
-                throw new ValidationException("La importación todavía tiene conflictos pendientes y no puede confirmarse.");
+                throw new ValidationException("Todavía quedan conflictos por resolver antes de confirmar la importación.");
             }
 
             var cambios = BuildApplyChanges(revision);
@@ -308,7 +308,7 @@ namespace TesisGestorApi.Services
             var entity = await GetOwnedImportacionAsync(idImportacion, idDocente, ct);
             if (entity.Estado == EstadoImportacionCalificaciones.Confirmada)
             {
-                throw new InvalidOperationException("La importación ya fue confirmada y no puede cancelarse.");
+                throw new InvalidOperationException("Esta importación ya fue confirmada y no se puede cancelar.");
             }
 
             entity.Estado = EstadoImportacionCalificaciones.Cancelada;
@@ -326,7 +326,7 @@ namespace TesisGestorApi.Services
 
             if (parsed.Rows.Count == 0)
             {
-                throw new ValidationException("El PDF no contiene estudiantes detectables.");
+                throw new ValidationException("No se encontraron estudiantes en el PDF.");
             }
 
             var studentOptions = await LoadStudentOptionsAsync(espacio.IdCurso, ct);
@@ -346,12 +346,12 @@ namespace TesisGestorApi.Services
 
             if (review.Rows.Count == 0)
             {
-                throw new ValidationException("El PDF no contiene filas válidas para analizar.");
+                throw new ValidationException("No se encontraron filas válidas para analizar en el PDF.");
             }
 
             if (!review.Slots.Any(slot => slot.TieneNotasImportadas))
             {
-                throw new ValidationException("El PDF no contiene al menos una nota interpretable para importar.");
+                throw new ValidationException("No se encontraron notas para importar en el PDF.");
             }
 
             foreach (var slot in review.Slots.Where(slot => slot.TieneNotasImportadas && !slot.TieneEstructuraPrevia))
@@ -360,7 +360,7 @@ namespace TesisGestorApi.Services
                 {
                     Codigo = "estructura_faltante",
                     Severidad = "blocking",
-                    Mensaje = $"Se detectaron notas para {slot.Label}, pero esa evaluación todavía no tiene la instancia evaluativa o el ArchivoIE necesarios en el sistema.",
+                    Mensaje = $"Se encontraron notas para {slot.Label}, pero esa evaluación todavía no está cargada en la sección Evaluaciones.",
                     SlotKey = slot.Label,
                 });
             }
@@ -397,7 +397,7 @@ namespace TesisGestorApi.Services
                 {
                     Codigo = "materia_no_coincide",
                     Severidad = "blocking",
-                    Mensaje = $"El espacio curricular detectado en el PDF no coincide con \"{espacio.NombreMateria}\".",
+                    Mensaje = $"El espacio curricular del PDF no coincide con el espacio donde estás realizando la importación ({espacio.NombreMateria}).",
                 });
             }
 
@@ -407,7 +407,7 @@ namespace TesisGestorApi.Services
                 {
                     Codigo = "anio_lectivo_no_coincide",
                     Severidad = "blocking",
-                    Mensaje = $"El ciclo lectivo del PDF no coincide con {espacio.AnioLectivo}.",
+                    Mensaje = $"El ciclo lectivo del PDF no coincide con el de este curso ({espacio.AnioLectivo}).",
                 });
             }
 
@@ -418,7 +418,7 @@ namespace TesisGestorApi.Services
                 {
                     Codigo = "curso_no_coincide",
                     Severidad = "blocking",
-                    Mensaje = $"El PDF no coincide con {BuildExpectedCourseLabel(espacio)}.",
+                    Mensaje = $"El curso y la división del PDF no coinciden con este espacio ({BuildExpectedCourseLabel(espacio)}).",
                 });
             }
 
@@ -435,7 +435,7 @@ namespace TesisGestorApi.Services
                 {
                     Codigo = "formato_no_cidi",
                     Severidad = "blocking",
-                    Mensaje = "El archivo no parece ser el listado de calificaciones exportado desde CiDi.",
+                    Mensaje = "El archivo no corresponde al listado de calificaciones exportado desde CiDi.",
                 });
             }
 
@@ -448,7 +448,7 @@ namespace TesisGestorApi.Services
                 {
                     Codigo = "encabezado_incompleto",
                     Severidad = "blocking",
-                    Mensaje = "El PDF no trae el encabezado esperado de CiDi con curso, división, espacio curricular y ciclo lectivo.",
+                    Mensaje = "No se pudo identificar correctamente el curso, la división, el espacio curricular o el ciclo lectivo en el PDF.",
                 });
             }
 
@@ -460,7 +460,7 @@ namespace TesisGestorApi.Services
                 {
                     Codigo = "tabla_no_reconocida",
                     Severidad = "blocking",
-                    Mensaje = "No se pudo reconocer la tabla estándar de calificaciones de CiDi.",
+                    Mensaje = "No se pudo reconocer la tabla de calificaciones del archivo.",
                 });
             }
 
@@ -584,7 +584,7 @@ namespace TesisGestorApi.Services
             {
                 cell.Estado = "blocking";
                 cell.Resolucion = "pending";
-                cell.Mensaje = invalidMessage ?? "La nota detectada no es válida.";
+                    cell.Mensaje = invalidMessage ?? "La nota detectada en el PDF no es válida.";
                 return cell;
             }
 
@@ -594,7 +594,7 @@ namespace TesisGestorApi.Services
                 {
                     cell.Estado = "review";
                     cell.Resolucion = "pending";
-                    cell.Mensaje = "En el sistema ya existe una nota vigente y el PDF viene vacío.";
+                    cell.Mensaje = "En el sistema ya hay una nota cargada y en el PDF esta celda está vacía.";
                 }
 
                 return cell;
@@ -605,7 +605,7 @@ namespace TesisGestorApi.Services
             {
                 cell.Estado = "blocking";
                 cell.Resolucion = "pending";
-                cell.Mensaje = "Asociá el estudiante o marcá la fila como omitida.";
+                cell.Mensaje = "Elegí a qué estudiante del curso corresponde esta fila, o bien omitila en esta importación.";
                 return cell;
             }
 
@@ -625,7 +625,7 @@ namespace TesisGestorApi.Services
 
             cell.Estado = "review";
             cell.Resolucion = "pending";
-            cell.Mensaje = $"El PDF trae {importedValue} y el sistema ya tiene {dbValue}.";
+            cell.Mensaje = $"El PDF trae {importedValue} y en el sistema ya hay cargado un {dbValue}.";
             return cell;
         }
 
@@ -650,7 +650,7 @@ namespace TesisGestorApi.Services
                 var hasResolvedStudent = row.Omitida || (row.EstudianteAsociadoId.HasValue && validStudents.ContainsKey(row.EstudianteAsociadoId.Value));
                 if (!row.Omitida && row.EstudianteAsociadoId.HasValue && !validStudents.ContainsKey(row.EstudianteAsociadoId.Value))
                 {
-                    throw new ValidationException($"El estudiante '{row.EstudianteAsociadoId}' ya no pertenece al curso del espacio curricular.");
+                    throw new ValidationException("El estudiante seleccionado ya no pertenece a este curso.");
                 }
 
                 foreach (var cell in row.Cells)
@@ -665,7 +665,7 @@ namespace TesisGestorApi.Services
                     {
                         cell.Estado = "clean";
                         cell.Resolucion = "omit";
-                        cell.Mensaje = "Fila omitida en la importación.";
+                        cell.Mensaje = "Esta fila fue omitida en la importación.";
                         continue;
                     }
 
@@ -673,7 +673,7 @@ namespace TesisGestorApi.Services
                     {
                         cell.Estado = "blocking";
                         cell.Resolucion = "pending";
-                        cell.Mensaje = "Falta el alta previa de la instancia evaluativa o del ArchivoIE para esta celda.";
+                        cell.Mensaje = "Antes de importar esta nota, tenés que cargar esa evaluación y su examen correspondiente en la sección Evaluaciones.";
                         continue;
                     }
 
@@ -681,7 +681,7 @@ namespace TesisGestorApi.Services
                     {
                         cell.Estado = "blocking";
                         cell.Resolucion = "pending";
-                        cell.Mensaje = "Asociá el estudiante o marcá la fila como omitida.";
+                        cell.Mensaje = "Elegí a qué estudiante del curso corresponde esta fila, o bien omitila en esta importación.";
                         continue;
                     }
 
@@ -757,7 +757,7 @@ namespace TesisGestorApi.Services
                     {
                         cell.Estado = "review";
                         cell.Resolucion = "pending";
-                        cell.Mensaje = "La celda requiere una decisión antes de confirmar.";
+                        cell.Mensaje = "Tenés que decidir qué hacer con esta nota antes de continuar.";
                         return;
                     }
 
@@ -770,7 +770,7 @@ namespace TesisGestorApi.Services
                     {
                         cell.Estado = "blocking";
                         cell.Resolucion = "pending";
-                        cell.Mensaje = "Ingresá una nota válida entre 1 y 10.";
+                        cell.Mensaje = "Ingresá una nota válida del 1 al 10.";
                         return;
                     }
 
@@ -781,7 +781,7 @@ namespace TesisGestorApi.Services
                     cell.Estado = cell.ValorDb != null || cell.ValorImportado != null ? "review" : "clean";
                     cell.Resolucion = cell.Estado == "review" ? "pending" : "omit";
                     cell.Mensaje = cell.Estado == "review"
-                        ? "La celda requiere una decisión antes de confirmar."
+                        ? "Tenés que decidir qué hacer con esta nota antes de continuar."
                         : null;
                     return;
             }
@@ -816,7 +816,7 @@ namespace TesisGestorApi.Services
                         {
                             item.Cell.Estado = "blocking";
                             item.Cell.Resolucion = "pending";
-                            item.Cell.Mensaje = "El mismo estudiante aparece repetido con valores distintos en esta celda.";
+                            item.Cell.Mensaje = "Este estudiante aparece repetido en el PDF con notas distintas para la misma evaluación.";
                         }
                     }
                     else
@@ -827,7 +827,7 @@ namespace TesisGestorApi.Services
                             {
                                 Codigo = "student_duplicate_pdf",
                                 Severidad = "review",
-                                Mensaje = "El mismo estudiante aparece más de una vez en el PDF con notas compatibles.",
+                                Mensaje = "Este estudiante aparece más de una vez en el PDF, pero las notas no se contradicen.",
                             });
                         }
                     }
@@ -842,14 +842,14 @@ namespace TesisGestorApi.Services
                 if (row.Omitida)
                 {
                     row.Estado = "clean";
-                    row.Mensaje = "Fila omitida.";
+                    row.Mensaje = "Esta fila fue omitida en la importación.";
                     continue;
                 }
 
                 if (!row.EstudianteAsociadoId.HasValue)
                 {
                     row.Estado = "blocking";
-                    row.Mensaje = "Debés asociar un estudiante o marcar la fila como omitida.";
+                    row.Mensaje = "Tenés que elegir a qué estudiante corresponde esta fila o bien omitirla.";
                     continue;
                 }
 
@@ -858,7 +858,7 @@ namespace TesisGestorApi.Services
                 if (hasBlockingIssue)
                 {
                     row.Estado = "blocking";
-                    row.Mensaje = "La fila tiene conflictos bloqueantes pendientes.";
+                    row.Mensaje = "Esta fila tiene un problema que tenés que resolver antes de continuar.";
                     continue;
                 }
 
@@ -866,7 +866,7 @@ namespace TesisGestorApi.Services
                     || row.Cells.Any(cell => cell.Resolucion == "pending" || cell.Estado == "review");
                 row.Estado = hasReviewIssue ? "review" : "clean";
                 row.Mensaje = hasReviewIssue
-                    ? "La fila requiere revisión antes de confirmar."
+                    ? "Esta fila necesita revisión."
                     : null;
             }
         }
@@ -949,12 +949,12 @@ namespace TesisGestorApi.Services
 
                 if (!CalificacionesDomainHelper.TryParseSlotKey(chosen.SlotKey, out var evaluacionNumero, out var tipoCalificacion))
                 {
-                    throw new ValidationException($"El slot '{chosen.SlotKey}' no es válido.");
+                    throw new ValidationException("No se pudo reconocer una de las evaluaciones del análisis. Volvé a analizar el PDF.");
                 }
 
                 if (!slotByKey.TryGetValue(chosen.SlotKey, out var slot) || !slot.IdIE.HasValue)
                 {
-                    throw new ValidationException($"El slot '{chosen.SlotKey}' no tiene una instancia evaluativa válida para confirmar.");
+                    throw new ValidationException("Hay una evaluación del análisis que no está correctamente cargada en la sección Evaluaciones.");
                 }
 
                 changes.Add(new CalificacionApplyChange(
@@ -1099,7 +1099,7 @@ namespace TesisGestorApi.Services
                         {
                             Codigo = "student_normalized_match",
                             Severidad = "review",
-                            Mensaje = "Coincidencia encontrada por nombre normalizado.",
+                            Mensaje = "Se encontró una coincidencia probable por nombre. Revisala antes de continuar.",
                         },
                     });
             }
@@ -1126,7 +1126,7 @@ namespace TesisGestorApi.Services
                         {
                             Codigo = "student_not_found",
                             Severidad = "blocking",
-                            Mensaje = "No se encontró un estudiante del curso que coincida con la fila del PDF.",
+                        Mensaje = "No se encontró un estudiante del curso que coincida con el nombre del PDF.",
                         },
                     });
             }
@@ -1140,7 +1140,7 @@ namespace TesisGestorApi.Services
                     {
                         Codigo = "student_ambiguous",
                         Severidad = "blocking",
-                        Mensaje = "La fila del PDF requiere que el docente seleccione manualmente el estudiante.",
+                        Mensaje = "Esta fila necesita que selecciones manualmente al estudiante correcto.",
                     },
                 });
         }
@@ -1180,13 +1180,13 @@ namespace TesisGestorApi.Services
             var compact = rawValue.Trim();
             if (!int.TryParse(compact, out var grade))
             {
-                invalidMessage = $"El valor '{rawValue}' no es una nota numérica válida.";
+                invalidMessage = $"El valor '{rawValue}' no se pudo interpretar como una nota válida.";
                 return null;
             }
 
             if (grade is < 1 or > 10)
             {
-                invalidMessage = $"La nota '{rawValue}' está fuera del rango permitido 1..10.";
+                invalidMessage = $"La nota '{rawValue}' está fuera del rango permitido. Solo se aceptan valores del 1 al 10.";
                 return null;
             }
 
@@ -1207,11 +1207,11 @@ namespace TesisGestorApi.Services
         {
             if (string.IsNullOrWhiteSpace(entity.RevisionJson))
             {
-                throw new InvalidOperationException("La importación no tiene una revisión editable disponible.");
+                throw new InvalidOperationException("Esta importación no tiene una revisión disponible para editar.");
             }
 
             return JsonSerializer.Deserialize<ImportacionRevisionDto>(entity.RevisionJson, JsonOptions)
-                ?? throw new InvalidOperationException("No se pudo reconstruir la revisión de la importación.");
+                ?? throw new InvalidOperationException("No se pudo reconstruir la revisión de esta importación.");
         }
 
         private async Task<ImportacionCalificacionesDetalleDto> MapDetalleAsync(ImportacionCalificaciones entity, CancellationToken ct, bool tieneSesionPendiente)
@@ -1271,7 +1271,7 @@ namespace TesisGestorApi.Services
 
             if (espacio.IdDocente != idDocente)
             {
-                throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
+                throw new UnauthorizedAccessException("No tenés permisos para importar calificaciones en este espacio curricular.");
             }
 
             return espacio;
@@ -1295,17 +1295,17 @@ namespace TesisGestorApi.Services
         {
             if (instancias.Count > 8)
             {
-                throw new InvalidOperationException("El espacio curricular tiene más de 8 instancias evaluativas registradas para el año lectivo.");
+                throw new InvalidOperationException("Este espacio tiene más de 8 evaluaciones registradas para el ciclo lectivo.");
             }
 
             if (instancias.Any(i => i.Nro is < 1 or > 8))
             {
-                throw new InvalidOperationException("Se detectaron instancias evaluativas con un número fuera del rango permitido 1..8.");
+                throw new InvalidOperationException("Se encontraron evaluaciones con una numeración fuera del rango permitido (1 a 8).");
             }
 
             if (instancias.GroupBy(i => i.Nro).Any(group => group.Count() > 1))
             {
-                throw new InvalidOperationException("Se detectaron instancias evaluativas duplicadas para el mismo número.");
+                throw new InvalidOperationException("Se encontraron evaluaciones duplicadas con el mismo número.");
             }
         }
 

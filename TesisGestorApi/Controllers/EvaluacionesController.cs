@@ -62,12 +62,12 @@ public class EvaluacionesController : ControllerBase
         [FromForm] GuardarArchivoIEFormDto dto,
         CancellationToken ct)
     {
+        string? rutaArchivo = null;
         try
         {
             var idDocente = GetIdDocente();
             if (idDocente is null) return Forbid();
 
-            string? rutaArchivo = null;
             if (dto.Archivo is not null)
             {
                 if (!dto.Archivo.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
@@ -102,6 +102,18 @@ public class EvaluacionesController : ControllerBase
         }
         catch (Exception ex)
         {
+            if (!string.IsNullOrWhiteSpace(rutaArchivo))
+            {
+                try
+                {
+                    await _storageService.EliminarArchivoAsync(rutaArchivo, ct);
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger.LogWarning(cleanupEx, "No se pudo eliminar el archivo temporal {RutaArchivo} luego de fallar el guardado del examen del EC {IdEC}.", rutaArchivo, idEC);
+                }
+            }
+
             _logger.LogError(ex, "Error al guardar el archivo de la IE {Nro} ({Tipo}) del EC {IdEC}.", nro, tipo, idEC);
             return StatusCode(500, new { message = "Error interno al guardar el archivo." });
         }

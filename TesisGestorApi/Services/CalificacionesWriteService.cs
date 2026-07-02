@@ -164,28 +164,6 @@ namespace TesisGestorApi.Services
 
                 _context.AuditoriasCalificacionesSesiones.Add(auditSession);
                 await _context.SaveChangesAsync(ct);
-
-                var instanciasEvaluadas = await _context.Calificaciones
-                    .AsNoTracking()
-                    .Where(c => c.Habilitada && c.Puntaje != null && instanciasAfectadas.Contains(c.IdIE))
-                    .Select(c => c.IdIE)
-                    .Distinct()
-                    .ToListAsync(ct);
-
-                var instanciasTrackeadas = await _context.InstanciasEvaluativas
-                    .Where(i => instanciasAfectadas.Contains(i.IdIE))
-                    .ToListAsync(ct);
-
-                var evaluadasSet = instanciasEvaluadas.ToHashSet();
-                foreach (var instancia in instanciasTrackeadas)
-                {
-                    instancia.Estado = evaluadasSet.Contains(instancia.IdIE)
-                        ? EstadoInstanciaEvaluativa.Evaluada
-                        : EstadoInstanciaEvaluativa.Pendiente;
-                    instancia.FechaModificacion = now;
-                }
-
-                await _context.SaveChangesAsync(ct);
                 await transaction.CommitAsync(ct);
             }
             catch
