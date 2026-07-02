@@ -70,6 +70,11 @@ namespace TesisGestorApi.Data
         public DbSet<Planificacion> Planificaciones { get; set; }
         public DbSet<ClaseBloquePrograma> ClasesBloquesProgramas { get; set; }
 
+        // ===== Calendario Institucional =====
+        public DbSet<EventoInstitucional> EventosInstitucionales { get; set; }
+        public DbSet<EventoInstitucionalCurso> EventosInstitucionalCursos { get; set; }
+        public DbSet<AuditoriaEventoInstitucional> AuditoriasEventosInstitucionales { get; set; }
+
         // ===== Calificaciones =====
         public DbSet<InstanciaEvaluativa> InstanciasEvaluativas { get; set; }
         public DbSet<ArchivoIE> ArchivosIE { get; set; }
@@ -642,6 +647,44 @@ modelBuilder.Entity<RefreshToken>()
                 entity.HasIndex(d => new { d.IdIE, d.IdEstudiante });
 
             });
+
+            /// Calendario Institucional
+
+            modelBuilder.Entity<EventoInstitucionalCurso>()
+                .HasKey(eic => new { eic.IdEvento, eic.IdCurso });
+
+            modelBuilder.Entity<EventoInstitucionalCurso>()
+                .HasOne(eic => eic.EventoInstitucional)
+                .WithMany(e => e.Cursos)
+                .HasForeignKey(eic => eic.IdEvento)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EventoInstitucionalCurso>()
+                .HasOne(eic => eic.Curso)
+                .WithMany()
+                .HasForeignKey(eic => eic.IdCurso)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<AuditoriaEventoInstitucional>()
+                .HasOne(a => a.EventoInstitucional)
+                .WithMany(e => e.Auditorias)
+                .HasForeignKey(a => a.IdEvento)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<AuditoriaEventoInstitucional>()
+                .HasOne(a => a.Usuario)
+                .WithMany()
+                .HasForeignKey(a => a.IdUsuario)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EventoInstitucional>()
+                .HasOne(e => e.UsuarioCreacion)
+                .WithMany()
+                .HasForeignKey(e => e.IdUsuarioCreacion)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EventoInstitucional>()
+                .HasIndex(e => new { e.AnioLectivo, e.Activo });
         }
     }
 }

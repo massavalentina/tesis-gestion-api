@@ -46,6 +46,7 @@ builder.Services.AddScoped<IPlanificacionService, PlanificacionService>();
 builder.Services.AddScoped<IEvaluacionesService, EvaluacionesService>();
 builder.Services.AddHttpClient<ISupabaseStorageService, SupabaseStorageService>();
 builder.Services.AddScoped<ICalificacionesService, CalificacionesService>();
+builder.Services.AddScoped<ICalendarioInstitucionalService, CalendarioInstitucionalService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();

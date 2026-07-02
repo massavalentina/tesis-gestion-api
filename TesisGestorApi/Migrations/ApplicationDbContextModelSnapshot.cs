@@ -425,6 +425,41 @@ namespace TesisGestorApi.Migrations
                     b.ToTable("AuditoriaCalificacionSesion", (string)null);
                 });
 
+            modelBuilder.Entity("TesisGestorApi.Entities.AuditoriaEventoInstitucional", b =>
+                {
+                    b.Property<Guid>("IdAuditoria")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IdEvento")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("IdUsuario")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TipoOperacion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ValoresAnteriores")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("ValoresNuevos")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("IdAuditoria");
+
+                    b.HasIndex("IdEvento");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.ToTable("AuditoriasEventosInstitucionales");
+                });
+
             modelBuilder.Entity("TesisGestorApi.Entities.BloquePrograma", b =>
                 {
                     b.Property<Guid>("IdBloquePrograma")
@@ -819,6 +854,79 @@ namespace TesisGestorApi.Migrations
                     b.HasKey("IdEstudiante");
 
                     b.ToTable("Estudiantes");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.EventoInstitucional", b =>
+                {
+                    b.Property<Guid>("IdEvento")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("AnioLectivo")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CambioActividad")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ComentarioCambioActividad")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<bool>("ContabilizaAsistencia")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("FechaFin")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("FechaInicio")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("FechaModificacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IdUsuarioCreacion")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TipoEvento")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Titulo")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("IdEvento");
+
+                    b.HasIndex("IdUsuarioCreacion");
+
+                    b.HasIndex("AnioLectivo", "Activo");
+
+                    b.ToTable("EventosInstitucionales");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.EventoInstitucionalCurso", b =>
+                {
+                    b.Property<Guid>("IdEvento")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("IdCurso")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("IdEvento", "IdCurso");
+
+                    b.HasIndex("IdCurso");
+
+                    b.ToTable("EventosInstitucionalCursos");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.Horario", b =>
@@ -1714,6 +1822,25 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("TesisGestorApi.Entities.AuditoriaEventoInstitucional", b =>
+                {
+                    b.HasOne("TesisGestorApi.Entities.EventoInstitucional", "EventoInstitucional")
+                        .WithMany("Auditorias")
+                        .HasForeignKey("IdEvento")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TesisGestorApi.Entities.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("EventoInstitucional");
+
+                    b.Navigation("Usuario");
+                });
+
             modelBuilder.Entity("TesisGestorApi.Entities.BloquePrograma", b =>
                 {
                     b.HasOne("TesisGestorApi.Entities.Programa", "Programa")
@@ -1930,6 +2057,36 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("Curso");
 
                     b.Navigation("Docente");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.EventoInstitucional", b =>
+                {
+                    b.HasOne("TesisGestorApi.Entities.Usuario", "UsuarioCreacion")
+                        .WithMany()
+                        .HasForeignKey("IdUsuarioCreacion")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("UsuarioCreacion");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.EventoInstitucionalCurso", b =>
+                {
+                    b.HasOne("TesisGestorApi.Entities.Curso", "Curso")
+                        .WithMany()
+                        .HasForeignKey("IdCurso")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TesisGestorApi.Entities.EventoInstitucional", "EventoInstitucional")
+                        .WithMany("Cursos")
+                        .HasForeignKey("IdEvento")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Curso");
+
+                    b.Navigation("EventoInstitucional");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.Horario", b =>
@@ -2265,6 +2422,13 @@ namespace TesisGestorApi.Migrations
                     b.Navigation("RetirosAnticipados");
 
                     b.Navigation("TutorEstudiantes");
+                });
+
+            modelBuilder.Entity("TesisGestorApi.Entities.EventoInstitucional", b =>
+                {
+                    b.Navigation("Auditorias");
+
+                    b.Navigation("Cursos");
                 });
 
             modelBuilder.Entity("TesisGestorApi.Entities.Horario", b =>
