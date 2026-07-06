@@ -189,6 +189,47 @@ namespace TesisGestorApi.Controllers
             }
         }
 
+        // GET /api/calendario/eventos-docente?anioLectivo=2026
+        [HttpGet("eventos-docente")]
+        public async Task<IActionResult> ObtenerEventosDocente(
+            [FromQuery] int anioLectivo = 2026,
+            CancellationToken ct = default)
+        {
+            try
+            {
+                var (idUsuario, roles, esAdmin) = ObtenerDatosUsuario();
+                if (idUsuario == null)
+                    return Ok(new List<DTOs.Calendario.EventoDocenteDto>());
+
+                var eventos = await _service.ObtenerEventosDocenteAsync(anioLectivo, idUsuario.Value, roles, ct);
+                return Ok(eventos);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener eventos docentes del calendario.");
+                return StatusCode(500, "Error interno al obtener los eventos docentes.");
+            }
+        }
+
+        // GET /api/calendario/espacios-curriculares?anioLectivo=2026
+        [HttpGet("espacios-curriculares")]
+        public async Task<IActionResult> ObtenerEspaciosCurriculares(
+            [FromQuery] int anioLectivo = 2026,
+            CancellationToken ct = default)
+        {
+            try
+            {
+                var (idUsuario, _, _) = ObtenerDatosUsuario();
+                var ecs = await _service.ObtenerEspaciosCurricularesDocenteAsync(anioLectivo, idUsuario, ct);
+                return Ok(ecs);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener espacios curriculares del docente.");
+                return StatusCode(500, "Error interno al obtener los espacios curriculares.");
+            }
+        }
+
         // GET /api/calendario/tipos-evento
         [HttpGet("tipos-evento")]
         public IActionResult ObtenerTiposEvento()

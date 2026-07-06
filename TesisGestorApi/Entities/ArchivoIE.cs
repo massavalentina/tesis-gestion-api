@@ -34,6 +34,7 @@ namespace TesisGestorApi.Entities
         public Usuario UsuarioCarga { get; set; } = null!;
 
         public bool Habilitada { get; set; } = true;
+        public bool VisibleEnCalendario { get; set; } = false;
 
         public Guid? IdArchivoIEAnterior { get; set; }
         public ArchivoIE? ArchivoAnterior { get; set; }

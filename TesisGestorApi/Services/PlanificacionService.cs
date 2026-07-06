@@ -123,14 +123,15 @@ public class PlanificacionService : IPlanificacionService
 
     private static ClasePlanificacionDto MapClase(Planificacion p) => new()
     {
-        IdPlanificacion = p.IdPlanificacion,
-        Titulo          = p.Titulo,
-        Descripcion     = p.Descripcion,
-        FechaEstimada   = p.FechaDesde?.ToString("yyyy-MM-dd"),
-        FechaDictada    = p.FechaHasta?.ToString("yyyy-MM-dd"),
-        Estado          = p.Estado.ToString(),
-        Url             = p.Url,
-        FechaCreacion   = p.FechaCreacion,
+        IdPlanificacion      = p.IdPlanificacion,
+        Titulo               = p.Titulo,
+        Descripcion          = p.Descripcion,
+        FechaEstimada        = p.FechaDesde?.ToString("yyyy-MM-dd"),
+        FechaDictada         = p.FechaHasta?.ToString("yyyy-MM-dd"),
+        Estado               = p.Estado.ToString(),
+        Url                  = p.Url,
+        FechaCreacion        = p.FechaCreacion,
+        VisibleEnCalendario  = p.VisibleEnCalendario,
     };
 
     // Avance basado en temas marcados como Dado manualmente (no en el estado de las clases).
@@ -248,15 +249,16 @@ public class PlanificacionService : IPlanificacionService
 
         var planificacion = new Planificacion
         {
-            IdPlanificacion = Guid.NewGuid(),
-            IdDocente       = idDocente,
-            Titulo          = dto.Titulo,
-            Descripcion     = dto.Descripcion,
-            FechaDesde      = ParseFecha(dto.FechaDesde),
-            FechaHasta      = ParseFecha(dto.FechaHasta),
-            Estado          = estado,
-            Url             = urlArchivo,
-            FechaCreacion   = DateTime.UtcNow,
+            IdPlanificacion     = Guid.NewGuid(),
+            IdDocente           = idDocente,
+            Titulo              = dto.Titulo,
+            Descripcion         = dto.Descripcion,
+            FechaDesde          = ParseFecha(dto.FechaDesde),
+            FechaHasta          = ParseFecha(dto.FechaHasta),
+            Estado              = estado,
+            Url                 = urlArchivo,
+            FechaCreacion       = DateTime.UtcNow,
+            VisibleEnCalendario = dto.VisibleEnCalendario && ParseFecha(dto.FechaDesde) != null,
         };
         _db.Planificaciones.Add(planificacion);
 
@@ -293,11 +295,12 @@ public class PlanificacionService : IPlanificacionService
         var bloquesAnteriores = planificacion.ClasesBloquePrograma
             .Select(cb => cb.IdBloquePrograma).ToList();
 
-        planificacion.Titulo      = dto.Titulo;
-        planificacion.Descripcion = dto.Descripcion;
-        planificacion.FechaDesde  = ParseFecha(dto.FechaDesde);
-        planificacion.FechaHasta  = ParseFecha(dto.FechaHasta);
-        planificacion.Estado      = ParseEstadoBloque(dto.Estado);
+        planificacion.Titulo              = dto.Titulo;
+        planificacion.Descripcion         = dto.Descripcion;
+        planificacion.FechaDesde          = ParseFecha(dto.FechaDesde);
+        planificacion.FechaHasta          = ParseFecha(dto.FechaHasta);
+        planificacion.Estado              = ParseEstadoBloque(dto.Estado);
+        planificacion.VisibleEnCalendario = dto.VisibleEnCalendario && ParseFecha(dto.FechaDesde) != null;
 
         if (urlArchivo != null)
             planificacion.Url = urlArchivo;

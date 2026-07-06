@@ -22,4 +22,6 @@ public class CrearClaseDto
     public Guid? IdBloqueTema { get; set; }
 
     public IFormFile? Archivo { get; set; }
+
+    public bool VisibleEnCalendario { get; set; } = false;
 }

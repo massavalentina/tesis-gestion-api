@@ -51,6 +51,7 @@ public class ArchivoIETrazadoDto
     public bool PuedeEliminar { get; set; }
     public string? MotivoBloqueo { get; set; }
     public List<Guid> IdBloquesTema { get; set; } = new();
+    public bool VisibleEnCalendario { get; set; }
 }
 
 public class GuardarArchivoIEFormDto
@@ -71,6 +72,8 @@ public class GuardarArchivoIEFormDto
     public List<Guid> IdBloquesTema { get; set; } = new();
 
     public IFormFile? Archivo { get; set; }
+
+    public bool VisibleEnCalendario { get; set; } = false;
 }
 
 public class CambiarEstadoIEFormDto

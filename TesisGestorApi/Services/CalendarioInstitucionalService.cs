@@ -344,6 +344,214 @@ namespace TesisGestorApi.Services
                 .ToListAsync(ct);
         }
 
+        // ─── Eventos docentes ────────────────────────────────────────────────────────
+
+        public async Task<List<EventoDocenteDto>> ObtenerEventosDocenteAsync(
+            int anioLectivo, Guid idUsuario, List<string> roles, CancellationToken ct)
+        {
+            var resultado = new List<EventoDocenteDto>();
+
+            // ─── Docente: clases planificadas + IEs propias + IEs del resto del curso ──
+            if (roles.Contains("Docente"))
+            {
+                var docente = await _context.Docentes
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+
+                if (docente != null)
+                {
+                    var idDocente = docente.IdDocente;
+
+                    // Clases planificadas visibles (solo las del EC que actualmente pertenece al docente)
+                    var clases = await _context.Planificaciones
+                        .AsNoTracking()
+                        .Where(p => p.IdDocente == idDocente
+                            && p.VisibleEnCalendario
+                            && (p.Estado == EstadoBloque.Dado
+                                ? (p.FechaHasta != null || p.FechaDesde != null)
+                                : p.FechaDesde != null))
+                        .SelectMany(p => p.ClasesBloquePrograma, (p, cb) => new { p, cb })
+                        .Join(_context.BloquesProgramas, x => x.cb.IdBloquePrograma, bp => bp.IdBloquePrograma, (x, bp) => new { x.p, bp })
+                        .Join(_context.Programas, x => x.bp.IdPrograma, prog => prog.IdPrograma, (x, prog) => new { x.p, prog })
+                        .Where(x => x.prog.EspacioCurricular.Curso.AñoLectivo.Year == anioLectivo
+                            && x.prog.EspacioCurricular.IdDocente == idDocente)
+                        .Select(x => new EventoDocenteDto
+                        {
+                            Id = x.p.IdPlanificacion.ToString(),
+                            Tipo = "ClasePlanificada",
+                            TipoEventoNumero = 7,
+                            Titulo = x.p.Titulo,
+                            Descripcion = x.p.Descripcion,
+                            Fecha = (x.p.Estado == EstadoBloque.Dado
+                                ? (x.p.FechaHasta ?? x.p.FechaDesde)
+                                : x.p.FechaDesde)!.Value.ToString("yyyy-MM-dd"),
+                            FechaFin = null,
+                            Estado = x.p.Estado == EstadoBloque.Dado ? "Dado" : "PendienteDar",
+                            NombreMateria = x.prog.EspacioCurricular.Curricula.Nombre,
+                            NombreCurso = x.prog.EspacioCurricular.Curso.Anio.Numero.ToString() + "°" + x.prog.EspacioCurricular.Curso.Division.Nombre,
+                            IdCurso = x.prog.EspacioCurricular.IdCurso,
+                            IdEC = x.prog.IdEC,
+                            EsPropioDocente = true,
+                        })
+                        .Distinct()
+                        .ToListAsync(ct);
+
+                    // IEs propias del docente
+                    var ies = await _context.ArchivosIE
+                        .AsNoTracking()
+                        .Where(a => a.VisibleEnCalendario
+                            && a.Habilitada
+                            && a.InstanciaEvaluativa.EspacioCurricular.IdDocente == idDocente
+                            && a.InstanciaEvaluativa.EspacioCurricular.Curso.AñoLectivo.Year == anioLectivo)
+                        .Select(a => new EventoDocenteDto
+                        {
+                            Id = a.IdArchivoIE.ToString(),
+                            Tipo = "InstanciaEvaluativa",
+                            TipoEventoNumero = 8,
+                            Titulo = a.Titulo,
+                            Descripcion = null,
+                            Fecha = a.FechaEjecucion.ToString("yyyy-MM-dd"),
+                            FechaFin = null,
+                            Estado = a.InstanciaEvaluativa.Estado == EstadoInstanciaEvaluativa.Evaluada ? "Evaluada" : "Pendiente",
+                            NombreMateria = a.InstanciaEvaluativa.EspacioCurricular.Curricula.Nombre,
+                            NombreCurso = a.InstanciaEvaluativa.EspacioCurricular.Curso.Anio.Numero.ToString() + "°" + a.InstanciaEvaluativa.EspacioCurricular.Curso.Division.Nombre,
+                            IdCurso = a.InstanciaEvaluativa.EspacioCurricular.IdCurso,
+                            IdEC = a.InstanciaEvaluativa.IdEC,
+                            TipoIE = a.TipoIE.ToString(),
+                            TipoCalificacion = a.TipoCalificacion == TipoCalificacion.NotaOriginal ? "N"
+                                : a.TipoCalificacion == TipoCalificacion.Recuperatorio1 ? "R1" : "R2",
+                            NroInstancia = a.InstanciaEvaluativa.Nro,
+                            EsPropioDocente = true,
+                        })
+                        .ToListAsync(ct);
+
+                    resultado.AddRange(clases);
+                    resultado.AddRange(ies);
+
+                    // IEs de otros docentes en los mismos cursos (para toggle "Mostrar IE cargadas")
+                    var cursosDelDocente = await _context.EspaciosCurriculares
+                        .AsNoTracking()
+                        .Where(ec => ec.IdDocente == idDocente
+                            && ec.Curso.AñoLectivo.Year == anioLectivo
+                            && ec.Curso.Estado)
+                        .Select(ec => ec.IdCurso)
+                        .Distinct()
+                        .ToListAsync(ct);
+
+                    if (cursosDelDocente.Count > 0)
+                    {
+                        var idsExistentes = new HashSet<string>(resultado.Select(e => e.Id));
+                        var iesCurso = await _context.ArchivosIE
+                            .AsNoTracking()
+                            .Where(a => a.VisibleEnCalendario
+                                && a.Habilitada
+                                && a.InstanciaEvaluativa.EspacioCurricular.Curso.AñoLectivo.Year == anioLectivo
+                                && cursosDelDocente.Contains(a.InstanciaEvaluativa.EspacioCurricular.IdCurso)
+                                && a.InstanciaEvaluativa.EspacioCurricular.IdDocente != idDocente)
+                            .Select(a => new EventoDocenteDto
+                            {
+                                Id = a.IdArchivoIE.ToString(),
+                                Tipo = "InstanciaEvaluativa",
+                                TipoEventoNumero = 8,
+                                Titulo = a.Titulo,
+                                Descripcion = null,
+                                Fecha = a.FechaEjecucion.ToString("yyyy-MM-dd"),
+                                FechaFin = null,
+                                Estado = a.InstanciaEvaluativa.Estado == EstadoInstanciaEvaluativa.Evaluada ? "Evaluada" : "Pendiente",
+                                NombreMateria = a.InstanciaEvaluativa.EspacioCurricular.Curricula.Nombre,
+                                NombreCurso = a.InstanciaEvaluativa.EspacioCurricular.Curso.Anio.Numero.ToString() + "°" + a.InstanciaEvaluativa.EspacioCurricular.Curso.Division.Nombre,
+                                IdCurso = a.InstanciaEvaluativa.EspacioCurricular.IdCurso,
+                                IdEC = a.InstanciaEvaluativa.IdEC,
+                                TipoIE = a.TipoIE.ToString(),
+                                TipoCalificacion = a.TipoCalificacion == TipoCalificacion.NotaOriginal ? "N"
+                                    : a.TipoCalificacion == TipoCalificacion.Recuperatorio1 ? "R1" : "R2",
+                                NroInstancia = a.InstanciaEvaluativa.Nro,
+                                EsPropioDocente = false,
+                            })
+                            .ToListAsync(ct);
+
+                        resultado.AddRange(iesCurso.Where(e => !idsExistentes.Contains(e.Id)));
+                    }
+                }
+            }
+
+            // ─── Preceptor: IEs de los cursos a cargo ────────────────────────────────
+            if (roles.Contains("Preceptor"))
+            {
+                var preceptor = await _context.Preceptores
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.IdUsuario == idUsuario, ct);
+
+                if (preceptor != null)
+                {
+                    var iesPreceptor = await _context.ArchivosIE
+                        .AsNoTracking()
+                        .Where(a => a.VisibleEnCalendario
+                            && a.Habilitada
+                            && a.InstanciaEvaluativa.EspacioCurricular.Curso.AñoLectivo.Year == anioLectivo
+                            && a.InstanciaEvaluativa.EspacioCurricular.Curso.IdPreceptor == preceptor.IdPreceptor)
+                        .Select(a => new EventoDocenteDto
+                        {
+                            Id = a.IdArchivoIE.ToString(),
+                            Tipo = "InstanciaEvaluativa",
+                            TipoEventoNumero = 8,
+                            Titulo = a.Titulo,
+                            Descripcion = null,
+                            Fecha = a.FechaEjecucion.ToString("yyyy-MM-dd"),
+                            FechaFin = null,
+                            Estado = a.InstanciaEvaluativa.Estado == EstadoInstanciaEvaluativa.Evaluada ? "Evaluada" : "Pendiente",
+                            NombreMateria = a.InstanciaEvaluativa.EspacioCurricular.Curricula.Nombre,
+                            NombreCurso = a.InstanciaEvaluativa.EspacioCurricular.Curso.Anio.Numero.ToString() + "°" + a.InstanciaEvaluativa.EspacioCurricular.Curso.Division.Nombre,
+                            IdCurso = a.InstanciaEvaluativa.EspacioCurricular.IdCurso,
+                            IdEC = a.InstanciaEvaluativa.IdEC,
+                            TipoIE = a.TipoIE.ToString(),
+                            TipoCalificacion = a.TipoCalificacion == TipoCalificacion.NotaOriginal ? "N"
+                                : a.TipoCalificacion == TipoCalificacion.Recuperatorio1 ? "R1" : "R2",
+                            NroInstancia = a.InstanciaEvaluativa.Nro,
+                            EsPropioDocente = false,
+                        })
+                        .ToListAsync(ct);
+
+                    // Agregar evitando duplicados; si ya existe como propio del docente, conservar ese
+                    var idsExistentes = new HashSet<string>(resultado.Select(e => e.Id));
+                    resultado.AddRange(iesPreceptor.Where(e => !idsExistentes.Contains(e.Id)));
+                }
+            }
+
+            return resultado;
+        }
+
+        // ─── Espacios curriculares docente ───────────────────────────────────────────
+
+        public async Task<List<object>> ObtenerEspaciosCurricularesDocenteAsync(
+            int anioLectivo, Guid? idUsuario, CancellationToken ct)
+        {
+            if (!idUsuario.HasValue)
+                return new List<object>();
+
+            var docente = await _context.Docentes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario.Value, ct);
+
+            if (docente is null)
+                return new List<object>();
+
+            return await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .Where(ec => ec.IdDocente == docente.IdDocente
+                    && ec.Curso.AñoLectivo.Year == anioLectivo
+                    && ec.Curso.Estado)
+                .OrderBy(ec => ec.Curricula.Nombre)
+                .ThenBy(ec => ec.Curso.Anio.Numero)
+                .ThenBy(ec => ec.Curso.Division.Nombre)
+                .Select(ec => (object)new
+                {
+                    idEC = ec.IdEC,
+                    label = ec.Curricula.Nombre + " (" + ec.Curso.Anio.Numero.ToString() + "°" + ec.Curso.Division.Nombre + ")",
+                })
+                .ToListAsync(ct);
+        }
+
         // ─── Helpers privados ────────────────────────────────────────────────────────
 
         private static void ValidarFechas(DateOnly inicio, DateOnly fin)

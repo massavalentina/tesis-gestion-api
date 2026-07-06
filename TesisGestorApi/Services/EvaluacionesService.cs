@@ -101,6 +101,8 @@ public class EvaluacionesService : IEvaluacionesService
                 .ThenInclude(a => a.Calificaciones)
             .Include(i => i.Archivos)
                 .ThenInclude(a => a.ArchivoAnterior)
+            .Include(i => i.Archivos)
+                .ThenInclude(a => a.BloquesPrograma)
             .FirstOrDefaultAsync(i => i.IdEC == idEC && i.Nro == nro, ct);
 
         var activos = instancia?.Archivos.Where(a => a.Habilitada).ToList() ?? new List<ArchivoIE>();
@@ -111,6 +113,28 @@ public class EvaluacionesService : IEvaluacionesService
         var archivoActivo = activos.FirstOrDefault(a => a.TipoCalificacion == tipo);
         var necesitaArchivo = !string.IsNullOrWhiteSpace(urlArchivo);
         var bloqueIds = await ResolverBloquesAsync(trazabilidad, dto.IdBloquesTema);
+
+        // Validación: máx 2 IE por día por curso (independiente de visibilidad en calendario)
+        {
+            var idCurso = espacio.IdCurso;
+            var fechaDia = fechaEjecucion.Date;
+            var idArchivoActual = archivoActivo?.IdArchivoIE;
+
+            var existentes = await _db.ArchivosIE
+                .Where(a => a.Habilitada
+                    && a.FechaEjecucion.Date == fechaDia
+                    && a.InstanciaEvaluativa.EspacioCurricular.IdCurso == idCurso
+                    && (idArchivoActual == null || a.IdArchivoIE != idArchivoActual))
+                .Select(a => new { a.Titulo, EC = a.InstanciaEvaluativa.EspacioCurricular.Curricula.Nombre })
+                .ToListAsync(ct);
+
+            if (existentes.Count >= 2)
+            {
+                var detalle = string.Join("\n", existentes.Select(e => $"• {e.Titulo} — {e.EC}"));
+                throw new InvalidOperationException(
+                    $"No se pueden programar más de 2 instancias evaluativas por día en el mismo curso.\nYa cargadas:\n{detalle}");
+            }
+        }
 
         if (archivoActivo is null)
         {
@@ -166,6 +190,7 @@ public class EvaluacionesService : IEvaluacionesService
         archivoActivo.TipoIE = tipoIE;
         archivoActivo.FechaEjecucion = fechaEjecucion;
         archivoActivo.FechaModificacion = now;
+        archivoActivo.VisibleEnCalendario = dto.VisibleEnCalendario;
 
         if (necesitaArchivo)
         {
@@ -388,7 +413,8 @@ public class EvaluacionesService : IEvaluacionesService
                         a.FechaCarga,
                         a.Habilitada,
                         a.Calificaciones.Any(c => c.Habilitada && c.Puntaje.HasValue),
-                        a.IdArchivoIEAnterior))
+                        a.IdArchivoIEAnterior,
+                        a.VisibleEnCalendario))
                     .ToList()))
             .ToListAsync(ct);
     }
@@ -525,7 +551,8 @@ public class EvaluacionesService : IEvaluacionesService
                         a.FechaCarga,
                         a.Habilitada,
                         a.Calificaciones.Any(c => c.Habilitada && c.Puntaje.HasValue),
-                        a.IdArchivoIEAnterior))
+                        a.IdArchivoIEAnterior,
+                        a.VisibleEnCalendario))
                     .ToList()))
             .FirstOrDefaultAsync(ct);
 
@@ -579,6 +606,7 @@ public class EvaluacionesService : IEvaluacionesService
             PuedeEliminar = !archivo.TieneCalificaciones && !tieneDependencias,
             MotivoBloqueo = motivo,
             IdBloquesTema = bloqueIdsPorArchivo.TryGetValue(archivo.IdArchivoIE, out var bloques) ? bloques : new List<Guid>(),
+            VisibleEnCalendario = archivo.VisibleEnCalendario,
         };
     }
 
@@ -626,6 +654,7 @@ public class EvaluacionesService : IEvaluacionesService
             IdUsuarioCarga = idUsuario,
             Habilitada = true,
             IdArchivoIEAnterior = idAnterior,
+            VisibleEnCalendario = dto.VisibleEnCalendario,
         };
     }
 
@@ -781,5 +810,6 @@ public class EvaluacionesService : IEvaluacionesService
         DateTime FechaCarga,
         bool Habilitada,
         bool TieneCalificaciones,
-        Guid? IdArchivoIEAnterior);
+        Guid? IdArchivoIEAnterior,
+        bool VisibleEnCalendario);
 }

@@ -52,4 +52,5 @@ public class ClasePlanificacionDto
     public string Estado { get; set; } = null!;
     public string? Url { get; set; }
     public DateTime FechaCreacion { get; set; }
+    public bool VisibleEnCalendario { get; set; }
 }

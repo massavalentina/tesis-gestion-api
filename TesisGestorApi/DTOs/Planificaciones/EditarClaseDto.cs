@@ -23,4 +23,6 @@ public class EditarClaseDto
 
     // Si es false y no viene nuevo archivo, se elimina la URL existente
     public bool MantieneArchivo { get; set; } = true;
+
+    public bool VisibleEnCalendario { get; set; } = false;
 }

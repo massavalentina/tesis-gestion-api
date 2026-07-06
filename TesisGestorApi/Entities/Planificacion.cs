@@ -28,5 +28,7 @@ public class Planificacion
 
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
 
+    public bool VisibleEnCalendario { get; set; } = false;
+
     public ICollection<ClaseBloquePrograma> ClasesBloquePrograma { get; set; } = new List<ClaseBloquePrograma>();
 }

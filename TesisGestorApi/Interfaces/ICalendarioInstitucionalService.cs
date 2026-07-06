@@ -12,5 +12,7 @@ namespace TesisGestorApi.Interfaces
         Task EliminarEventoAsync(Guid idEvento, CancellationToken ct);
         Task<List<AuditoriaEventoDto>> ObtenerAuditoriaEventoAsync(Guid idEvento, CancellationToken ct);
         Task<List<AuditoriaEventoDto>> ObtenerAuditoriaGeneralAsync(int anioLectivo, CancellationToken ct);
+        Task<List<EventoDocenteDto>> ObtenerEventosDocenteAsync(int anioLectivo, Guid idUsuario, List<string> roles, CancellationToken ct);
+        Task<List<object>> ObtenerEspaciosCurricularesDocenteAsync(int anioLectivo, Guid? idUsuario, CancellationToken ct);
     }
 }
