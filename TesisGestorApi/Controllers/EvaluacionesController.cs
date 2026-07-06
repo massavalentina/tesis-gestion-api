@@ -31,10 +31,11 @@ public class EvaluacionesController : ControllerBase
     {
         try
         {
+            var esLectura = EsLecturaInstitucional();
             var idDocente = GetIdDocente();
-            if (idDocente is null) return Forbid();
+            if (idDocente is null && !esLectura) return Forbid();
 
-            var gestion = await _service.GetGestionAsync(idEC, idDocente.Value, ct);
+            var gestion = await _service.GetGestionAsync(idEC, idDocente ?? Guid.Empty, esLectura, ct);
             MapUrlsPublicas(gestion);
             return Ok(gestion);
         }
@@ -198,6 +199,11 @@ public class EvaluacionesController : ControllerBase
 
         return null;
     }
+
+    // Equipo Directivo/Secretario pueden consultar en modo lectura los reportes
+    // de cualquier espacio curricular, sin ser su docente titular.
+    private bool EsLecturaInstitucional() =>
+        User.FindAll("roles").Any(c => c.Value == "Equipo Directivo" || c.Value == "Secretario");
 
     private void MapUrlsPublicas(GestionEvaluacionesDto dto)
     {

@@ -24,12 +24,13 @@ namespace TesisGestorApi.Controllers
         [HttpGet("ec/{idEC:guid}/instancias")]
         public async Task<ActionResult<List<InstanciaEvaluativaResumenDto>>> GetInstancias(Guid idEC, CancellationToken ct)
         {
+            var esLectura = EsLecturaInstitucional();
             var idDocente = GetIdDocente();
-            if (idDocente == null) return Forbid();
+            if (idDocente == null && !esLectura) return Forbid();
 
             try
             {
-                var items = await _service.GetInstanciasPorECAsync(idEC, idDocente.Value, ct);
+                var items = await _service.GetInstanciasPorECAsync(idEC, idDocente ?? Guid.Empty, esLectura, ct);
                 return Ok(items);
             }
             catch (KeyNotFoundException ex)
@@ -54,12 +55,13 @@ namespace TesisGestorApi.Controllers
         [HttpGet("ec/{idEC:guid}/estudiantes")]
         public async Task<ActionResult<List<GestionManualEstudianteDto>>> GetEstudiantes(Guid idEC, CancellationToken ct)
         {
+            var esLectura = EsLecturaInstitucional();
             var idDocente = GetIdDocente();
-            if (idDocente == null) return Forbid();
+            if (idDocente == null && !esLectura) return Forbid();
 
             try
             {
-                var response = await _service.GetEstudiantesPorECAsync(idEC, idDocente.Value, ct);
+                var response = await _service.GetEstudiantesPorECAsync(idEC, idDocente ?? Guid.Empty, esLectura, ct);
                 return Ok(response);
             }
             catch (KeyNotFoundException ex)
@@ -84,12 +86,13 @@ namespace TesisGestorApi.Controllers
         [HttpGet("ec/{idEC:guid}/calificaciones-vigentes")]
         public async Task<ActionResult<List<CalificacionVigenteDto>>> GetCalificacionesVigentes(Guid idEC, CancellationToken ct)
         {
+            var esLectura = EsLecturaInstitucional();
             var idDocente = GetIdDocente();
-            if (idDocente == null) return Forbid();
+            if (idDocente == null && !esLectura) return Forbid();
 
             try
             {
-                var response = await _service.GetCalificacionesVigentesPorECAsync(idEC, idDocente.Value, ct);
+                var response = await _service.GetCalificacionesVigentesPorECAsync(idEC, idDocente ?? Guid.Empty, esLectura, ct);
                 return Ok(response);
             }
             catch (KeyNotFoundException ex)
@@ -192,5 +195,10 @@ namespace TesisGestorApi.Controllers
             if (string.IsNullOrEmpty(idDocenteStr)) return null;
             return Guid.Parse(idDocenteStr);
         }
+
+        // Equipo Directivo/Secretario pueden consultar en modo lectura los reportes
+        // de cualquier espacio curricular, sin ser su docente titular.
+        private bool EsLecturaInstitucional() =>
+            User.FindAll("roles").Any(c => c.Value == "Equipo Directivo" || c.Value == "Secretario");
     }
 }

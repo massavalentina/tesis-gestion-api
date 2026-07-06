@@ -619,8 +619,9 @@ namespace TesisGestorApi.Controllers
                 .Select(ec => new
                 {
                     ec.IdEC,
-                    NombreEC = ec.Curricula.Nombre + " " + ec.Curso.Anio.Numero.ToString() + ec.Curso.Division.Nombre,
+                    NombreEC = ec.Curricula.Nombre + " - " + ec.Curso.Anio.Numero.ToString() + ec.Curso.Division.Nombre,
                     NombreCurso = ec.Curso.Anio.Numero.ToString() + ec.Curso.Division.Nombre,
+                    AnioNumero = ec.Curso.Anio.Numero,
                 })
                 .ToListAsync(ct);
 
@@ -630,6 +631,7 @@ namespace TesisGestorApi.Controllers
             var ecIdSet = ecIds.Select(e => e.IdEC).ToHashSet();
             var ecNombreMap = ecIds.ToDictionary(e => e.IdEC, e => e.NombreEC);
             var ecCursoMap = ecIds.ToDictionary(e => e.IdEC, e => e.NombreCurso);
+            var ecAnioMap = ecIds.ToDictionary(e => e.IdEC, e => e.AnioNumero);
 
             // ── 3. Instancias evaluativas del año ────────────────────────────────
             var instancias = await _db.InstanciasEvaluativas
@@ -659,8 +661,8 @@ namespace TesisGestorApi.Controllers
                 .Select(a => new { a.IdIE, a.TipoCalificacion })
                 .ToListAsync(ct);
 
-            // Exámenes Realizados = cantidad de archivos de tipo NotaOriginal (= exámenes tomados)
-            int examenesRealizados = archivosIe.Count(a => a.TipoCalificacion == TipoCalificacion.NotaOriginal);
+            // Exámenes Realizados = cantidad total de archivos IE habilitados (original + recuperatorios cuentan cada uno)
+            int examenesRealizados = archivosIe.Count;
 
             // Recuperatorios: por slot (IdIE), detectar qué tipos de archivo existen
             var tiposPorSlot = archivosIe
@@ -814,6 +816,32 @@ namespace TesisGestorApi.Controllers
                 .Take(5)
                 .ToList();
 
+            // ── 12. Tasa de Aprobación por Año lectivo (todos los años) ───────────
+            var tasaPorAnio = porExamen
+                .Where(e => e.IdEC != Guid.Empty)
+                .GroupBy(e => ecAnioMap.GetValueOrDefault(e.IdEC, 0))
+                .Where(g => g.Key > 0)
+                .Select(g => new AnioTasaAprobacionDto
+                {
+                    Anio = g.Key,
+                    TasaAprobacion = Math.Round((decimal)g.Count(e => e.PuntajeFinal >= 7) / g.Count() * 100, 1),
+                })
+                .OrderBy(a => a.Anio)
+                .ToList();
+
+            // ── 13. Tasa de Aprobación por Curso/División (todos los cursos) ──────
+            var tasaPorCurso = porExamen
+                .Where(e => e.IdEC != Guid.Empty)
+                .GroupBy(e => ecCursoMap.GetValueOrDefault(e.IdEC, ""))
+                .Where(g => !string.IsNullOrEmpty(g.Key))
+                .Select(g => new CursoTasaAprobacionDto
+                {
+                    Curso = g.Key,
+                    TasaAprobacion = Math.Round((decimal)g.Count(e => e.PuntajeFinal >= 7) / g.Count() * 100, 1),
+                })
+                .OrderBy(c => c.Curso)
+                .ToList();
+
             return Ok(new DashboardCalificacionesDto
             {
                 AvanceProgramas             = avanceProgramas,
@@ -833,6 +861,8 @@ namespace TesisGestorApi.Controllers
                     Desaprobado        = pctDesaprobado,
                     DesaprobadoPorTema = pctDesapTema,
                 },
+                TasaAprobacionPorAnio  = tasaPorAnio,
+                TasaAprobacionPorCurso = tasaPorCurso,
             });
         }
 

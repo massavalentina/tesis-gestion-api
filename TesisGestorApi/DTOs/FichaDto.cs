@@ -35,4 +35,19 @@ namespace TesisGestorApi.DTOs
         public string FechaNacimiento { get; set; } = null!;
         public bool EsPrincipal { get; set; }
     }
+
+    public class LibretaEspacioDto
+    {
+        public Guid IdEC { get; set; }
+        public string NombreMateria { get; set; } = null!;
+        public List<LibretaInstanciaDto> Instancias { get; set; } = new();
+    }
+
+    public class LibretaInstanciaDto
+    {
+        public int Nro { get; set; }
+        public int? N { get; set; }
+        public int? R1 { get; set; }
+        public int? R2 { get; set; }
+    }
 }

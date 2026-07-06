@@ -229,6 +229,50 @@ namespace TesisGestorApi.Services
             )).ToList();
         }
 
+        public async Task<MisEcItemDto?> GetEspacioCurricularPorIdAsync(Guid idEC, Guid idUsuario, bool esLecturaInstitucional, CancellationToken ct = default)
+        {
+            var ec = await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .Include(e => e.Curricula)
+                .Include(e => e.Curso)
+                    .ThenInclude(c => c.Anio)
+                .Include(e => e.Curso)
+                    .ThenInclude(c => c.Division)
+                .Include(e => e.Curso)
+                    .ThenInclude(c => c.DetallesCursado)
+                .Include(e => e.Horarios)
+                .FirstOrDefaultAsync(e => e.IdEC == idEC, ct);
+
+            if (ec == null) return null;
+
+            if (!esLecturaInstitucional)
+            {
+                var docente = await _context.Docentes
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+
+                if (docente == null || ec.IdDocente != docente.IdDocente) return null;
+            }
+
+            return new MisEcItemDto(
+                ec.IdEC,
+                ec.IdCurso,
+                ec.Curricula.Nombre,
+                ec.Curso.Codigo,
+                ec.Curso.Anio.Numero,
+                ec.Curso.Division.Nombre.ToString(),
+                ec.Curso.AñoLectivo.Year,
+                ec.Curso.DetallesCursado.Count(d => d.Estado),
+                ec.Horarios
+                    .OrderBy(h => h.DíaSemana)
+                    .Select(h => new HorarioDto(
+                        h.DíaSemana.ToString(),
+                        h.HorarioEntrada.ToString(@"hh\:mm"),
+                        h.HorarioSalida.ToString(@"hh\:mm")
+                    )).ToList()
+            );
+        }
+
         public async Task<List<ECsinDocenteDto>> GetEspaciosCurricularesSinDocenteAsync(CancellationToken ct = default)
         {
             var ecs = await _context.EspaciosCurriculares

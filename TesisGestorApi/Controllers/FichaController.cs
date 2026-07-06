@@ -113,6 +113,99 @@ namespace TesisGestorApi.Controllers
             });
         }
 
+        // GET /api/ficha/estudiante/{id}/libreta
+        [HttpGet("estudiante/{id:guid}/libreta")]
+        public async Task<IActionResult> GetLibretaEstudiante(
+            Guid id,
+            [FromQuery] int anioLectivo = 2026,
+            CancellationToken ct = default)
+        {
+            var esDocente = User.FindAll("roles").Any(c => c.Value == "Docente");
+            if (esDocente)
+            {
+                var idUsuarioStr = User.FindFirstValue("idUsuario");
+                if (idUsuarioStr == null) return Forbid();
+                var idUsuario = Guid.Parse(idUsuarioStr);
+                var docente = await _db.Docentes
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario, ct);
+                if (docente == null) return Forbid();
+                var tieneAcceso = await _db.EspaciosCurriculares
+                    .AnyAsync(ec => ec.IdDocente == docente.IdDocente &&
+                                    ec.Curso.DetallesCursado.Any(dc => dc.IdEstudiante == id && dc.Estado), ct);
+                if (!tieneAcceso) return Forbid();
+            }
+
+            var existeEstudiante = await _db.Estudiantes.AsNoTracking().AnyAsync(e => e.IdEstudiante == id, ct);
+            if (!existeEstudiante)
+                return NotFound($"No se encontró el estudiante con ID {id}.");
+
+            var idCurso = await _db.DetallesCursado
+                .AsNoTracking()
+                .Where(dc => dc.IdEstudiante == id && dc.Estado && dc.Curso.AñoLectivo.Year == anioLectivo)
+                .Select(dc => (Guid?)dc.IdCurso)
+                .FirstOrDefaultAsync(ct);
+
+            if (idCurso == null)
+                return Ok(new List<LibretaEspacioDto>());
+
+            var espacios = await _db.EspaciosCurriculares
+                .AsNoTracking()
+                .Where(ec => ec.IdCurso == idCurso.Value)
+                .Select(ec => new { ec.IdEC, NombreMateria = ec.Curricula.Nombre })
+                .OrderBy(ec => ec.NombreMateria)
+                .ToListAsync(ct);
+
+            if (espacios.Count == 0)
+                return Ok(new List<LibretaEspacioDto>());
+
+            var ecIds = espacios.Select(e => e.IdEC).ToHashSet();
+
+            var instancias = await _db.InstanciasEvaluativas
+                .AsNoTracking()
+                .Where(i => ecIds.Contains(i.IdEC))
+                .Select(i => new { i.IdIE, i.IdEC, i.Nro })
+                .ToListAsync(ct);
+
+            var ieIds = instancias.Select(i => i.IdIE).ToHashSet();
+
+            var calificaciones = ieIds.Count == 0
+                ? new List<Calificacion>()
+                : await _db.Calificaciones
+                    .AsNoTracking()
+                    .Where(c => c.Habilitada && c.IdEstudiante == id && ieIds.Contains(c.IdIE))
+                    .ToListAsync(ct);
+
+            var califPorIE = calificaciones
+                .GroupBy(c => c.IdIE)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            var instanciasPorEC = instancias
+                .GroupBy(i => i.IdEC)
+                .ToDictionary(g => g.Key, g => g.OrderBy(i => i.Nro).ToList());
+
+            var resultado = espacios.Select(esp => new LibretaEspacioDto
+            {
+                IdEC = esp.IdEC,
+                NombreMateria = esp.NombreMateria,
+                Instancias = instanciasPorEC.TryGetValue(esp.IdEC, out var insts)
+                    ? insts.Select(inst =>
+                    {
+                        var califs = califPorIE.GetValueOrDefault(inst.IdIE) ?? new List<Calificacion>();
+                        return new LibretaInstanciaDto
+                        {
+                            Nro = inst.Nro,
+                            N = califs.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.NotaOriginal)?.Puntaje,
+                            R1 = califs.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.Recuperatorio1)?.Puntaje,
+                            R2 = califs.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.Recuperatorio2)?.Puntaje,
+                        };
+                    }).ToList()
+                    : new List<LibretaInstanciaDto>(),
+            }).ToList();
+
+            return Ok(resultado);
+        }
+
         // PUT /api/ficha/estudiante/{id}
         [HttpPut("estudiante/{id:guid}")]
         public async Task<IActionResult> UpdateEstudiante(

@@ -17,10 +17,18 @@ public class PlanificacionService : IPlanificacionService
 
     // ─── GET árbol ────────────────────────────────────────────────────────────
 
-    public async Task<ArbolPlanificacionDto> GetArbolAsync(Guid idEC, Guid idDocente, CancellationToken ct)
+    public async Task<ArbolPlanificacionDto> GetArbolAsync(Guid idEC, Guid idDocente, bool esLecturaInstitucional, CancellationToken ct)
     {
         // Hardcodeado: un docente solo puede ver/planificar los EC donde tiene clases asignadas.
-        await ValidarDocenteDelECAsync(idEC, idDocente, ct);
+        // Equipo Directivo/Secretario pueden consultar en modo lectura sin ser el docente titular.
+        if (!esLecturaInstitucional)
+        {
+            await ValidarDocenteDelECAsync(idEC, idDocente, ct);
+        }
+        else if (!await _db.EspaciosCurriculares.AsNoTracking().AnyAsync(e => e.IdEC == idEC, ct))
+        {
+            throw new KeyNotFoundException("Espacio curricular no encontrado.");
+        }
 
         var programa = await _db.Programas
             .Include(p => p.EspacioCurricular)
@@ -77,7 +85,7 @@ public class PlanificacionService : IPlanificacionService
                 Descripcion      = bu.Unidad.Descripcion,
                 Nro              = bu.Unidad.Nro,
                 Estado           = estadoUnidad.ToString(),
-                Temas            = temasBloques.Select(bt => MapTema(bt, idDocente)).ToList(),
+                Temas            = temasBloques.Select(MapTema).ToList(),
             };
         }).ToList();
 
@@ -100,11 +108,13 @@ public class PlanificacionService : IPlanificacionService
         };
     }
 
-    private static TemaArbolDto MapTema(BloquePrograma bt, Guid idDocente)
+    // Muestra todas las clases dictadas del tema, sin filtrar por quién las cargó:
+    // el acceso al árbol ya está autorizado a nivel de EC (ValidarDocenteDelECAsync / lectura institucional),
+    // así que un docente que releva a otro (ej. suplente) debe ver el historial completo.
+    private static TemaArbolDto MapTema(BloquePrograma bt)
     {
         var clases = bt.ClasesBloquePrograma
             .Select(cb => cb.Planificacion)
-            .Where(p => p.IdDocente == idDocente)
             .OrderBy(p => p.FechaCreacion)
             .Select(MapClase)
             .ToList();
@@ -287,8 +297,7 @@ public class PlanificacionService : IPlanificacionService
             .FirstOrDefaultAsync(p => p.IdPlanificacion == idClase, ct)
             ?? throw new KeyNotFoundException("Clase no encontrada.");
 
-        if (planificacion.IdDocente != idDocente)
-            throw new UnauthorizedAccessException("No tenés permiso para editar esta clase.");
+        await ValidarPermisoClaseAsync(planificacion, idDocente, ct);
 
         var bloquesAnteriores = planificacion.ClasesBloquePrograma
             .Select(cb => cb.IdBloquePrograma).ToList();
@@ -333,11 +342,12 @@ public class PlanificacionService : IPlanificacionService
     public async Task CambiarEstadoClaseAsync(
         Guid idClase, Guid idDocente, string nuevoEstado, CancellationToken ct)
     {
-        var planificacion = await _db.Planificaciones.FindAsync(new object[] { idClase }, ct)
+        var planificacion = await _db.Planificaciones
+            .Include(p => p.ClasesBloquePrograma)
+            .FirstOrDefaultAsync(p => p.IdPlanificacion == idClase, ct)
             ?? throw new KeyNotFoundException("Clase no encontrada.");
 
-        if (planificacion.IdDocente != idDocente)
-            throw new UnauthorizedAccessException("No tenés permiso para modificar esta clase.");
+        await ValidarPermisoClaseAsync(planificacion, idDocente, ct);
 
         planificacion.Estado = ParseEstadoBloque(nuevoEstado);
         await _db.SaveChangesAsync(ct);
@@ -352,8 +362,7 @@ public class PlanificacionService : IPlanificacionService
             .FirstOrDefaultAsync(p => p.IdPlanificacion == idClase, ct)
             ?? throw new KeyNotFoundException("Clase no encontrada.");
 
-        if (planificacion.IdDocente != idDocente)
-            throw new UnauthorizedAccessException("No tenés permiso para eliminar esta clase.");
+        await ValidarPermisoClaseAsync(planificacion, idDocente, ct);
 
         _db.Planificaciones.Remove(planificacion); // cascade elimina ClaseBloquePrograma
         await _db.SaveChangesAsync(ct);
@@ -371,8 +380,7 @@ public class PlanificacionService : IPlanificacionService
         if (bloque.Tipo != TipoBloquePrograma.Tema)
             throw new InvalidOperationException("Solo se puede marcar como dado un bloque de tipo Tema.");
 
-        if (bloque.Programa.IdDocente != idDocente)
-            throw new UnauthorizedAccessException("No tenés permiso para modificar este bloque.");
+        await ValidarDocenteDelECAsync(bloque.Programa.IdEC, idDocente, ct);
 
         bloque.Estado = nuevoEstado == "Dado" ? EstadoBloque.Dado : EstadoBloque.PendienteDar;
         await _db.SaveChangesAsync(ct);
@@ -454,6 +462,30 @@ public class PlanificacionService : IPlanificacionService
 
         if (ec.IdDocente != idDocente)
             throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
+    }
+
+    // Autoriza según el docente actualmente asignado al EC de la clase (vía su bloque/tema).
+    // Si la clase no está vinculada a ningún bloque (caso borde: clase "suelta"), cae al chequeo
+    // por creador (Planificacion.IdDocente), único dato disponible en ese caso.
+    private async Task ValidarPermisoClaseAsync(Planificacion planificacion, Guid idDocente, CancellationToken ct)
+    {
+        var idBloque = planificacion.ClasesBloquePrograma.Select(cb => cb.IdBloquePrograma).FirstOrDefault();
+        if (idBloque != Guid.Empty)
+        {
+            var idEC = await _db.BloquesProgramas
+                .Where(b => b.IdBloquePrograma == idBloque)
+                .Select(b => b.Programa.IdEC)
+                .FirstOrDefaultAsync(ct);
+
+            if (idEC != Guid.Empty)
+            {
+                await ValidarDocenteDelECAsync(idEC, idDocente, ct);
+                return;
+            }
+        }
+
+        if (planificacion.IdDocente != idDocente)
+            throw new UnauthorizedAccessException("No tenés permiso para modificar esta clase.");
     }
 
     private static void ValidarOrigen(Programa programa)

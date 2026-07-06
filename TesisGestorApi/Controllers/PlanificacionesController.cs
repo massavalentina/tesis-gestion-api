@@ -31,10 +31,11 @@ public class PlanificacionesController : ControllerBase
     {
         try
         {
+            var esLectura = EsLecturaInstitucional();
             var idDocente = GetIdDocente();
-            if (idDocente is null) return Forbid();
+            if (idDocente is null && !esLectura) return Forbid();
 
-            var arbol = await _service.GetArbolAsync(idEC, idDocente.Value, ct);
+            var arbol = await _service.GetArbolAsync(idEC, idDocente ?? Guid.Empty, esLectura, ct);
 
             // Sin programa o bloqueado: devolver directo sin procesar URLs
             if (arbol.SinPrograma || arbol.Bloqueado)
@@ -257,4 +258,9 @@ public class PlanificacionesController : ControllerBase
         if (string.IsNullOrEmpty(idDocenteStr)) return null;
         return Guid.Parse(idDocenteStr);
     }
+
+    // Equipo Directivo/Secretario pueden consultar en modo lectura los reportes
+    // de cualquier espacio curricular, sin ser su docente titular.
+    private bool EsLecturaInstitucional() =>
+        User.FindAll("roles").Any(c => c.Value == "Equipo Directivo" || c.Value == "Secretario");
 }

@@ -16,6 +16,8 @@ namespace TesisGestorApi.DTOs
         public List<EcPromedioDto> Top5EcMejorPromedio { get; set; } = new();
         public List<CursoTasaDesaprobacionDto> Top5CursosMayorTasa { get; set; } = new();
         public DistribucionEstadosDto DistribucionEstados { get; set; } = new();
+        public List<AnioTasaAprobacionDto> TasaAprobacionPorAnio { get; set; } = new();
+        public List<CursoTasaAprobacionDto> TasaAprobacionPorCurso { get; set; } = new();
     }
 
     public class EcDesaprobacionDto
@@ -48,5 +50,17 @@ namespace TesisGestorApi.DTOs
     {
         public Guid Id { get; set; }
         public string Label { get; set; } = null!;
+    }
+
+    public class AnioTasaAprobacionDto
+    {
+        public int Anio { get; set; }
+        public decimal TasaAprobacion { get; set; }
+    }
+
+    public class CursoTasaAprobacionDto
+    {
+        public string Curso { get; set; } = null!;
+        public decimal TasaAprobacion { get; set; }
     }
 }
