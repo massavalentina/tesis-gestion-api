@@ -40,6 +40,31 @@ namespace TesisGestorApi.Controllers
             }
         }
 
+        // GET /api/espacios-curriculares/{idEC}
+        // Devuelve los datos básicos de un EC puntual: el docente titular siempre puede
+        // consultarlo, y Equipo Directivo/Secretario pueden hacerlo en modo lectura institucional.
+        [HttpGet("/api/espacios-curriculares/{idEC:guid}")]
+        public async Task<IActionResult> GetEspacioCurricularPorId(Guid idEC, CancellationToken ct)
+        {
+            var idUsuario = _currentUser.UserId;
+            if (idUsuario == null) return Unauthorized();
+
+            var esLecturaInstitucional = User.FindAll("roles")
+                .Any(c => c.Value == "Equipo Directivo" || c.Value == "Secretario");
+
+            try
+            {
+                var resultado = await _service.GetEspacioCurricularPorIdAsync(idEC, idUsuario.Value, esLecturaInstitucional, ct);
+                if (resultado == null) return NotFound();
+                return Ok(resultado);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener el EC {IdEC}.", idEC);
+                return StatusCode(500, new { error = "Error interno." });
+            }
+        }
+
         // GET /api/docentes/{idDocente}/espacios-curriculares
         [HttpGet("{idDocente:guid}/espacios-curriculares")]
         public async Task<IActionResult> GetEspaciosCurriculares(Guid idDocente, CancellationToken ct)

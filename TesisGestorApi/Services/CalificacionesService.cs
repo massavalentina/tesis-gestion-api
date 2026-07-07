@@ -26,9 +26,9 @@ namespace TesisGestorApi.Services
             _storageService = storageService;
         }
 
-        public async Task<List<InstanciaEvaluativaResumenDto>> GetInstanciasPorECAsync(Guid idEC, Guid idDocente, CancellationToken ct)
+        public async Task<List<InstanciaEvaluativaResumenDto>> GetInstanciasPorECAsync(Guid idEC, Guid idDocente, bool esLecturaInstitucional, CancellationToken ct)
         {
-            await GetEspacioContextAsync(idEC, idDocente, ct);
+            await GetEspacioContextAsync(idEC, idDocente, ct, esLecturaInstitucional);
             var instancias = await LoadInstanciasAsync(idEC, ct);
             ValidateInstancias(instancias);
 
@@ -38,15 +38,15 @@ namespace TesisGestorApi.Services
                 .ToList();
         }
 
-        public async Task<List<GestionManualEstudianteDto>> GetEstudiantesPorECAsync(Guid idEC, Guid idDocente, CancellationToken ct)
+        public async Task<List<GestionManualEstudianteDto>> GetEstudiantesPorECAsync(Guid idEC, Guid idDocente, bool esLecturaInstitucional, CancellationToken ct)
         {
-            var espacio = await GetEspacioContextAsync(idEC, idDocente, ct);
+            var espacio = await GetEspacioContextAsync(idEC, idDocente, ct, esLecturaInstitucional);
             return await LoadEstudiantesAsync(espacio.IdCurso, ct);
         }
 
-        public async Task<List<CalificacionVigenteDto>> GetCalificacionesVigentesPorECAsync(Guid idEC, Guid idDocente, CancellationToken ct)
+        public async Task<List<CalificacionVigenteDto>> GetCalificacionesVigentesPorECAsync(Guid idEC, Guid idDocente, bool esLecturaInstitucional, CancellationToken ct)
         {
-            await GetEspacioContextAsync(idEC, idDocente, ct);
+            await GetEspacioContextAsync(idEC, idDocente, ct, esLecturaInstitucional);
             var instancias = await LoadInstanciasAsync(idEC, ct);
             ValidateInstancias(instancias);
 
@@ -162,7 +162,7 @@ namespace TesisGestorApi.Services
             };
         }
 
-        private async Task<EspacioContext> GetEspacioContextAsync(Guid idEC, Guid idDocente, CancellationToken ct)
+        private async Task<EspacioContext> GetEspacioContextAsync(Guid idEC, Guid idDocente, CancellationToken ct, bool esLecturaInstitucional = false)
         {
             var espacio = await _context.EspaciosCurriculares
                 .AsNoTracking()
@@ -179,7 +179,7 @@ namespace TesisGestorApi.Services
                 .FirstOrDefaultAsync(ct)
                 ?? throw new KeyNotFoundException("Espacio curricular no encontrado.");
 
-            if (espacio.IdDocente != idDocente)
+            if (!esLecturaInstitucional && espacio.IdDocente != idDocente)
             {
                 throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
             }

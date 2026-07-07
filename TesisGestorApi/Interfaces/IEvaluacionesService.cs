@@ -4,7 +4,7 @@ namespace TesisGestorApi.Interfaces;
 
 public interface IEvaluacionesService
 {
-    Task<GestionEvaluacionesDto> GetGestionAsync(Guid idEC, Guid idDocente, CancellationToken ct);
+    Task<GestionEvaluacionesDto> GetGestionAsync(Guid idEC, Guid idDocente, bool esLecturaInstitucional, CancellationToken ct);
 
     Task<InstanciaEvaluativaSlotDto> GuardarArchivoAsync(
         Guid idEC,

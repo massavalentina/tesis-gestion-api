@@ -71,9 +71,9 @@ namespace TesisGestorApi.Services
                 .FirstOrDefaultAsync(p => p.IdPrograma == idPrograma, ct)
                 ?? throw new KeyNotFoundException("Programa no encontrado.");
 
-            // Hardcodeado: solo el docente titular del EC del programa puede verlo.
-            if (p.IdDocente != idDocente)
-                throw new UnauthorizedAccessException("No sos el docente titular de este programa.");
+            // Hardcodeado: solo el docente titular actual del EC puede verlo (no el creador original del programa).
+            if (p.EspacioCurricular.IdDocente != idDocente)
+                throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
 
             return MapToDetalle(p);
         }
@@ -192,8 +192,7 @@ namespace TesisGestorApi.Services
                 .FirstOrDefaultAsync(p => p.IdPrograma == idPrograma, ct)
                 ?? throw new KeyNotFoundException("Programa no encontrado.");
 
-            if (programa.IdDocente != idDocente)
-                throw new UnauthorizedAccessException("No sos el docente titular de este programa.");
+            await ValidarDocenteTitularDelECAsync(programa.IdEC, idDocente, ct);
 
             // CDA008/CDA012: solo editable si es Borrador
             if (programa.Estado != EstadoPrograma.Borrador)
@@ -302,8 +301,7 @@ namespace TesisGestorApi.Services
                 .FirstOrDefaultAsync(p => p.IdPrograma == idPrograma, ct)
                 ?? throw new KeyNotFoundException("Programa no encontrado.");
 
-            if (programa.IdDocente != idDocente)
-                throw new UnauthorizedAccessException("No sos el docente titular de este programa.");
+            await ValidarDocenteTitularDelECAsync(programa.IdEC, idDocente, ct);
 
             if (!Enum.TryParse<EstadoPrograma>(nuevoEstado, out var estado))
                 throw new InvalidOperationException($"El estado '{nuevoEstado}' no es válido.");
@@ -383,8 +381,7 @@ namespace TesisGestorApi.Services
                 .FirstOrDefaultAsync(p => p.IdPrograma == idPrograma, ct)
                 ?? throw new KeyNotFoundException("Programa no encontrado.");
 
-            if (programa.IdDocente != idDocente)
-                throw new UnauthorizedAccessException("No sos el docente titular de este programa.");
+            await ValidarDocenteTitularDelECAsync(programa.IdEC, idDocente, ct);
 
             if (programa.Estado == EstadoPrograma.Vigente)
                 throw new InvalidOperationException(
@@ -395,6 +392,21 @@ namespace TesisGestorApi.Services
             await _context.SaveChangesAsync(ct);
 
             _logger.LogInformation("Programa {Id} eliminado (hard delete).", idPrograma);
+        }
+
+        // Hardcodeado: autoriza contra el docente actualmente asignado al EC (EspacioCurricular.IdDocente),
+        // no contra quien creó el programa (Programa.IdDocente) — así un docente que releva a otro
+        // (ej. un suplente) conserva acceso a los programas ya cargados para ese EC.
+        private async Task ValidarDocenteTitularDelECAsync(Guid idEC, Guid idDocente, CancellationToken ct)
+        {
+            var ecIdDocente = await _context.EspaciosCurriculares
+                .AsNoTracking()
+                .Where(e => e.IdEC == idEC)
+                .Select(e => (Guid?)e.IdDocente)
+                .FirstOrDefaultAsync(ct);
+
+            if (ecIdDocente != idDocente)
+                throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
         }
 
         private static void ValidarCamposObligatorios(Programa programa)

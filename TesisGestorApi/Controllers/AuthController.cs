@@ -10,12 +10,14 @@ namespace TesisGestorApi.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly ITokenService _tokenService;
         private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IAuthService authService, ILogger<AuthController> logger)
+        public AuthController(IAuthService authService, ITokenService tokenService, ILogger<AuthController> logger)
         {
-            _authService = authService;
-            _logger      = logger;
+            _authService  = authService;
+            _tokenService = tokenService;
+            _logger       = logger;
         }
 
         // POST /api/auth/login
@@ -35,6 +37,27 @@ namespace TesisGestorApi.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error en login.");
+                return StatusCode(500, new { error = "Error interno." });
+            }
+        }
+
+        // POST /api/auth/refresh
+        [HttpPost("refresh")]
+        [AllowAnonymous]
+        public async Task<ActionResult<TokenResponseDto>> Refresh([FromBody] RefreshTokenRequestDto dto)
+        {
+            try
+            {
+                var resultado = await _tokenService.RefrescarTokenAsync(dto.RefreshToken);
+                return Ok(resultado);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al refrescar token.");
                 return StatusCode(500, new { error = "Error interno." });
             }
         }

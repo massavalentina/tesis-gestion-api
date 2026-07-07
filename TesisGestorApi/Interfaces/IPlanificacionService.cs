@@ -4,7 +4,7 @@ namespace TesisGestorApi.Interfaces;
 
 public interface IPlanificacionService
 {
-    Task<ArbolPlanificacionDto> GetArbolAsync(Guid idEC, Guid idDocente, CancellationToken ct);
+    Task<ArbolPlanificacionDto> GetArbolAsync(Guid idEC, Guid idDocente, bool esLecturaInstitucional, CancellationToken ct);
 
     Task<UnidadArbolDto> CrearUnidadAsync(Guid idEC, Guid idDocente, CrearItemArchivoDto dto, CancellationToken ct);
 

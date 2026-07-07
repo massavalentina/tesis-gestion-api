@@ -19,9 +19,9 @@ public class EvaluacionesService : IEvaluacionesService
         _currentUser = currentUser;
     }
 
-    public async Task<GestionEvaluacionesDto> GetGestionAsync(Guid idEC, Guid idDocente, CancellationToken ct)
+    public async Task<GestionEvaluacionesDto> GetGestionAsync(Guid idEC, Guid idDocente, bool esLecturaInstitucional, CancellationToken ct)
     {
-        var espacio = await GetEspacioContextAsync(idEC, idDocente, ct);
+        var espacio = await GetEspacioContextAsync(idEC, idDocente, ct, esLecturaInstitucional);
         var trazabilidad = await GetTrazabilidadContextAsync(idEC, ct);
 
         var instancias = await LoadInstanciasAsync(idEC, ct);
@@ -291,7 +291,7 @@ public class EvaluacionesService : IEvaluacionesService
         }
     }
 
-    private async Task<EspacioContext> GetEspacioContextAsync(Guid idEC, Guid idDocente, CancellationToken ct)
+    private async Task<EspacioContext> GetEspacioContextAsync(Guid idEC, Guid idDocente, CancellationToken ct, bool esLecturaInstitucional = false)
     {
         var espacio = await _db.EspaciosCurriculares
             .AsNoTracking()
@@ -309,7 +309,7 @@ public class EvaluacionesService : IEvaluacionesService
             .FirstOrDefaultAsync(ct)
             ?? throw new KeyNotFoundException("Espacio curricular no encontrado.");
 
-        if (espacio.IdDocente != idDocente)
+        if (!esLecturaInstitucional && espacio.IdDocente != idDocente)
         {
             throw new UnauthorizedAccessException("No sos el docente titular de este espacio curricular.");
         }

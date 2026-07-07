@@ -10,5 +10,6 @@ namespace TesisGestorApi.Interfaces
         Task<DocenteECsResponseDto> GetEspaciosCurricularesAsync(Guid idDocente, CancellationToken ct = default);
         Task<List<ECsinDocenteDto>> GetEspaciosCurricularesSinDocenteAsync(CancellationToken ct = default);
         Task<List<MisEcItemDto>> GetMisEspaciosCurricularesAsync(Guid idUsuario, CancellationToken ct = default);
+        Task<MisEcItemDto?> GetEspacioCurricularPorIdAsync(Guid idEC, Guid idUsuario, bool esLecturaInstitucional, CancellationToken ct = default);
     }
 }
