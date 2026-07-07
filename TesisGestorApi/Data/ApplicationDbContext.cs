@@ -82,6 +82,7 @@ namespace TesisGestorApi.Data
         public DbSet<Calificacion> Calificaciones { get; set; }
         public DbSet<AuditoriaCalificacionSesion> AuditoriasCalificacionesSesiones { get; set; }
         public DbSet<AuditoriaCalificacionDetalle> AuditoriasCalificacionesDetalles { get; set; }
+        public DbSet<ImportacionCalificaciones> ImportacionesCalificaciones { get; set; }
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -579,6 +580,11 @@ modelBuilder.Entity<RefreshToken>()
                       .HasForeignKey(c => c.IdArchivoIE)
                       .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasOne(c => c.ImportacionCalificaciones)
+                      .WithMany(i => i.Calificaciones)
+                      .HasForeignKey(c => c.IdImportacionCalificaciones)
+                      .OnDelete(DeleteBehavior.SetNull);
+
                 entity.HasOne(c => c.UsuarioCarga)
                       .WithMany()
                       .HasForeignKey(c => c.IdUsuarioCarga)
@@ -610,6 +616,11 @@ modelBuilder.Entity<RefreshToken>()
                       .WithMany()
                       .HasForeignKey(s => s.IdUsuario)
                       .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(s => s.ImportacionCalificaciones)
+                      .WithMany(i => i.Auditorias)
+                      .HasForeignKey(s => s.IdImportacionCalificaciones)
+                      .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasIndex(s => new { s.IdEC, s.FechaRegistro });
             });
@@ -685,6 +696,44 @@ modelBuilder.Entity<RefreshToken>()
 
             modelBuilder.Entity<EventoInstitucional>()
                 .HasIndex(e => new { e.AnioLectivo, e.Activo });
+            modelBuilder.Entity<ImportacionCalificaciones>(entity =>
+            {
+                entity.ToTable("ImportacionCalificaciones");
+
+                entity.HasOne(i => i.EspacioCurricular)
+                      .WithMany()
+                      .HasForeignKey(i => i.IdEC)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(i => i.Curso)
+                      .WithMany()
+                      .HasForeignKey(i => i.IdCurso)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(i => i.Docente)
+                      .WithMany()
+                      .HasForeignKey(i => i.IdDocente)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(i => i.Usuario)
+                      .WithMany()
+                      .HasForeignKey(i => i.IdUsuario)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.Property(i => i.ResumenAnalisisJson)
+                      .HasColumnType("text");
+
+                entity.Property(i => i.RevisionJson)
+                      .HasColumnType("text");
+
+                entity.Property(i => i.ResumenConfirmacionJson)
+                      .HasColumnType("text");
+
+                entity.Property(i => i.ErrorTecnico)
+                      .HasColumnType("text");
+
+                entity.HasIndex(i => new { i.IdEC, i.Estado, i.FechaUltimaActualizacion });
+            });
         }
     }
 }
