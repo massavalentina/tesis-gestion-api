@@ -23,19 +23,25 @@ namespace TesisGestorApi.Services
             IEnumerable<EmailAttachmentDto>? attachments = null,
             IEnumerable<EmailInlineResourceDto>? inlineResources = null)
         {
-            var host = _config["Email:SmtpHost"] ?? throw new Exception("Falta Email:SmtpHost");
-            var portStr = _config["Email:SmtpPort"] ?? throw new Exception("Falta Email:SmtpPort");
-            var user = _config["Email:User"] ?? throw new Exception("Falta Email:User");
-            var pass = _config["Email:Pass"] ?? throw new Exception("Falta Email:Pass");
-            var from = _config["Email:From"] ?? throw new Exception("Falta Email:From");
+            var host = GetRequiredSetting("Email:SmtpHost");
+            var portStr = GetRequiredSetting("Email:SmtpPort");
+            var user = GetRequiredSetting("Email:User");
+            var pass = GetRequiredSetting("Email:Pass");
+            var from = GetRequiredSetting("Email:From");
+            var enableSsl = GetOptionalBoolSetting("Email:EnableSsl", defaultValue: true);
 
             if (!int.TryParse(portStr, out var port))
                 throw new Exception("Email:SmtpPort inválido");
 
+            if (host.Equals("smtp.gmail.com", StringComparison.OrdinalIgnoreCase))
+                pass = pass.Replace(" ", string.Empty);
+
             using var client = new SmtpClient(host, port)
             {
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                UseDefaultCredentials = false,
                 Credentials = new NetworkCredential(user, pass),
-                EnableSsl = true
+                EnableSsl = enableSsl
             };
 
             using var mail = new MailMessage(from, to, subject, htmlBody)
@@ -78,6 +84,21 @@ namespace TesisGestorApi.Services
             }
 
             await client.SendMailAsync(mail, ct);
+        }
+
+        private string GetRequiredSetting(string key)
+        {
+            var value = _config[key]?.Trim();
+            if (string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException($"Falta configurar {key}");
+
+            return value;
+        }
+
+        private bool GetOptionalBoolSetting(string key, bool defaultValue)
+        {
+            var value = _config[key]?.Trim();
+            return bool.TryParse(value, out var parsed) ? parsed : defaultValue;
         }
     }
 }
