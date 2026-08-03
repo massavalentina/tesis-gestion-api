@@ -116,18 +116,27 @@ namespace TesisGestorApi.Controllers
             [FromQuery] int anioLectivo = 2026,
             CancellationToken ct = default)
         {
-            if (string.IsNullOrWhiteSpace(texto) || texto.Trim().Length < 3)
-                return BadRequest("Se requieren al menos 3 caracteres.");
+            if (string.IsNullOrWhiteSpace(texto))
+                return BadRequest("Se requiere al menos 1 carácter.");
 
-            var t = texto.Trim().ToLower();
+            var tokens = texto.Trim().ToLower()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var idDocente = await GetIdDocenteAsync(ct);
 
             var query = _db.DetallesCursado
                 .Where(dc => dc.Estado
                     && dc.Curso.Estado
-                    && dc.Curso.AñoLectivo.Year == anioLectivo
-                    && (dc.Estudiante.Apellido.ToLower().StartsWith(t)
-                        || dc.Estudiante.Documento.StartsWith(t)));
+                    && dc.Curso.AñoLectivo.Year == anioLectivo);
+
+            // Cada palabra ingresada debe matchear nombre, apellido o documento
+            // (en cualquier orden), así "Diaz Hector" y "Hector Diaz" encuentran lo mismo.
+            foreach (var token in tokens)
+            {
+                query = query.Where(dc =>
+                    dc.Estudiante.Apellido.ToLower().Contains(token)
+                    || dc.Estudiante.Nombre.ToLower().Contains(token)
+                    || dc.Estudiante.Documento.Contains(token));
+            }
 
             if (idDocente.HasValue)
                 query = query.Where(dc => dc.Curso.EspaciosCurriculares.Any(ec => ec.IdDocente == idDocente));

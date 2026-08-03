@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using System.Text;
 using TesisGestorApi.Data;
 using TesisGestorApi.DTOs;
 using TesisGestorApi.Interfaces;
@@ -92,9 +93,11 @@ public class AsistenciaRapidaController : ControllerBase
             return Ok(new List<EstudianteBusquedaRapidaDto>());
 
         texto = texto.Trim();
+        var tokens = QuitarTildes(texto)
+            .Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
         var hoy = DateOnly.FromDateTime(DateTime.Now);
 
-        var resultados = await (
+        var candidatos = await (
             from e in _context.Estudiantes.AsNoTracking()
 
                 // Detalle cursado activo
@@ -123,10 +126,6 @@ public class AsistenciaRapidaController : ControllerBase
                 on ah.TipoManianaId equals tm.IdTipo into tmJoin
             from tm in tmJoin.DefaultIfEmpty()
 
-            where EF.Functions.ILike(e.Nombre, $"%{texto}%")
-               || EF.Functions.ILike(e.Apellido, $"%{texto}%")
-               || e.Documento.Contains(texto)
-
             select new EstudianteBusquedaRapidaDto
             {
                 Id = e.IdEstudiante,
@@ -142,11 +141,36 @@ public class AsistenciaRapidaController : ControllerBase
                 TeaGeneral = e.TeaGeneral
             }
         )
-        .OrderBy(x => x.Apellido)
-        .ThenBy(x => x.Nombre)
-        .Take(10)
         .ToListAsync();
 
+        // Filtro insensible a tildes/mayúsculas y por palabras: se hace en memoria
+        // porque ILIKE de Postgres no ignora acentos (García no matcheaba "garcia").
+        // Cada palabra tipeada debe matchear nombre, apellido o documento —
+        // así "acosta mia" (o "Acosta, Mia", con o sin coma) encuentra al alumno,
+        // sin importar el orden apellido/nombre.
+        var resultados = candidatos
+            .Where(x => tokens.All(token =>
+                QuitarTildes(x.Nombre).Contains(token, StringComparison.OrdinalIgnoreCase)
+                || QuitarTildes(x.Apellido).Contains(token, StringComparison.OrdinalIgnoreCase)
+                || x.Documento.Contains(token)))
+            .OrderBy(x => x.Apellido)
+            .ThenBy(x => x.Nombre)
+            .Take(10)
+            .ToList();
+
         return Ok(resultados);
+    }
+
+    private static string QuitarTildes(string texto)
+    {
+        if (string.IsNullOrEmpty(texto)) return texto;
+        var normalizado = texto.Normalize(NormalizationForm.FormD);
+        var sinTildes = new StringBuilder();
+        foreach (var c in normalizado)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sinTildes.Append(c);
+        }
+        return sinTildes.ToString().Normalize(NormalizationForm.FormC);
     }
 }
