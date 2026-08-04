@@ -6,19 +6,45 @@ namespace TesisGestorApi.Services
     public sealed class QrCredentialDeliveryProgressStore
     {
         private readonly ConcurrentDictionary<Guid, QrCredentialDeliveryJobState> _jobs = new();
+        private readonly object _jobCreationSync = new();
 
-        public QrCredentialDeliveryProgressDto Create(int total)
+        public bool TryCreate(
+            Guid cursoId,
+            string cursoCodigo,
+            string alcance,
+            int total,
+            out QrCredentialDeliveryProgressDto progress,
+            out QrCredentialDeliveryActiveJobDto? activeJob)
         {
-            var progress = new QrCredentialDeliveryProgressDto
+            lock (_jobCreationSync)
             {
-                JobId = Guid.NewGuid(),
-                Total = total,
-                Inicio = DateTime.UtcNow,
-                Estado = "RUNNING"
-            };
+                if (TryGetActiveByCourseInternal(cursoId, out var currentActiveJob))
+                {
+                    progress = default!;
+                    activeJob = currentActiveJob;
+                    return false;
+                }
 
-            _jobs[progress.JobId] = new QrCredentialDeliveryJobState(progress);
-            return Clone(progress);
+                var progressDto = new QrCredentialDeliveryProgressDto
+                {
+                    JobId = Guid.NewGuid(),
+                    Total = total,
+                    Inicio = DateTime.UtcNow,
+                    Estado = "RUNNING"
+                };
+
+                var state = new QrCredentialDeliveryJobState(progressDto)
+                {
+                    CursoId = cursoId,
+                    CursoCodigo = cursoCodigo,
+                    Alcance = alcance
+                };
+
+                _jobs[progressDto.JobId] = state;
+                progress = Clone(progressDto);
+                activeJob = CloneActiveJob(state);
+                return true;
+            }
         }
 
         public bool TryGet(Guid jobId, out QrCredentialDeliveryProgressDto dto)
@@ -38,6 +64,41 @@ namespace TesisGestorApi.Services
 
         public bool TryGetState(Guid jobId, out QrCredentialDeliveryJobState state)
             => _jobs.TryGetValue(jobId, out state!);
+
+        public IReadOnlyList<QrCredentialDeliveryActiveJobDto> GetActiveJobs(Guid? cursoId = null)
+        {
+            var items = new List<QrCredentialDeliveryActiveJobDto>();
+
+            foreach (var state in _jobs.Values)
+            {
+                lock (state.SyncRoot)
+                {
+                    if (!IsActiveState(state.Progress.Estado))
+                    {
+                        continue;
+                    }
+
+                    if (cursoId.HasValue && state.CursoId != cursoId.Value)
+                    {
+                        continue;
+                    }
+
+                    items.Add(CloneActiveJob(state));
+                }
+            }
+
+            return items
+                .OrderByDescending(x => x.Inicio)
+                .ToList();
+        }
+
+        public bool TryGetActiveByCourse(Guid cursoId, out QrCredentialDeliveryActiveJobDto activeJob)
+        {
+            lock (_jobCreationSync)
+            {
+                return TryGetActiveByCourseInternal(cursoId, out activeJob);
+            }
+        }
 
         public void Update(Guid jobId, Action<QrCredentialDeliveryProgressDto> update)
         {
@@ -165,6 +226,48 @@ namespace TesisGestorApi.Services
                 Fin = dto.Fin
             };
         }
+
+        private bool TryGetActiveByCourseInternal(Guid cursoId, out QrCredentialDeliveryActiveJobDto activeJob)
+        {
+            foreach (var state in _jobs.Values)
+            {
+                lock (state.SyncRoot)
+                {
+                    if (state.CursoId != cursoId || !IsActiveState(state.Progress.Estado))
+                    {
+                        continue;
+                    }
+
+                    activeJob = CloneActiveJob(state);
+                    return true;
+                }
+            }
+
+            activeJob = default!;
+            return false;
+        }
+
+        private static bool IsActiveState(string? estado)
+            => estado is "RUNNING" or "PAUSING" or "PAUSED" or "CANCELLING";
+
+        private static QrCredentialDeliveryActiveJobDto CloneActiveJob(QrCredentialDeliveryJobState state)
+        {
+            return new QrCredentialDeliveryActiveJobDto
+            {
+                JobId = state.Progress.JobId,
+                IdCurso = state.CursoId,
+                CursoCodigo = state.CursoCodigo,
+                Alcance = state.Alcance,
+                Estado = state.Progress.Estado,
+                Total = state.Progress.Total,
+                Procesados = state.Progress.Procesados,
+                Enviados = state.Progress.Enviados,
+                Omitidos = state.Progress.Omitidos,
+                Errores = state.Progress.Errores,
+                UltimoMensaje = state.Progress.UltimoMensaje,
+                Inicio = state.Progress.Inicio
+            };
+        }
     }
 
     public sealed class QrCredentialDeliveryJobState
@@ -176,6 +279,9 @@ namespace TesisGestorApi.Services
 
         public object SyncRoot { get; } = new();
         public QrCredentialDeliveryProgressDto Progress { get; }
+        public Guid CursoId { get; init; }
+        public string CursoCodigo { get; init; } = string.Empty;
+        public string Alcance { get; init; } = "PENDIENTES";
         public bool PauseRequested { get; set; }
         public bool CancellationRequested { get; set; }
         public TaskCompletionSource<bool>? PauseReleaseSource { get; set; }

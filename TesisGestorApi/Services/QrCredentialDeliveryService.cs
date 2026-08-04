@@ -45,7 +45,7 @@ namespace TesisGestorApi.Services
             _qrVisualService = qrVisualService;
         }
 
-        public async Task<QrCredentialDeliverySummaryDto> GetSummaryAsync(Guid cursoId, string? alcance, CancellationToken ct = default)
+        public async Task<QrCredentialDeliverySummaryDto> GetSummaryAsync(Guid? cursoId, string? alcance, CancellationToken ct = default)
         {
             var scope = NormalizeScope(alcance);
             var context = await BuildContextAsync(_db, cursoId, ct);
@@ -65,7 +65,11 @@ namespace TesisGestorApi.Services
             }
 
             var candidates = SelectCandidates(context.Rows, scope).ToList();
-            var job = _progress.Create(candidates.Count);
+
+            if (!_progress.TryCreate(req.IdCurso, context.CursoCodigo, scope, candidates.Count, out var job, out var activeJob))
+            {
+                throw new QrCredentialDeliveryActiveJobException(activeJob!);
+            }
 
             if (candidates.Count == 0)
             {
@@ -725,25 +729,41 @@ namespace TesisGestorApi.Services
         private static string BuildTutorName(string apellido, string nombre)
             => string.Join(" ", new[] { nombre?.Trim(), apellido?.Trim() }.Where(x => !string.IsNullOrWhiteSpace(x)));
 
-        private static async Task<DeliveryContext> BuildContextAsync(ApplicationDbContext db, Guid cursoId, CancellationToken ct)
+        private static async Task<DeliveryContext> BuildContextAsync(ApplicationDbContext db, Guid? cursoId, CancellationToken ct)
         {
-            var curso = await db.Cursos
+            var hasCourseFilter = cursoId.HasValue && cursoId.Value != Guid.Empty;
+            Guid contextCourseId = Guid.Empty;
+            var contextCourseCode = "Todos los cursos";
+            var anioLectivo = DateTime.Today.Year;
+
+            if (hasCourseFilter)
+            {
+                var curso = await db.Cursos
+                    .AsNoTracking()
+                    .Where(c => c.IdCurso == cursoId!.Value)
+                    .Select(c => new { c.IdCurso, c.Codigo, c.Estado, c.AñoLectivo })
+                    .FirstOrDefaultAsync(ct);
+
+                if (curso is null)
+                    throw new InvalidOperationException("No existe el curso seleccionado.");
+
+                if (!curso.Estado)
+                    throw new InvalidOperationException("El curso seleccionado está inactivo.");
+
+                contextCourseId = curso.IdCurso;
+                contextCourseCode = curso.Codigo;
+                anioLectivo = curso.AñoLectivo.Year;
+            }
+
+            var studentsQuery = db.DetallesCursado
                 .AsNoTracking()
-                .Where(c => c.IdCurso == cursoId)
-                .Select(c => new { c.IdCurso, c.Codigo, c.Estado, c.AñoLectivo })
-                .FirstOrDefaultAsync(ct);
+                .Where(dc => dc.Estado);
 
-            if (curso is null)
-                throw new InvalidOperationException("No existe el curso seleccionado.");
+            studentsQuery = hasCourseFilter
+                ? studentsQuery.Where(dc => dc.IdCurso == cursoId!.Value)
+                : studentsQuery.Where(dc => dc.Curso.Estado);
 
-            if (!curso.Estado)
-                throw new InvalidOperationException("El curso seleccionado está inactivo.");
-
-            var anioLectivo = curso.AñoLectivo.Year;
-
-            var students = await db.DetallesCursado
-                .AsNoTracking()
-                .Where(dc => dc.IdCurso == cursoId && dc.Estado)
+            var students = await studentsQuery
                 .Select(dc => new
                 {
                     dc.IdEstudiante,
@@ -751,14 +771,28 @@ namespace TesisGestorApi.Services
                     dc.Estudiante.Apellido,
                     dc.Estudiante.Documento
                 })
-                .Distinct()
                 .ToListAsync(ct);
+
+            students = students
+                .GroupBy(s => s.IdEstudiante)
+                .Select(g => g
+                    .OrderBy(s => s.Apellido)
+                    .ThenBy(s => s.Nombre)
+                    .First())
+                .ToList();
 
             var studentIds = students.Select(s => s.IdEstudiante).ToList();
 
-            var qrByStudent = await db.CredencialesQR
+            var qrQuery = db.CredencialesQR
                 .AsNoTracking()
-                .Where(q => studentIds.Contains(q.IdEstudiante) && q.Activo && q.AñoLectivo.Year == anioLectivo)
+                .Where(q => studentIds.Contains(q.IdEstudiante) && q.Activo);
+
+            if (hasCourseFilter)
+            {
+                qrQuery = qrQuery.Where(q => q.AñoLectivo.Year == anioLectivo);
+            }
+
+            var qrByStudent = await qrQuery
                 .OrderByDescending(q => q.FechaGeneracion)
                 .Select(q => new
                 {
@@ -821,8 +855,8 @@ namespace TesisGestorApi.Services
 
             return new DeliveryContext
             {
-                IdCurso = curso.IdCurso,
-                CursoCodigo = curso.Codigo,
+                IdCurso = contextCourseId,
+                CursoCodigo = contextCourseCode,
                 AnioLectivo = anioLectivo,
                 Rows = rows
             };

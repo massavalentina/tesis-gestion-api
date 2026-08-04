@@ -4,7 +4,7 @@ namespace TesisGestorApi.Interfaces
 {
     public interface IQrCredentialDeliveryService
     {
-        Task<QrCredentialDeliverySummaryDto> GetSummaryAsync(Guid cursoId, string? alcance, CancellationToken ct = default);
+        Task<QrCredentialDeliverySummaryDto> GetSummaryAsync(Guid? cursoId, string? alcance, CancellationToken ct = default);
         Task<QrCredentialDeliveryProgressDto> StartDeliveryJobAsync(QrCredentialDeliveryRequestDto req, CancellationToken ct = default);
         Task<QrCredentialDeliverySingleResponseDto> SendStudentAsync(
             Guid estudianteId,

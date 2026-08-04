@@ -24,11 +24,11 @@ namespace TesisGestorApi.Controllers
 
         [HttpGet("summary")]
         public async Task<ActionResult<QrCredentialDeliverySummaryDto>> Summary(
-            [FromQuery] Guid cursoId,
+            [FromQuery] Guid? cursoId,
             [FromQuery] string? alcance,
             CancellationToken ct)
         {
-            if (cursoId == Guid.Empty)
+            if (cursoId.HasValue && cursoId.Value == Guid.Empty)
                 return BadRequest("IdCurso inválido.");
 
             try
@@ -53,10 +53,24 @@ namespace TesisGestorApi.Controllers
                 var job = await _service.StartDeliveryJobAsync(req, ct);
                 return Ok(new { jobId = job.JobId });
             }
+            catch (QrCredentialDeliveryActiveJobException ex)
+            {
+                return Conflict(new { message = ex.Message, activeJob = ex.ActiveJob });
+            }
             catch (InvalidOperationException ex)
             {
                 return BadRequest(ex.Message);
             }
+        }
+
+        [HttpGet("active-jobs")]
+        public ActionResult<IReadOnlyList<QrCredentialDeliveryActiveJobDto>> ActiveJobs([FromQuery] Guid? cursoId)
+        {
+            if (cursoId.HasValue && cursoId.Value == Guid.Empty)
+                return BadRequest("IdCurso inválido.");
+
+            var jobs = _progressStore.GetActiveJobs(cursoId);
+            return Ok(jobs);
         }
 
         [HttpGet("progress/{jobId:guid}")]
