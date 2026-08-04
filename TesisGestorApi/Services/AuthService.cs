@@ -133,6 +133,8 @@ namespace TesisGestorApi.Services
             // Respuesta idéntica si el usuario no existe (evita enumeración)
             if (usuario == null || !usuario.Activo) return;
 
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+
             // Invalidar tokens de reset anteriores
             await _context.PasswordResetTokens
                 .Where(t => t.IdUsuario == usuario.IdUsuario && !t.Usado)
@@ -190,6 +192,8 @@ namespace TesisGestorApi.Services
                 htmlBody: EmailTemplateHelper.Build(cuerpo, logoSrc),
                 inlineResources: inlineResources
             );
+
+            await transaction.CommitAsync();
         }
 
         // ─────────────────────────────────────────────────────────────────────
