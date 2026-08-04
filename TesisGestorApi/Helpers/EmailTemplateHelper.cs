@@ -65,7 +65,7 @@ namespace TesisGestorApi.Helpers
             <td align='center' style='padding:16px 40px 28px;font-size:11px;color:#999999;line-height:1.6;'>
               Secretar&iacute;a de la instituci&oacute;n Colegio Luis Manuel Robles &mdash; Padre Luis Monti<br>
               1859, X5004ENI C&oacute;rdoba &middot; 03514517213 &middot; colegiorobles.edu.ar<br>
-              Desde &copy; PaletApp 2026
+              Desde &copy; Robles 360 2026
             </td>
           </tr>
 
