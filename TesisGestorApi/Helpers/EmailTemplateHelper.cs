@@ -85,8 +85,8 @@ namespace TesisGestorApi.Helpers
         {
             var candidates = new[]
             {
-                (Path.Combine(AppContext.BaseDirectory, "wwwroot", "logo.jpg"), "image/jpeg"),
-                (Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "logo.jpg"), "image/jpeg"),
+                (Path.Combine(AppContext.BaseDirectory, "wwwroot", "logo2.jpg"), "image/jpeg"),
+                (Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "logo2.jpg"), "image/jpeg"),
                 (Path.Combine(AppContext.BaseDirectory, "utils", "robles.png"), "image/png"),
                 (Path.Combine(Directory.GetCurrentDirectory(), "utils", "robles.png"), "image/png"),
             };
