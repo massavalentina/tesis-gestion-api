@@ -316,6 +316,7 @@ namespace TesisGestorApi.Services
                     NombreUsuario = a.Usuario.Nombre,
                     ApellidoUsuario = a.Usuario.Apellido,
                     FechaRegistro = a.FechaRegistro,
+                    TituloEvento = a.EventoInstitucional.Titulo,
                 })
                 .ToListAsync(ct);
         }
@@ -340,6 +341,7 @@ namespace TesisGestorApi.Services
                     NombreUsuario = a.Usuario.Nombre,
                     ApellidoUsuario = a.Usuario.Apellido,
                     FechaRegistro = a.FechaRegistro,
+                    TituloEvento = a.EventoInstitucional.Titulo,
                 })
                 .ToListAsync(ct);
         }
