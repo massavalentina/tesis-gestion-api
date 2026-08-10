@@ -23,7 +23,8 @@ namespace TesisGestorApi.DTOs
     public class EcDesaprobacionDto
     {
         public string Nombre { get; set; } = null!;
-        // Tasa de desaprobación = (desaprobados + desap. por tema) / total × 100
+        // % de alumnos con promedio < 7 en esta materia, sobre el total de
+        // alumnos evaluados en ella (nivel alumno, no tema individual).
         public decimal TasaDesaprobacion { get; set; }
     }
 
@@ -36,9 +37,20 @@ namespace TesisGestorApi.DTOs
     public class CursoTasaDesaprobacionDto
     {
         public string Curso { get; set; } = null!;
+        // Promedio simple de las TasaDesaprobacion (por alumno) de las
+        // materias que dicta este curso — cada materia pesa igual.
         public decimal TasaDesaprobacion { get; set; }
     }
 
+    /// <summary>
+    /// Distribución calculada por alumno + materia (EC), sobre el promedio de sus
+    /// notas de instancia (máximo entre original y recuperatorios).
+    /// Tres estados MUTUAMENTE EXCLUYENTES; solo "Aprobado" representa aprobación real.
+    /// Aprobado = promedio >= 7 sin ningún tema individual desaprobado.
+    /// DesaprobadoPorTema = promedio >= 7 pero con algún tema individual < 7
+    /// (el promedio da bien, pero el alumno NO aprobó: desaprobó un tema).
+    /// Desaprobado = promedio < 7.
+    /// </summary>
     public class DistribucionEstadosDto
     {
         public decimal Aprobado { get; set; }
