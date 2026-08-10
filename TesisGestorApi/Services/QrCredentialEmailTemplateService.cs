@@ -74,7 +74,7 @@ namespace TesisGestorApi.Services
             html.Append("</table>");
             html.Append("<div style=\"border-top:1px solid #b5b5b5;margin:16px 0 12px 0;\"></div>");
             html.Append("<p style=\"margin:0;text-align:center;font-size:8pt;line-height:1.35;color:#6e6e6e;\">Secretaría de la institución Colegio Luis Manuel RoblesPadre Luis Monti 1859, X5004ENI Córdoba - 03514517213 - <u>colegiorobles.edu.ar</u></p>");
-            html.Append("<p style=\"margin:10px 0 0 0;text-align:center;font-size:8pt;line-height:1.3;color:#8a8a8a;\">Desde © PaletApp ");
+            html.Append("<p style=\"margin:10px 0 0 0;text-align:center;font-size:8pt;line-height:1.3;color:#8a8a8a;\">Desde © Robles 360 ");
             html.Append(DateTime.UtcNow.Year);
             html.Append("</p>");
             html.Append("</td></tr></table>");
