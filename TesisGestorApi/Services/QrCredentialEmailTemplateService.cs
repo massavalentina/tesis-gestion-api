@@ -64,7 +64,6 @@ namespace TesisGestorApi.Services
             html.Append("<p style=\"margin:0;font-size:9pt;line-height:1.34;\">Atentamente,</p>");
             html.Append("<p style=\"margin:0 0 2px 0;font-size:9pt;line-height:1.34;\">Atentamente,</p>");
             html.Append("<p style=\"margin:0;font-size:9pt;line-height:1.34;\">Colegio Luis Manuel Robles</p>");
-            html.Append($"<p style=\"margin:10px 0 0 0;font-size:9pt;line-height:1.35;color:#4d4d4d;\">Código de respaldo: <strong>{codigoHtml}</strong></p>");
             html.Append($"<p style=\"margin:5px 0 0 0;font-size:9pt;line-height:1.35;color:#4d4d4d;\">Año lectivo: <strong>{anioLectivoHtml}</strong></p>");
             html.Append("</td>");
             html.Append("<td align=\"center\" style=\"width:38%;vertical-align:top;\">");
