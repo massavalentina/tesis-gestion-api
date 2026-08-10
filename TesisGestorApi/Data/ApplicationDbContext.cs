@@ -656,6 +656,7 @@ modelBuilder.Entity<RefreshToken>()
 
                 entity.HasIndex(d => d.IdSesionAuditoria);
                 entity.HasIndex(d => new { d.IdIE, d.IdEstudiante });
+                entity.HasIndex(d => d.IdCalificacionNueva);
 
             });
 

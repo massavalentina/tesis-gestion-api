@@ -23,19 +23,22 @@ public class EvaluacionesService : IEvaluacionesService
     {
         var espacio = await GetEspacioContextAsync(idEC, idDocente, ct, esLecturaInstitucional);
         var trazabilidad = await GetTrazabilidadContextAsync(idEC, ct);
+        var totalEstudiantesActivos = await _db.DetallesCursado
+            .AsNoTracking()
+            .Where(dc => dc.IdCurso == espacio.IdCurso && dc.Estado)
+            .Select(dc => dc.IdEstudiante)
+            .Distinct()
+            .CountAsync(ct);
 
         var instancias = await LoadInstanciasAsync(idEC, ct);
         ValidateInstancias(instancias);
 
-        var bloqueIdsPorArchivo = trazabilidad.Disponible
-            ? await LoadBloquesPorArchivoAsync(instancias, ct)
-            : new Dictionary<Guid, List<Guid>>();
-
+        var bloqueIdsPorArchivo = await LoadBloquesPorArchivoAsync(instancias, ct);
         var slots = new List<InstanciaEvaluativaSlotDto>();
         for (var nro = 1; nro <= 8; nro++)
         {
             var instancia = instancias.FirstOrDefault(i => i.Nro == nro);
-            slots.Add(MapSlotDto(nro, instancia, bloqueIdsPorArchivo));
+            slots.Add(MapSlotDto(nro, instancia, bloqueIdsPorArchivo, trazabilidad.Disponible));
         }
 
         return new GestionEvaluacionesDto
@@ -51,6 +54,7 @@ public class EvaluacionesService : IEvaluacionesService
             NombreDocente = espacio.NombreDocente,
             NombreCurso = espacio.NombreCurso,
             AnioLectivo = espacio.AnioLectivo,
+            TotalEstudiantesActivos = totalEstudiantesActivos,
             Unidades = trazabilidad.Disponible ? trazabilidad.Unidades : new List<UnidadArbolDto>(),
             Instancias = slots,
         };
@@ -77,12 +81,13 @@ public class EvaluacionesService : IEvaluacionesService
         var estadoSolicitado = ParseEstado(dto.Estado);
         var trazabilidad = await GetTrazabilidadContextAsync(idEC, ct);
         var now = DateTime.UtcNow;
+        var hoyUtc = DateTime.UtcNow.Date;
         var idUsuario = _currentUser.UserId ?? throw new UnauthorizedAccessException("Usuario no autenticado.");
 
         if (trazabilidad.Programa is null)
         {
             throw new InvalidOperationException(
-                "No podés cargar instancias evaluativas porque este espacio todavía no tiene un programa vigente. Primero cargá el programa desde la sección Programas.");
+                "No puede cargar instancias evaluativas porque este espacio todavía no tiene un programa vigente. Primero cargue el programa desde la sección Programas.");
         }
 
         if (nro is < 1 or > 8)
@@ -92,55 +97,40 @@ public class EvaluacionesService : IEvaluacionesService
 
         if (fechaEjecucion.Year != espacio.AnioLectivo)
         {
-            throw new ValidationException(
-                $"La fecha de ejecución debe pertenecer al año lectivo {espacio.AnioLectivo}.");
+            throw new ValidationException($"La fecha de ejecución debe pertenecer al año lectivo {espacio.AnioLectivo}.");
         }
 
-        var instancia = await _db.InstanciasEvaluativas
+        var instanciasEc = await _db.InstanciasEvaluativas
             .Include(i => i.Archivos)
                 .ThenInclude(a => a.Calificaciones)
             .Include(i => i.Archivos)
                 .ThenInclude(a => a.ArchivoAnterior)
             .Include(i => i.Archivos)
                 .ThenInclude(a => a.BloquesPrograma)
-            .FirstOrDefaultAsync(i => i.IdEC == idEC && i.Nro == nro, ct);
+            .Where(i => i.IdEC == idEC)
+            .ToListAsync(ct);
 
+        ValidateInstancias(instanciasEc);
+
+        var instancia = instanciasEc.FirstOrDefault(i => i.Nro == nro);
         var activos = instancia?.Archivos.Where(a => a.Habilitada).ToList() ?? new List<ArchivoIE>();
         ValidateInstanciaNuevosArchivos(activos);
         ValidarDependenciasParaCarga(activos, tipo);
         ValidarOrdenFechasExamenes(activos, tipo, fechaEjecucion);
+        ValidarOrdenFechasNotaOriginalEntreInstancias(instanciasEc, nro, tipo, fechaEjecucion);
 
         var archivoActivo = activos.FirstOrDefault(a => a.TipoCalificacion == tipo);
         var necesitaArchivo = !string.IsNullOrWhiteSpace(urlArchivo);
-        var bloqueIds = await ResolverBloquesAsync(trazabilidad, dto.IdBloquesTema);
 
-        // Validación: máx 2 IE por día por curso (independiente de visibilidad en calendario)
-        {
-            var idCurso = espacio.IdCurso;
-            var fechaDia = fechaEjecucion.Date;
-            var idArchivoActual = archivoActivo?.IdArchivoIE;
+        var bloqueIds = await ResolverBloquesParaGuardarAsync(trazabilidad, activos, tipo, dto.IdBloquesTema);
 
-            var existentes = await _db.ArchivosIE
-                .Where(a => a.Habilitada
-                    && a.FechaEjecucion.Date == fechaDia
-                    && a.InstanciaEvaluativa.EspacioCurricular.IdCurso == idCurso
-                    && (idArchivoActual == null || a.IdArchivoIE != idArchivoActual))
-                .Select(a => new { a.Titulo, EC = a.InstanciaEvaluativa.EspacioCurricular.Curricula.Nombre })
-                .ToListAsync(ct);
-
-            if (existentes.Count >= 2)
-            {
-                var detalle = string.Join("\n", existentes.Select(e => $"• {e.Titulo} — {e.EC}"));
-                throw new InvalidOperationException(
-                    $"No se pueden programar más de 2 instancias evaluativas por día en el mismo curso.\nYa cargadas:\n{detalle}");
-            }
-        }
+        await ValidarLimiteDiario(espacio.IdCurso, fechaEjecucion, archivoActivo?.IdArchivoIE, ct);
 
         if (archivoActivo is null)
         {
             if (!necesitaArchivo)
             {
-                throw new InvalidOperationException($"Para crear la instancia '{nro}' en el tipo '{ToTipoCalificacionCode(tipo)}' tenés que adjuntar un archivo.");
+                throw new InvalidOperationException($"Para crear la instancia '{nro}' en el tipo '{ToTipoCalificacionCode(tipo)}' debe adjuntar un archivo.");
             }
 
             instancia ??= new InstanciaEvaluativa
@@ -148,9 +138,7 @@ public class EvaluacionesService : IEvaluacionesService
                 IdIE = Guid.NewGuid(),
                 IdEC = idEC,
                 Nro = nro,
-                Estado = fechaEjecucion.Date < DateTime.UtcNow.Date
-                    ? EstadoInstanciaEvaluativa.Evaluada
-                    : estadoSolicitado,
+                Estado = EstadoInstanciaEvaluativa.Pendiente,
                 FechaCreacion = now,
                 FechaModificacion = now,
             };
@@ -160,52 +148,56 @@ public class EvaluacionesService : IEvaluacionesService
                 _db.InstanciasEvaluativas.Add(instancia);
             }
 
-            var nuevo = CrearArchivo(instancia.IdIE, tipo, tipoIE, dto, urlArchivo!, idUsuario, now, null);
+            var estadoInicial = fechaEjecucion.Date < hoyUtc
+                ? EstadoInstanciaEvaluativa.Pendiente
+                : estadoSolicitado;
+
+            ValidarCambioEstadoArchivo(tipo, estadoInicial, activos, bloqueIds, trazabilidad, true);
+
+            var nuevo = CrearArchivo(instancia.IdIE, tipo, tipoIE, dto, urlArchivo!, idUsuario, now, null, estadoInicial);
             _db.ArchivosIE.Add(nuevo);
             VincularTrazabilidad(nuevo, bloqueIds);
 
-            await _db.SaveChangesAsync(ct);
-            instancia.Estado = fechaEjecucion.Date < DateTime.UtcNow.Date
-                ? EstadoInstanciaEvaluativa.Evaluada
-                : estadoSolicitado;
+            activos.Add(nuevo);
+            instancia.Estado = DerivarEstadoGeneral(activos);
             instancia.FechaModificacion = now;
+
             await _db.SaveChangesAsync(ct);
             return await GetSlotAsync(instancia.IdIE, ct);
         }
 
-        if (TieneNotasVigentes(archivoActivo))
+        if (archivoActivo.Estado == EstadoInstanciaEvaluativa.Evaluada)
         {
             throw new InvalidOperationException(
-                $"No se puede modificar el archivo {ToTipoCalificacionCode(tipo)} de la IE {nro} porque ya tiene calificaciones vinculadas.");
+                $"No se puede modificar el archivo {ToTipoCalificacionCode(tipo)} de la IE {nro} porque ya fue marcado como evaluado.");
         }
 
-        ValidarDependenciasParaReemplazo(activos, tipo);
-
-        if (instancia is null)
-        {
-            throw new InvalidOperationException("La instancia evaluativa no existe para actualizar el archivo.");
-        }
+        ValidarCambioEstadoArchivo(tipo, estadoSolicitado, activos, bloqueIds, trazabilidad, false);
 
         archivoActivo.Titulo = dto.Titulo.Trim();
         archivoActivo.TipoIE = tipoIE;
         archivoActivo.FechaEjecucion = fechaEjecucion;
         archivoActivo.FechaModificacion = now;
         archivoActivo.VisibleEnCalendario = dto.VisibleEnCalendario;
+        archivoActivo.Estado = estadoSolicitado;
 
         if (necesitaArchivo)
         {
             archivoActivo.Habilitada = false;
 
-            var nuevo = CrearArchivo(instancia.IdIE, tipo, tipoIE, dto, urlArchivo!, idUsuario, now, archivoActivo.IdArchivoIE);
+            var nuevo = CrearArchivo(instancia!.IdIE, tipo, tipoIE, dto, urlArchivo!, idUsuario, now, archivoActivo.IdArchivoIE, estadoSolicitado);
             _db.ArchivosIE.Add(nuevo);
             VincularTrazabilidad(nuevo, bloqueIds);
+
+            activos.Remove(archivoActivo);
+            activos.Add(nuevo);
         }
         else
         {
             ReemplazarTrazabilidad(archivoActivo, bloqueIds);
         }
 
-        instancia.Estado = estadoSolicitado;
+        instancia!.Estado = DerivarEstadoGeneral(activos);
         instancia.FechaModificacion = now;
         await _db.SaveChangesAsync(ct);
 
@@ -216,16 +208,19 @@ public class EvaluacionesService : IEvaluacionesService
         Guid idEC,
         Guid idDocente,
         int nro,
+        string tipoCalificacion,
         CambiarEstadoIEFormDto dto,
         CancellationToken ct)
     {
         if (dto is null)
         {
-            throw new ValidationException("No se recibieron datos para actualizar el estado de la IE.");
+            throw new ValidationException("No se recibieron datos para actualizar el estado del archivo.");
         }
 
         _ = await GetEspacioContextAsync(idEC, idDocente, ct);
+        var tipo = ParseTipoCalificacion(tipoCalificacion);
         var estadoNuevo = ParseEstado(dto.Estado);
+        var trazabilidad = await GetTrazabilidadContextAsync(idEC, ct);
 
         if (nro is < 1 or > 8)
         {
@@ -233,11 +228,90 @@ public class EvaluacionesService : IEvaluacionesService
         }
 
         var instancia = await _db.InstanciasEvaluativas
+            .Include(i => i.Archivos)
+                .ThenInclude(a => a.Calificaciones)
+            .Include(i => i.Archivos)
+                .ThenInclude(a => a.BloquesPrograma)
             .FirstOrDefaultAsync(i => i.IdEC == idEC && i.Nro == nro, ct)
             ?? throw new KeyNotFoundException("No existe una instancia evaluativa para ese número.");
 
-        instancia.Estado = estadoNuevo;
-        instancia.FechaModificacion = DateTime.UtcNow;
+        var activos = instancia.Archivos.Where(a => a.Habilitada).ToList();
+        var archivoActivo = activos.FirstOrDefault(a => a.TipoCalificacion == tipo)
+            ?? throw new KeyNotFoundException($"No existe un archivo activo del tipo '{ToTipoCalificacionCode(tipo)}' en la IE {nro}.");
+
+        if (archivoActivo.Estado == EstadoInstanciaEvaluativa.Evaluada)
+        {
+            if (estadoNuevo == EstadoInstanciaEvaluativa.Evaluada)
+            {
+                return await GetSlotAsync(instancia.IdIE, ct);
+            }
+
+            throw new InvalidOperationException("Un archivo ya evaluado no puede volver a estado pendiente.");
+        }
+
+        var bloqueIds = ObtenerBloquesVigentesDelArchivo(activos, archivoActivo);
+        ValidarCambioEstadoArchivo(tipo, estadoNuevo, activos, bloqueIds, trazabilidad, false);
+
+        archivoActivo.Estado = estadoNuevo;
+        archivoActivo.FechaModificacion = DateTime.UtcNow;
+        instancia.Estado = DerivarEstadoGeneral(activos);
+        instancia.FechaModificacion = archivoActivo.FechaModificacion;
+
+        await _db.SaveChangesAsync(ct);
+        return await GetSlotAsync(instancia.IdIE, ct);
+    }
+
+    public async Task<InstanciaEvaluativaSlotDto> ActualizarTrazabilidadAsync(
+        Guid idEC,
+        Guid idDocente,
+        int nro,
+        string tipoCalificacion,
+        ActualizarTrazabilidadIEFormDto dto,
+        CancellationToken ct)
+    {
+        if (dto is null)
+        {
+            throw new ValidationException("No se recibieron datos para actualizar la vinculación al programa.");
+        }
+
+        _ = await GetEspacioContextAsync(idEC, idDocente, ct);
+        var tipo = ParseTipoCalificacion(tipoCalificacion);
+        if (tipo != TipoCalificacion.NotaOriginal)
+        {
+            throw new InvalidOperationException("La vinculación al programa se corrige únicamente desde la Nota Original.");
+        }
+
+        var trazabilidad = await GetTrazabilidadContextAsync(idEC, ct);
+        if (!trazabilidad.Disponible || trazabilidad.Programa is null)
+        {
+            throw new InvalidOperationException(trazabilidad.Mensaje ?? "No hay trazabilidad disponible para este programa.");
+        }
+
+        var instancia = await _db.InstanciasEvaluativas
+            .Include(i => i.Archivos)
+                .ThenInclude(a => a.BloquesPrograma)
+            .FirstOrDefaultAsync(i => i.IdEC == idEC && i.Nro == nro, ct)
+            ?? throw new KeyNotFoundException("No existe una instancia evaluativa para ese número.");
+
+        var archivoActivo = instancia.Archivos
+            .Where(a => a.Habilitada)
+            .FirstOrDefault(a => a.TipoCalificacion == tipo)
+            ?? throw new KeyNotFoundException("No existe un archivo activo de Nota Original para esa instancia.");
+
+        if (archivoActivo.Estado != EstadoInstanciaEvaluativa.Evaluada)
+        {
+            throw new InvalidOperationException("Solo se puede completar la vinculación al programa cuando la evaluación ya está marcada como evaluada.");
+        }
+
+        var bloqueIds = await ResolverBloquesAsync(trazabilidad, dto.IdBloquesTema);
+        if (bloqueIds.Count == 0)
+        {
+            throw new InvalidOperationException("Debe seleccionar al menos un tema o una unidad antes de guardar la vinculación al programa.");
+        }
+
+        ReemplazarTrazabilidad(archivoActivo, bloqueIds);
+        archivoActivo.FechaModificacion = DateTime.UtcNow;
+        instancia.FechaModificacion = archivoActivo.FechaModificacion;
 
         await _db.SaveChangesAsync(ct);
         return await GetSlotAsync(instancia.IdIE, ct);
@@ -264,10 +338,16 @@ public class EvaluacionesService : IEvaluacionesService
         var archivoActivo = activos.FirstOrDefault(a => a.TipoCalificacion == tipo)
             ?? throw new KeyNotFoundException($"No existe un archivo activo del tipo '{ToTipoCalificacionCode(tipo)}' en la IE {nro}.");
 
-        if (TieneNotasVigentes(archivoActivo))
+        if (archivoActivo.Estado == EstadoInstanciaEvaluativa.Evaluada)
         {
             throw new InvalidOperationException(
-                $"No se puede eliminar el archivo {ToTipoCalificacionCode(tipo)} de la IE {nro} porque ya tiene calificaciones vinculadas.");
+                $"No se puede eliminar el archivo {ToTipoCalificacionCode(tipo)} de la IE {nro} porque ya fue marcado como evaluado.");
+        }
+
+        if (TieneCalificacionesAsociadas(archivoActivo))
+        {
+            throw new InvalidOperationException(
+                $"No se puede eliminar el archivo {ToTipoCalificacionCode(tipo)} de la IE {nro} porque ya tiene calificaciones o historial vinculado.");
         }
 
         ValidarDependenciasParaReemplazo(activos, tipo);
@@ -280,6 +360,13 @@ public class EvaluacionesService : IEvaluacionesService
         }
 
         _db.ArchivosIE.Remove(archivoActivo);
+        activos.Remove(archivoActivo);
+        if (archivoPrevio is not null)
+        {
+            activos.Add(archivoPrevio);
+        }
+
+        instancia.Estado = DerivarEstadoGeneral(activos);
         instancia.FechaModificacion = ahora;
 
         await _db.SaveChangesAsync(ct);
@@ -328,14 +415,14 @@ public class EvaluacionesService : IEvaluacionesService
 
         if (programa is null)
         {
-            return TrazabilidadContext.SinPrograma("No hay programa vigente. Primero cargá un programa desde la sección Programas para habilitar las instancias evaluativas.");
+            return TrazabilidadContext.SinPrograma("No hay programa vigente. Primero cargue un programa desde la sección Programas para habilitar las instancias evaluativas.");
         }
 
         if (programa.Origen == OrigenPrograma.Archivo)
         {
             return TrazabilidadContext.SinTrazabilidad(
                 programa,
-                "El programa vigente fue cargado como archivo PDF. Podés gestionar las instancias evaluativas, pero sin vinculación a temas.");
+                "El programa vigente fue cargado como archivo PDF. Puede gestionar las instancias evaluativas, pero sin vinculación a temas.");
         }
 
         var bloques = await _db.BloquesProgramas
@@ -413,8 +500,11 @@ public class EvaluacionesService : IEvaluacionesService
                         a.FechaCarga,
                         a.Habilitada,
                         a.Calificaciones.Any(c => c.Habilitada && c.Puntaje.HasValue),
+                        a.Calificaciones.Count(c => c.Habilitada && c.Puntaje.HasValue),
+                        a.Calificaciones.Any(),
                         a.IdArchivoIEAnterior,
-                        a.VisibleEnCalendario))
+                        a.VisibleEnCalendario,
+                        a.Estado))
                     .ToList()))
             .ToListAsync(ct);
     }
@@ -461,6 +551,29 @@ public class EvaluacionesService : IEvaluacionesService
         }
     }
 
+    private static void ValidateInstancias(List<InstanciaEvaluativa> instancias)
+    {
+        if (instancias.Count > 8)
+        {
+            throw new InvalidOperationException("El espacio curricular tiene más de 8 instancias evaluativas registradas para el año lectivo.");
+        }
+
+        if (instancias.Any(i => i.Nro < 1 || i.Nro > 8))
+        {
+            throw new InvalidOperationException("Se detectaron instancias evaluativas con un número fuera del rango permitido 1..8.");
+        }
+
+        if (instancias.GroupBy(i => i.Nro).Any(g => g.Count() > 1))
+        {
+            throw new InvalidOperationException("Se detectaron instancias evaluativas duplicadas para el mismo número.");
+        }
+
+        if (instancias.Any(i => i.Archivos.Where(a => a.Habilitada).GroupBy(a => a.TipoCalificacion).Any(g => g.Count() > 1)))
+        {
+            throw new InvalidOperationException("Se detectaron múltiples archivos activos para el mismo tipo de calificación en una instancia evaluativa.");
+        }
+    }
+
     private static void ValidateInstanciaNuevosArchivos(List<ArchivoIE> activos)
     {
         if (activos.GroupBy(a => a.TipoCalificacion).Any(g => g.Count() > 1))
@@ -480,30 +593,65 @@ public class EvaluacionesService : IEvaluacionesService
 
         if (fechas.TryGetValue(TipoCalificacion.NotaOriginal, out var fechaN) &&
             fechas.TryGetValue(TipoCalificacion.Recuperatorio1, out var fechaR1) &&
-            fechaR1 < fechaN)
+            fechaR1 <= fechaN)
         {
-            throw new InvalidOperationException("La fecha de R1 no puede ser anterior a la de N.");
-        }
-
-        if (fechas.TryGetValue(TipoCalificacion.NotaOriginal, out fechaN) &&
-            fechas.TryGetValue(TipoCalificacion.Recuperatorio2, out var fechaR2) &&
-            fechaR2 < fechaN)
-        {
-            throw new InvalidOperationException("La fecha de R2 no puede ser anterior a la de N.");
+            throw new InvalidOperationException("La fecha de R1 debe ser posterior a la de N.");
         }
 
         if (fechas.TryGetValue(TipoCalificacion.Recuperatorio1, out fechaR1) &&
-            fechas.TryGetValue(TipoCalificacion.Recuperatorio2, out fechaR2) &&
-            fechaR2 < fechaR1)
+            fechas.TryGetValue(TipoCalificacion.Recuperatorio2, out var fechaR2) &&
+            fechaR2 <= fechaR1)
         {
-            throw new InvalidOperationException("La fecha de R2 no puede ser anterior a la de R1.");
+            throw new InvalidOperationException("La fecha de R2 debe ser posterior a la de R1.");
+        }
+    }
+
+    private static void ValidarOrdenFechasNotaOriginalEntreInstancias(
+        IEnumerable<InstanciaEvaluativa> instancias,
+        int nroObjetivo,
+        TipoCalificacion tipoObjetivo,
+        DateTime fechaObjetivo)
+    {
+        if (tipoObjetivo != TipoCalificacion.NotaOriginal)
+        {
+            return;
+        }
+
+        var instanciasConN = instancias
+            .Select(i => new
+            {
+                i.Nro,
+                ArchivoN = i.Archivos.FirstOrDefault(a => a.Habilitada && a.TipoCalificacion == TipoCalificacion.NotaOriginal),
+            })
+            .Where(x => x.ArchivoN is not null)
+            .ToList();
+
+        var anterior = instanciasConN
+            .Where(x => x.Nro < nroObjetivo)
+            .OrderByDescending(x => x.Nro)
+            .FirstOrDefault();
+
+        if (anterior?.ArchivoN is not null && fechaObjetivo.Date <= anterior.ArchivoN.FechaEjecucion.Date)
+        {
+            throw new InvalidOperationException($"La fecha de N debe ser posterior a la Nota Original de la IE {anterior.Nro}.");
+        }
+
+        var siguiente = instanciasConN
+            .Where(x => x.Nro > nroObjetivo)
+            .OrderBy(x => x.Nro)
+            .FirstOrDefault();
+
+        if (siguiente?.ArchivoN is not null && fechaObjetivo.Date >= siguiente.ArchivoN.FechaEjecucion.Date)
+        {
+            throw new InvalidOperationException($"La fecha de N debe ser anterior a la Nota Original de la IE {siguiente.Nro}.");
         }
     }
 
     private static InstanciaEvaluativaSlotDto MapSlotDto(
         int nro,
         InstanciaReadModel? instancia,
-        IReadOnlyDictionary<Guid, List<Guid>> bloqueIdsPorArchivo)
+        IReadOnlyDictionary<Guid, List<Guid>> bloqueIdsPorArchivo,
+        bool trazabilidadDisponible)
     {
         if (instancia is null)
         {
@@ -512,18 +660,26 @@ public class EvaluacionesService : IEvaluacionesService
                 Nro = nro,
                 Existe = false,
                 Estado = "SinCarga",
+                EstadoGeneralIe = "SinCarga",
             };
         }
+
+        var notaOriginal = MapArchivoDto(instancia.Archivos, TipoCalificacion.NotaOriginal, bloqueIdsPorArchivo, trazabilidadDisponible, null);
+        var bloquesHeredados = notaOriginal?.IdBloquesTema ?? new List<Guid>();
+        var recuperatorio1 = MapArchivoDto(instancia.Archivos, TipoCalificacion.Recuperatorio1, bloqueIdsPorArchivo, trazabilidadDisponible, bloquesHeredados);
+        var recuperatorio2 = MapArchivoDto(instancia.Archivos, TipoCalificacion.Recuperatorio2, bloqueIdsPorArchivo, trazabilidadDisponible, bloquesHeredados);
+        var estadoGeneral = DerivarEstadoGeneral(instancia.Archivos);
 
         return new InstanciaEvaluativaSlotDto
         {
             IdIE = instancia.IdIE,
             Nro = instancia.Nro,
             Existe = true,
-            Estado = instancia.Estado.ToString(),
-            NotaOriginal = MapArchivoDto(instancia.Archivos, TipoCalificacion.NotaOriginal, bloqueIdsPorArchivo),
-            Recuperatorio1 = MapArchivoDto(instancia.Archivos, TipoCalificacion.Recuperatorio1, bloqueIdsPorArchivo),
-            Recuperatorio2 = MapArchivoDto(instancia.Archivos, TipoCalificacion.Recuperatorio2, bloqueIdsPorArchivo),
+            Estado = estadoGeneral.ToString(),
+            EstadoGeneralIe = estadoGeneral.ToString(),
+            NotaOriginal = notaOriginal,
+            Recuperatorio1 = recuperatorio1,
+            Recuperatorio2 = recuperatorio2,
         };
     }
 
@@ -551,24 +707,30 @@ public class EvaluacionesService : IEvaluacionesService
                         a.FechaCarga,
                         a.Habilitada,
                         a.Calificaciones.Any(c => c.Habilitada && c.Puntaje.HasValue),
+                        a.Calificaciones.Count(c => c.Habilitada && c.Puntaje.HasValue),
+                        a.Calificaciones.Any(),
                         a.IdArchivoIEAnterior,
-                        a.VisibleEnCalendario))
+                        a.VisibleEnCalendario,
+                        a.Estado))
                     .ToList()))
             .FirstOrDefaultAsync(ct);
 
         if (instancia is null)
         {
-            return new InstanciaEvaluativaSlotDto { Existe = false, Estado = "SinCarga" };
+            return new InstanciaEvaluativaSlotDto { Existe = false, Estado = "SinCarga", EstadoGeneralIe = "SinCarga" };
         }
 
+        var trazabilidad = await GetTrazabilidadContextAsync(instancia.IdEC, ct);
         var bloqueIds = await LoadBloquesPorArchivoAsync(new[] { instancia }, ct);
-        return MapSlotDto(instancia.Nro, instancia, bloqueIds);
+        return MapSlotDto(instancia.Nro, instancia, bloqueIds, trazabilidad.Disponible);
     }
 
     private static ArchivoIETrazadoDto? MapArchivoDto(
         List<ArchivoReadModel> archivos,
         TipoCalificacion tipo,
-        IReadOnlyDictionary<Guid, List<Guid>> bloqueIdsPorArchivo)
+        IReadOnlyDictionary<Guid, List<Guid>> bloqueIdsPorArchivo,
+        bool trazabilidadDisponible,
+        IReadOnlyList<Guid>? bloquesHeredados)
     {
         var archivo = archivos.FirstOrDefault(a => a.TipoCalificacion == tipo);
         if (archivo is null)
@@ -583,13 +745,25 @@ public class EvaluacionesService : IEvaluacionesService
             _ => false,
         };
 
-        var motivo = archivo.TieneCalificaciones
-            ? "Este archivo tiene calificaciones vinculadas y no se puede modificar ni eliminar."
-            : tieneDependencias
-                ? tipo == TipoCalificacion.NotaOriginal
-                    ? "No se puede modificar la Nota Original porque ya existen recuperatorios cargados para esta IE."
-                    : "No se puede modificar el Recuperatorio 1 porque ya existe un Recuperatorio 2 cargado para esta IE."
-            : null;
+        var esVencida = archivo.Estado == EstadoInstanciaEvaluativa.Pendiente && archivo.FechaEjecucion.Date < DateTime.UtcNow.Date;
+        var puedeEditarOperativa = archivo.Estado != EstadoInstanciaEvaluativa.Evaluada;
+        var puedeEliminar = archivo.Estado != EstadoInstanciaEvaluativa.Evaluada
+            && !archivo.TieneHistorialCalificaciones
+            && !tieneDependencias;
+
+        var motivo = archivo.Estado == EstadoInstanciaEvaluativa.Evaluada
+            ? "Este archivo ya fue marcado como evaluado y no se puede modificar ni eliminar."
+            : archivo.TieneHistorialCalificaciones
+                ? "Este archivo tiene calificaciones vinculadas y no se puede eliminar."
+                : tieneDependencias
+                    ? tipo == TipoCalificacion.NotaOriginal
+                        ? "No se puede eliminar la Nota Original porque ya existen recuperatorios cargados para esta IE."
+                        : "No se puede eliminar el Recuperatorio 1 porque ya existe un Recuperatorio 2 cargado para esta IE."
+                    : null;
+
+        var bloqueIds = tipo == TipoCalificacion.NotaOriginal
+            ? bloqueIdsPorArchivo.TryGetValue(archivo.IdArchivoIE, out var propios) ? propios : new List<Guid>()
+            : bloquesHeredados?.ToList() ?? new List<Guid>();
 
         return new ArchivoIETrazadoDto
         {
@@ -599,13 +773,25 @@ public class EvaluacionesService : IEvaluacionesService
             Titulo = archivo.Titulo,
             NombreArchivo = archivo.NombreArchivo,
             UrlArchivo = archivo.UrlArchivo,
+            Estado = archivo.Estado.ToString(),
+            EsVencida = esVencida,
             FechaEjecucion = archivo.FechaEjecucion,
             FechaCarga = archivo.FechaCarga,
             TieneCalificaciones = archivo.TieneCalificaciones,
-            PuedeEditar = !archivo.TieneCalificaciones && !tieneDependencias,
-            PuedeEliminar = !archivo.TieneCalificaciones && !tieneDependencias,
+            CantidadCalificaciones = archivo.CantidadCalificaciones,
+            TieneHistorialCalificaciones = archivo.TieneHistorialCalificaciones,
+            PuedeEditar = puedeEditarOperativa,
+            PuedeEliminar = puedeEliminar,
+            PuedeCompletarVinculacion = trazabilidadDisponible
+                && tipo == TipoCalificacion.NotaOriginal
+                && archivo.Estado == EstadoInstanciaEvaluativa.Evaluada,
+            PuedeCambiarEstado = archivo.Estado != EstadoInstanciaEvaluativa.Evaluada,
+            PuedeCargarNotas = archivo.Estado == EstadoInstanciaEvaluativa.Evaluada,
+            MotivoBloqueoNotas = archivo.Estado == EstadoInstanciaEvaluativa.Evaluada
+                ? null
+                : "Debe marcar este archivo como evaluado antes de cargar calificaciones.",
             MotivoBloqueo = motivo,
-            IdBloquesTema = bloqueIdsPorArchivo.TryGetValue(archivo.IdArchivoIE, out var bloques) ? bloques : new List<Guid>(),
+            IdBloquesTema = bloqueIds,
             VisibleEnCalendario = archivo.VisibleEnCalendario,
         };
     }
@@ -636,7 +822,8 @@ public class EvaluacionesService : IEvaluacionesService
         string urlArchivo,
         Guid idUsuario,
         DateTime now,
-        Guid? idAnterior)
+        Guid? idAnterior,
+        EstadoInstanciaEvaluativa estado)
     {
         return new ArchivoIE
         {
@@ -655,7 +842,28 @@ public class EvaluacionesService : IEvaluacionesService
             Habilitada = true,
             IdArchivoIEAnterior = idAnterior,
             VisibleEnCalendario = dto.VisibleEnCalendario,
+            Estado = estado,
         };
+    }
+
+    private static async Task<List<Guid>> ResolverBloquesParaGuardarAsync(
+        TrazabilidadContext trazabilidad,
+        List<ArchivoIE> activos,
+        TipoCalificacion tipo,
+        List<Guid> bloqueIdsTema)
+    {
+        if (tipo == TipoCalificacion.NotaOriginal)
+        {
+            return await ResolverBloquesAsync(trazabilidad, bloqueIdsTema);
+        }
+
+        var notaOriginal = activos.FirstOrDefault(a => a.TipoCalificacion == TipoCalificacion.NotaOriginal)
+            ?? throw new InvalidOperationException("No se puede heredar la vinculación al programa porque la Nota Original todavía no existe.");
+
+        return notaOriginal.BloquesPrograma
+            .Select(b => b.IdBloquePrograma)
+            .Distinct()
+            .ToList();
     }
 
     private static Task<List<Guid>> ResolverBloquesAsync(TrazabilidadContext trazabilidad, List<Guid> bloqueIdsTema)
@@ -684,6 +892,76 @@ public class EvaluacionesService : IEvaluacionesService
         return Task.FromResult(bloqueIdsSolicitados);
     }
 
+    private static List<Guid> ObtenerBloquesVigentesDelArchivo(List<ArchivoIE> activos, ArchivoIE archivo)
+    {
+        if (archivo.TipoCalificacion == TipoCalificacion.NotaOriginal)
+        {
+            return archivo.BloquesPrograma.Select(b => b.IdBloquePrograma).Distinct().ToList();
+        }
+
+        var notaOriginal = activos.FirstOrDefault(a => a.TipoCalificacion == TipoCalificacion.NotaOriginal);
+        return notaOriginal?.BloquesPrograma.Select(b => b.IdBloquePrograma).Distinct().ToList() ?? new List<Guid>();
+    }
+
+    private static void ValidarCambioEstadoArchivo(
+        TipoCalificacion tipo,
+        EstadoInstanciaEvaluativa estadoNuevo,
+        List<ArchivoIE> activos,
+        List<Guid> bloqueIds,
+        TrazabilidadContext trazabilidad,
+        bool esCreacion)
+    {
+        if (estadoNuevo != EstadoInstanciaEvaluativa.Evaluada)
+        {
+            return;
+        }
+
+        if (trazabilidad.Disponible && bloqueIds.Count == 0)
+        {
+            throw new InvalidOperationException("Debe vincular al menos un tema o unidad del programa antes de marcar esta evaluación como evaluada.");
+        }
+
+        var notaOriginal = activos.FirstOrDefault(a => a.TipoCalificacion == TipoCalificacion.NotaOriginal);
+        var recuperatorio1 = activos.FirstOrDefault(a => a.TipoCalificacion == TipoCalificacion.Recuperatorio1);
+
+        if (tipo == TipoCalificacion.Recuperatorio1 && notaOriginal?.Estado != EstadoInstanciaEvaluativa.Evaluada)
+        {
+            throw new InvalidOperationException("Para marcar el Recuperatorio 1 como evaluado, la Nota Original ya debe estar evaluada.");
+        }
+
+        if (tipo == TipoCalificacion.Recuperatorio2)
+        {
+            if (notaOriginal?.Estado != EstadoInstanciaEvaluativa.Evaluada)
+            {
+                throw new InvalidOperationException("Para marcar el Recuperatorio 2 como evaluado, la Nota Original ya debe estar evaluada.");
+            }
+
+            if (recuperatorio1?.Estado != EstadoInstanciaEvaluativa.Evaluada)
+            {
+                throw new InvalidOperationException("Para marcar el Recuperatorio 2 como evaluado, el Recuperatorio 1 ya debe estar evaluado.");
+            }
+        }
+    }
+
+    private async Task ValidarLimiteDiario(Guid idCurso, DateTime fechaEjecucion, Guid? idArchivoActual, CancellationToken ct)
+    {
+        var fechaDia = fechaEjecucion.Date;
+        var existentes = await _db.ArchivosIE
+            .Where(a => a.Habilitada
+                && a.FechaEjecucion.Date == fechaDia
+                && a.InstanciaEvaluativa.EspacioCurricular.IdCurso == idCurso
+                && (idArchivoActual == null || a.IdArchivoIE != idArchivoActual))
+            .Select(a => new { a.Titulo, EC = a.InstanciaEvaluativa.EspacioCurricular.Curricula.Nombre })
+            .ToListAsync(ct);
+
+        if (existentes.Count >= 2)
+        {
+            var detalle = string.Join("\n", existentes.Select(e => $"• {e.Titulo} — {e.EC}"));
+            throw new InvalidOperationException(
+                $"No se pueden programar más de 2 instancias evaluativas por día en el mismo curso.\nYa cargadas:\n{detalle}");
+        }
+    }
+
     private static void ValidarDependenciasParaReemplazo(List<ArchivoIE> activos, TipoCalificacion tipo)
     {
         var tieneR1 = activos.Any(a => a.TipoCalificacion == TipoCalificacion.Recuperatorio1);
@@ -707,19 +985,19 @@ public class EvaluacionesService : IEvaluacionesService
 
         if (tipo == TipoCalificacion.Recuperatorio1 && !tieneN)
         {
-            throw new InvalidOperationException("Primero tenés que cargar la Nota Original para poder cargar el Recuperatorio 1.");
+            throw new InvalidOperationException("Primero debe cargar la Nota Original para poder cargar el Recuperatorio 1.");
         }
 
         if (tipo == TipoCalificacion.Recuperatorio2)
         {
             if (!tieneN)
             {
-                throw new InvalidOperationException("Primero tenés que cargar la Nota Original para poder cargar el Recuperatorio 2.");
+                throw new InvalidOperationException("Primero debe cargar la Nota Original para poder cargar el Recuperatorio 2.");
             }
 
             if (!tieneR1)
             {
-                throw new InvalidOperationException("Primero tenés que cargar el Recuperatorio 1 para poder cargar el Recuperatorio 2.");
+                throw new InvalidOperationException("Primero debe cargar el Recuperatorio 1 para poder cargar el Recuperatorio 2.");
             }
         }
     }
@@ -727,6 +1005,11 @@ public class EvaluacionesService : IEvaluacionesService
     private static bool TieneNotasVigentes(ArchivoIE archivo)
     {
         return archivo.Calificaciones.Any(c => c.Habilitada && c.Puntaje.HasValue);
+    }
+
+    private static bool TieneCalificacionesAsociadas(ArchivoIE archivo)
+    {
+        return archivo.Calificaciones.Any();
     }
 
     private static TipoCalificacion ParseTipoCalificacion(string tipoCalificacion) => tipoCalificacion switch
@@ -767,6 +1050,22 @@ public class EvaluacionesService : IEvaluacionesService
         TipoCalificacion.Recuperatorio2 => "R2",
         _ => tipo.ToString(),
     };
+
+    private static EstadoInstanciaEvaluativa DerivarEstadoGeneral(IEnumerable<ArchivoIE> archivos)
+    {
+        var notaOriginal = archivos.FirstOrDefault(a => a.Habilitada && a.TipoCalificacion == TipoCalificacion.NotaOriginal);
+        return notaOriginal?.Estado == EstadoInstanciaEvaluativa.Evaluada
+            ? EstadoInstanciaEvaluativa.Evaluada
+            : EstadoInstanciaEvaluativa.Pendiente;
+    }
+
+    private static EstadoInstanciaEvaluativa DerivarEstadoGeneral(IEnumerable<ArchivoReadModel> archivos)
+    {
+        var notaOriginal = archivos.FirstOrDefault(a => a.TipoCalificacion == TipoCalificacion.NotaOriginal);
+        return notaOriginal?.Estado == EstadoInstanciaEvaluativa.Evaluada
+            ? EstadoInstanciaEvaluativa.Evaluada
+            : EstadoInstanciaEvaluativa.Pendiente;
+    }
 
     private sealed record EspacioContext(
         Guid IdEC,
@@ -810,6 +1109,9 @@ public class EvaluacionesService : IEvaluacionesService
         DateTime FechaCarga,
         bool Habilitada,
         bool TieneCalificaciones,
+        int CantidadCalificaciones,
+        bool TieneHistorialCalificaciones,
         Guid? IdArchivoIEAnterior,
-        bool VisibleEnCalendario);
+        bool VisibleEnCalendario,
+        EstadoInstanciaEvaluativa Estado);
 }

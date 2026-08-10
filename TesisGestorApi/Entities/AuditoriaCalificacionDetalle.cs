@@ -17,14 +17,16 @@ namespace TesisGestorApi.Entities
         public Estudiante Estudiante { get; set; } = null!;
 
         public TipoCalificacion TipoCalificacion { get; set; }
+        public ResultadoOperacionCalificacion ResultadoOperacion { get; set; }
 
         public int? ValorAnterior { get; set; }
         public int? ValorNuevo { get; set; }
+        public string? ValorFuenteOficialRaw { get; set; }
 
         public Guid? IdCalificacionAnterior { get; set; }
         public Calificacion? CalificacionAnterior { get; set; }
 
-        public Guid IdCalificacionNueva { get; set; }
-        public Calificacion CalificacionNueva { get; set; } = null!;
+        public Guid? IdCalificacionNueva { get; set; }
+        public Calificacion? CalificacionNueva { get; set; }
     }
 }

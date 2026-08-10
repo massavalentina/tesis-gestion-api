@@ -87,7 +87,8 @@ namespace TesisGestorApi.Services
                             change.IdEstudiante,
                             change.TipoCalificacion,
                             change.Puntaje))
-                        .ToList()),
+                        .ToList(),
+                    Array.Empty<CalificacionConflictoConservado>()),
                 ct);
 
             return new GuardarCalificacionesManualResponseDto
@@ -149,6 +150,18 @@ namespace TesisGestorApi.Services
                             TipoCalificacion = CalificacionesDomainHelper.ToTipoCalificacionCode(d.TipoCalificacion),
                             ValorAnterior = d.ValorAnterior,
                             ValorNuevo = d.ValorNuevo,
+                            ResultadoOperacion = d.ResultadoOperacion.ToString(),
+                            AvisoBreve = s.Origen == OrigenCarga.Importacion
+                                ? d.ResultadoOperacion == ResultadoOperacionCalificacion.Reemplazo
+                                    ? $"El sistema tenía {d.ValorAnterior}, CiDi informó {d.ValorNuevo}"
+                                    : d.ResultadoOperacion == ResultadoOperacionCalificacion.Baja
+                                        ? "CiDi no informaba nota."
+                                        : d.ResultadoOperacion == ResultadoOperacionCalificacion.ConservadaConflicto
+                                            ? string.IsNullOrWhiteSpace(d.ValorFuenteOficialRaw)
+                                                ? $"CiDi no informaba nota, el sistema conservó {d.ValorNuevo}"
+                                                : $"CiDi informaba {d.ValorFuenteOficialRaw}, el sistema conservó {d.ValorNuevo}"
+                                            : null
+                                : null,
                         })
                         .ToList(),
                 })
@@ -207,7 +220,8 @@ namespace TesisGestorApi.Services
                             a.Titulo,
                             a.FechaEjecucion,
                             a.FechaCarga,
-                            a.NombreArchivo))
+                            a.NombreArchivo,
+                            a.Estado))
                         .ToList()))
                 .ToListAsync(ct);
         }
@@ -356,7 +370,8 @@ namespace TesisGestorApi.Services
                 IdIE = instancia.IdIE,
                 IdEC = instancia.IdEC,
                 Nro = instancia.Nro,
-                Estado = instancia.Estado.ToString(),
+                Estado = DerivarEstadoGeneral(instancia.Archivos).ToString(),
+                EstadoGeneralIe = DerivarEstadoGeneral(instancia.Archivos).ToString(),
                 Archivos = new InstanciaEvaluativaArchivosDto
                 {
                     NotaOriginal = archivos.TryGetValue(TipoCalificacion.NotaOriginal, out var notaOriginal)
@@ -380,10 +395,21 @@ namespace TesisGestorApi.Services
                 TipoCalificacion = CalificacionesDomainHelper.ToTipoCalificacionCode(archivo.TipoCalificacion),
                 TipoIE = archivo.TipoIE.ToString(),
                 Titulo = archivo.Titulo,
+                Estado = archivo.Estado.ToString(),
+                EsVencida = archivo.Estado == EstadoInstanciaEvaluativa.Pendiente && archivo.FechaEjecucion.Date < DateTime.UtcNow.Date,
+                PuedeCargarNotas = archivo.Estado == EstadoInstanciaEvaluativa.Evaluada,
                 FechaEjecucion = archivo.FechaEjecucion,
                 FechaCarga = archivo.FechaCarga,
                 NombreArchivo = archivo.NombreArchivo,
             };
+        }
+
+        private static EstadoInstanciaEvaluativa DerivarEstadoGeneral(IEnumerable<ArchivoReadModel> archivos)
+        {
+            var notaOriginal = archivos.FirstOrDefault(a => a.TipoCalificacion == TipoCalificacion.NotaOriginal);
+            return notaOriginal?.Estado == EstadoInstanciaEvaluativa.Evaluada
+                ? EstadoInstanciaEvaluativa.Evaluada
+                : EstadoInstanciaEvaluativa.Pendiente;
         }
 
         private static bool TryParseTipoCalificacion(string rawValue, out TipoCalificacion tipoCalificacion)
@@ -415,7 +441,8 @@ namespace TesisGestorApi.Services
             string Titulo,
             DateTime FechaEjecucion,
             DateTime FechaCarga,
-            string NombreArchivo);
+            string NombreArchivo,
+            EstadoInstanciaEvaluativa Estado);
 
         private sealed record NormalizedChange(
             Guid IdIE,

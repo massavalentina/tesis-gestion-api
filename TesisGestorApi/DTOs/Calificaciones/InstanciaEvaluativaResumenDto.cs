@@ -6,6 +6,7 @@ namespace TesisGestorApi.DTOs.Calificaciones
         public Guid IdEC { get; set; }
         public int Nro { get; set; }
         public string Estado { get; set; } = null!;
+        public string EstadoGeneralIe { get; set; } = null!;
         public InstanciaEvaluativaArchivosDto Archivos { get; set; } = new();
     }
 
@@ -22,6 +23,9 @@ namespace TesisGestorApi.DTOs.Calificaciones
         public string TipoCalificacion { get; set; } = null!;
         public string TipoIE { get; set; } = null!;
         public string Titulo { get; set; } = null!;
+        public string Estado { get; set; } = null!;
+        public bool EsVencida { get; set; }
+        public bool PuedeCargarNotas { get; set; }
         public DateTime FechaEjecucion { get; set; }
         public DateTime FechaCarga { get; set; }
         public string NombreArchivo { get; set; } = null!;

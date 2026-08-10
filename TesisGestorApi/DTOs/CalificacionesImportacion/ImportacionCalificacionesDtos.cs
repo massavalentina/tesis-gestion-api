@@ -9,21 +9,56 @@ namespace TesisGestorApi.DTOs.CalificacionesImportacion
         public IFormFile Archivo { get; set; } = null!;
     }
 
-    public class ImportacionCalificacionesDetalleDto
+    public class ConfirmarImportacionCalificacionesDto
     {
-        public Guid IdImportacionCalificaciones { get; set; }
+        [Required]
+        public IFormFile Archivo { get; set; } = null!;
+
+        [Required]
+        public string PayloadJson { get; set; } = null!;
+    }
+
+    public class ConfirmarImportacionCalificacionesPayloadDto
+    {
+        [Required]
+        public string HashArchivoSha256 { get; set; } = null!;
+
+        [Required]
+        public List<ConfirmarImportacionRevisionRowDto> Rows { get; set; } = new();
+    }
+
+    public class ConfirmarImportacionRevisionRowDto
+    {
+        [Required]
+        public string RowId { get; set; } = null!;
+        public Guid? EstudianteAsociadoId { get; set; }
+        public List<ConfirmarImportacionRevisionCellDto> Cells { get; set; } = new();
+    }
+
+    public class ConfirmarImportacionRevisionCellDto
+    {
+        [Required]
+        public string SlotKey { get; set; } = null!;
+
+        [Required]
+        public string Resolucion { get; set; } = null!;
+
+        public Guid? IdCalificacionBase { get; set; }
+    }
+
+    public class ImportacionCalificacionesAnalisisDto
+    {
         public string Estado { get; set; } = null!;
         public string NombreArchivoOriginal { get; set; } = null!;
-        public string? RutaArchivoFinal { get; set; }
-        public DateTime FechaCreacion { get; set; }
-        public DateTime FechaUltimaActualizacion { get; set; }
-        public DateTime? FechaConfirmacion { get; set; }
+        public string HashArchivoSha256 { get; set; } = null!;
         public ImportacionContextoDto Contexto { get; set; } = new();
         public ImportacionAnalisisResumenDto Resumen { get; set; } = new();
         public List<ImportacionIssueDto> Bloqueos { get; set; } = new();
-        public bool PuedeRevisar { get; set; }
+        public List<ImportacionStudentOptionDto> EstudiantesCurso { get; set; } = new();
+        public List<ImportacionSlotDto> Slots { get; set; } = new();
+        public List<ImportacionRevisionRowDto> Rows { get; set; } = new();
+        public ImportacionConfirmacionResumenDto ResumenConfirmacionInicial { get; set; } = new();
         public bool PuedeConfirmar { get; set; }
-        public bool TieneSesionPendiente { get; set; }
     }
 
     public class ImportacionContextoDto
@@ -58,18 +93,6 @@ namespace TesisGestorApi.DTOs.CalificacionesImportacion
         public string? SlotKey { get; set; }
     }
 
-    public class ImportacionRevisionDto
-    {
-        public Guid IdImportacionCalificaciones { get; set; }
-        public string Estado { get; set; } = null!;
-        public ImportacionAnalisisResumenDto Resumen { get; set; } = new();
-        public List<ImportacionIssueDto> Bloqueos { get; set; } = new();
-        public List<ImportacionStudentOptionDto> EstudiantesCurso { get; set; } = new();
-        public List<ImportacionSlotDto> Slots { get; set; } = new();
-        public List<ImportacionRevisionRowDto> Rows { get; set; } = new();
-        public bool PuedeConfirmar { get; set; }
-    }
-
     public class ImportacionStudentOptionDto
     {
         public Guid IdEstudiante { get; set; }
@@ -86,6 +109,7 @@ namespace TesisGestorApi.DTOs.CalificacionesImportacion
         public string Label { get; set; } = null!;
         public bool TieneNotasImportadas { get; set; }
         public bool TieneEstructuraPrevia { get; set; }
+        public bool AdmiteCargaNotas { get; set; }
     }
 
     public class ImportacionRevisionRowDto
@@ -96,7 +120,7 @@ namespace TesisGestorApi.DTOs.CalificacionesImportacion
         public string Estado { get; set; } = null!;
         public string? Mensaje { get; set; }
         public Guid? EstudianteAsociadoId { get; set; }
-        public bool Omitida { get; set; }
+        public bool RequiereAsociacionManual { get; set; }
         public List<Guid> CandidatosEstudianteIds { get; set; } = new();
         public List<ImportacionIssueDto> Issues { get; set; } = new();
         public List<ImportacionRevisionCellDto> Cells { get; set; } = new();
@@ -105,6 +129,7 @@ namespace TesisGestorApi.DTOs.CalificacionesImportacion
     public class ImportacionRevisionCellDto
     {
         public string SlotKey { get; set; } = null!;
+        public Guid? IdCalificacionBase { get; set; }
         public int EvaluacionNumero { get; set; }
         public string TipoCalificacion { get; set; } = null!;
         public string? ValorImportadoRaw { get; set; }
@@ -114,40 +139,6 @@ namespace TesisGestorApi.DTOs.CalificacionesImportacion
         public string Estado { get; set; } = null!;
         public string Resolucion { get; set; } = null!;
         public string? Mensaje { get; set; }
-        public bool Editable { get; set; }
-    }
-
-    public class ActualizarImportacionRevisionDto
-    {
-        [Required]
-        public List<ActualizarImportacionRevisionRowDto> Rows { get; set; } = new();
-    }
-
-    public class ActualizarImportacionRevisionRowDto
-    {
-        [Required]
-        public string RowId { get; set; } = null!;
-        public Guid? EstudianteAsociadoId { get; set; }
-        public bool Omitida { get; set; }
-        public List<ActualizarImportacionRevisionCellDto> Cells { get; set; } = new();
-    }
-
-    public class ActualizarImportacionRevisionCellDto
-    {
-        [Required]
-        public string SlotKey { get; set; } = null!;
-        [Required]
-        public string Resolucion { get; set; } = null!;
-        public int? ValorFinal { get; set; }
-    }
-
-    public class ImportacionConfirmacionDto
-    {
-        public Guid IdImportacionCalificaciones { get; set; }
-        public string Estado { get; set; } = null!;
-        public ImportacionConfirmacionResumenDto Resumen { get; set; } = new();
-        public bool PuedeConfirmar { get; set; }
-        public List<ImportacionIssueDto> Bloqueos { get; set; } = new();
     }
 
     public class ImportacionConfirmacionResumenDto
@@ -156,8 +147,7 @@ namespace TesisGestorApi.DTOs.CalificacionesImportacion
         public int NotasNuevas { get; set; }
         public int NotasExistentesMantenidas { get; set; }
         public int NotasReemplazadas { get; set; }
-        public int CorreccionesManuales { get; set; }
-        public int NotasOmitidas { get; set; }
+        public int NotasQuitadas { get; set; }
     }
 
     public class ConfirmarImportacionCalificacionesResponseDto

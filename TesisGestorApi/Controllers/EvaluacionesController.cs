@@ -120,10 +120,11 @@ public class EvaluacionesController : ControllerBase
         }
     }
 
-    [HttpPut("ec/{idEC:guid}/instancias/{nro:int}/estado")]
+    [HttpPut("ec/{idEC:guid}/instancias/{nro:int}/archivos/{tipo}/estado")]
     public async Task<ActionResult<InstanciaEvaluativaSlotDto>> CambiarEstado(
         Guid idEC,
         int nro,
+        string tipo,
         [FromBody] CambiarEstadoIEFormDto dto,
         CancellationToken ct)
     {
@@ -132,7 +133,7 @@ public class EvaluacionesController : ControllerBase
             var idDocente = GetIdDocente();
             if (idDocente is null) return Forbid();
 
-            var slot = await _service.CambiarEstadoAsync(idEC, idDocente.Value, nro, dto, ct);
+            var slot = await _service.CambiarEstadoAsync(idEC, idDocente.Value, nro, tipo, dto, ct);
             MapUrlsPublicas(slot);
             return Ok(slot);
         }
@@ -156,6 +157,46 @@ public class EvaluacionesController : ControllerBase
         {
             _logger.LogError(ex, "Error al cambiar el estado de la IE {Nro} del EC {IdEC}.", nro, idEC);
             return StatusCode(500, new { message = "Error interno al actualizar el estado de la IE." });
+        }
+    }
+
+    [HttpPut("ec/{idEC:guid}/instancias/{nro:int}/archivos/{tipo}/trazabilidad")]
+    public async Task<ActionResult<InstanciaEvaluativaSlotDto>> ActualizarTrazabilidad(
+        Guid idEC,
+        int nro,
+        string tipo,
+        [FromBody] ActualizarTrazabilidadIEFormDto dto,
+        CancellationToken ct)
+    {
+        try
+        {
+            var idDocente = GetIdDocente();
+            if (idDocente is null) return Forbid();
+
+            var slot = await _service.ActualizarTrazabilidadAsync(idEC, idDocente.Value, nro, tipo, dto, ct);
+            MapUrlsPublicas(slot);
+            return Ok(slot);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (ValidationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al actualizar la trazabilidad de la IE {Nro} ({Tipo}) del EC {IdEC}.", nro, tipo, idEC);
+            return StatusCode(500, new { message = "Error interno al actualizar la vinculación al programa." });
         }
     }
 

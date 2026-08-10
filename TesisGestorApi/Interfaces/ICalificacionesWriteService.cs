@@ -16,13 +16,21 @@ namespace TesisGestorApi.Interfaces
         string DocenteLabel,
         OrigenCarga Origen,
         Guid? IdImportacionCalificaciones,
-        IReadOnlyCollection<CalificacionApplyChange> Cambios);
+        IReadOnlyCollection<CalificacionApplyChange> Cambios,
+        IReadOnlyCollection<CalificacionConflictoConservado> ConflictosConservados);
 
     public sealed record CalificacionApplyChange(
         Guid IdIE,
         Guid IdEstudiante,
         TipoCalificacion TipoCalificacion,
         int? Puntaje);
+
+    public sealed record CalificacionConflictoConservado(
+        Guid IdIE,
+        Guid IdEstudiante,
+        TipoCalificacion TipoCalificacion,
+        int? PuntajeSistema,
+        string? ValorFuenteOficialRaw);
 
     public sealed record CalificacionesApplyResult(
         int CambiosAplicados,
