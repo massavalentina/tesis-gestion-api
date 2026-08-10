@@ -9,5 +9,6 @@ namespace TesisGestorApi.DTOs.Calendario
         public string NombreUsuario { get; set; } = null!;
         public string ApellidoUsuario { get; set; } = null!;
         public DateTime FechaRegistro { get; set; }
+        public string TituloEvento { get; set; } = null!;
     }
 }

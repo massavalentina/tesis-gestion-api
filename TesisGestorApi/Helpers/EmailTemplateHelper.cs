@@ -65,7 +65,7 @@ namespace TesisGestorApi.Helpers
             <td align='center' style='padding:16px 40px 28px;font-size:11px;color:#999999;line-height:1.6;'>
               Secretar&iacute;a de la instituci&oacute;n Colegio Luis Manuel Robles &mdash; Padre Luis Monti<br>
               1859, X5004ENI C&oacute;rdoba &middot; 03514517213 &middot; colegiorobles.edu.ar<br>
-              Desde &copy; PaletApp 2026
+              Desde &copy; Robles 360 2026
             </td>
           </tr>
 
@@ -85,8 +85,8 @@ namespace TesisGestorApi.Helpers
         {
             var candidates = new[]
             {
-                (Path.Combine(AppContext.BaseDirectory, "wwwroot", "logo.jpg"), "image/jpeg"),
-                (Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "logo.jpg"), "image/jpeg"),
+                (Path.Combine(AppContext.BaseDirectory, "wwwroot", "logo2.jpg"), "image/jpeg"),
+                (Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "logo2.jpg"), "image/jpeg"),
                 (Path.Combine(AppContext.BaseDirectory, "utils", "robles.png"), "image/png"),
                 (Path.Combine(Directory.GetCurrentDirectory(), "utils", "robles.png"), "image/png"),
             };
