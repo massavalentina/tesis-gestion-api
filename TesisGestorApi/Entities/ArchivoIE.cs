@@ -29,6 +29,7 @@ namespace TesisGestorApi.Entities
         public DateTime FechaCarga { get; set; }
         public DateTime FechaCreacion { get; set; }
         public DateTime FechaModificacion { get; set; }
+        public EstadoInstanciaEvaluativa Estado { get; set; } = EstadoInstanciaEvaluativa.Pendiente;
 
         public Guid IdUsuarioCarga { get; set; }
         public Usuario UsuarioCarga { get; set; } = null!;

@@ -19,7 +19,7 @@ namespace TesisGestorApi.Services
             CalificacionesApplyRequest request,
             CancellationToken ct)
         {
-            if (request.Cambios.Count == 0)
+            if (request.Cambios.Count == 0 && request.ConflictosConservados.Count == 0)
             {
                 return new CalificacionesApplyResult(0, Array.Empty<Guid>(), null);
             }
@@ -40,20 +40,25 @@ namespace TesisGestorApi.Services
 
             foreach (var cambio in request.Cambios)
             {
-                if (!instanciasById.ContainsKey(cambio.IdIE))
-                {
-                    throw new InvalidOperationException($"La instancia evaluativa '{cambio.IdIE}' no pertenece al espacio curricular indicado.");
-                }
+                ValidateSlotOwnership(cambio.IdIE, cambio.IdEstudiante, instanciasById, estudiantesById);
+            }
 
-                if (!estudiantesById.ContainsKey(cambio.IdEstudiante))
-                {
-                    throw new InvalidOperationException($"El estudiante '{cambio.IdEstudiante}' no pertenece al curso del espacio curricular.");
-                }
+            foreach (var conflicto in request.ConflictosConservados)
+            {
+                ValidateSlotOwnership(conflicto.IdIE, conflicto.IdEstudiante, instanciasById, estudiantesById);
             }
 
             var activeArchivoBySlot = BuildActiveArchivoDictionary(instancias);
-            var instanceIds = request.Cambios.Select(c => c.IdIE).Distinct().ToList();
-            var studentIds = request.Cambios.Select(c => c.IdEstudiante).Distinct().ToList();
+            var instanceIds = request.Cambios
+                .Select(c => c.IdIE)
+                .Concat(request.ConflictosConservados.Select(c => c.IdIE))
+                .Distinct()
+                .ToList();
+            var studentIds = request.Cambios
+                .Select(c => c.IdEstudiante)
+                .Concat(request.ConflictosConservados.Select(c => c.IdEstudiante))
+                .Distinct()
+                .ToList();
 
             var calificacionesActuales = await _context.Calificaciones
                 .Where(c => c.Habilitada && instanceIds.Contains(c.IdIE) && studentIds.Contains(c.IdEstudiante))
@@ -72,6 +77,7 @@ namespace TesisGestorApi.Services
             var pendingAuditDetails = new List<PendingAuditDetail>();
             var instanciasAfectadas = new HashSet<Guid>();
             var now = DateTime.UtcNow;
+            var cambiosAplicados = 0;
 
             foreach (var change in request.Cambios)
             {
@@ -80,15 +86,52 @@ namespace TesisGestorApi.Services
 
                 var valorAnterior = vigente?.Puntaje;
                 var valorNuevo = change.Puntaje;
-
                 if (valorAnterior == valorNuevo || (valorAnterior == null && valorNuevo == null))
                 {
+                    continue;
+                }
+
+                if (valorNuevo == null && vigente == null)
+                {
+                    continue;
+                }
+
+                var estudiante = estudiantesById[change.IdEstudiante];
+                var instancia = instanciasById[change.IdIE];
+
+                if (valorNuevo == null)
+                {
+                    vigente!.Habilitada = false;
+                    calificacionesByKey.Remove(key);
+                    instanciasAfectadas.Add(change.IdIE);
+
+                    pendingAuditDetails.Add(new PendingAuditDetail(
+                        change.IdIE,
+                        change.IdEstudiante,
+                        change.TipoCalificacion,
+                        ResultadoOperacionCalificacion.Baja,
+                        valorAnterior,
+                        null,
+                        null,
+                        vigente.IdCalificacion,
+                        null,
+                        null,
+                        $"Eval {instancia.Nro}",
+                        $"{estudiante.Apellido}, {estudiante.Nombre}",
+                        estudiante.Documento));
+                    cambiosAplicados += 1;
                     continue;
                 }
 
                 if (!activeArchivoBySlot.TryGetValue(new ArchivoSlotKey(change.IdIE, change.TipoCalificacion), out var archivo))
                 {
                     throw new InvalidOperationException($"No existe un ArchivoIE activo para la instancia '{change.IdIE}' y el tipo '{CalificacionesDomainHelper.ToTipoCalificacionCode(change.TipoCalificacion)}'.");
+                }
+
+                if (archivo.Estado != EstadoInstanciaEvaluativa.Evaluada)
+                {
+                    throw new InvalidOperationException(
+                        $"No se pueden cargar calificaciones en {CalificacionesDomainHelper.ToTipoCalificacionCode(change.TipoCalificacion)} de la IE {instanciasById[change.IdIE].Nro} porque ese examen todavía no está marcado como evaluado.");
                 }
 
                 if (vigente != null)
@@ -116,16 +159,46 @@ namespace TesisGestorApi.Services
                 calificacionesByKey[key] = nuevaCalificacion;
                 instanciasAfectadas.Add(change.IdIE);
 
-                var estudiante = estudiantesById[change.IdEstudiante];
-                var instancia = instanciasById[change.IdIE];
                 pendingAuditDetails.Add(new PendingAuditDetail(
                     change.IdIE,
                     change.IdEstudiante,
                     change.TipoCalificacion,
+                    vigente == null ? ResultadoOperacionCalificacion.Alta : ResultadoOperacionCalificacion.Reemplazo,
                     valorAnterior,
                     valorNuevo,
+                    null,
                     vigente?.IdCalificacion,
                     nuevaCalificacion.IdCalificacion,
+                    nuevaCalificacion,
+                    $"Eval {instancia.Nro}",
+                    $"{estudiante.Apellido}, {estudiante.Nombre}",
+                    estudiante.Documento));
+                cambiosAplicados += 1;
+            }
+
+            foreach (var conflicto in request.ConflictosConservados)
+            {
+                var key = new CalificacionKey(conflicto.IdIE, conflicto.IdEstudiante, conflicto.TipoCalificacion);
+                calificacionesByKey.TryGetValue(key, out var vigente);
+                if (vigente == null)
+                {
+                    continue;
+                }
+
+                var estudiante = estudiantesById[conflicto.IdEstudiante];
+                var instancia = instanciasById[conflicto.IdIE];
+
+                pendingAuditDetails.Add(new PendingAuditDetail(
+                    conflicto.IdIE,
+                    conflicto.IdEstudiante,
+                    conflicto.TipoCalificacion,
+                    ResultadoOperacionCalificacion.ConservadaConflicto,
+                    vigente.Puntaje,
+                    vigente.Puntaje,
+                    conflicto.ValorFuenteOficialRaw,
+                    vigente.IdCalificacion,
+                    null,
+                    null,
                     $"Eval {instancia.Nro}",
                     $"{estudiante.Apellido}, {estudiante.Nombre}",
                     estudiante.Documento));
@@ -155,8 +228,10 @@ namespace TesisGestorApi.Services
                         IdIE = detail.IdIE,
                         IdEstudiante = detail.IdEstudiante,
                         TipoCalificacion = detail.TipoCalificacion,
+                        ResultadoOperacion = detail.ResultadoOperacion,
                         ValorAnterior = detail.ValorAnterior,
                         ValorNuevo = detail.ValorNuevo,
+                        ValorFuenteOficialRaw = detail.ValorFuenteOficialRaw,
                         IdCalificacionAnterior = detail.IdCalificacionAnterior,
                         IdCalificacionNueva = detail.IdCalificacionNueva,
                     }).ToList(),
@@ -179,24 +254,85 @@ namespace TesisGestorApi.Services
                 Docente = request.DocenteLabel,
                 Origen = auditSession.Origen.ToString(),
                 CantidadCambios = pendingAuditDetails.Count,
-                Cambios = pendingAuditDetails.Select(detail => new AuditoriaCalificacionDetalleDto
+                Cambios = pendingAuditDetails.Select(detail =>
                 {
-                    IdDetalleAuditoria = auditSession.Detalles.First(d => d.IdCalificacionNueva == detail.IdCalificacionNueva).IdDetalleAuditoria,
-                    IdIE = detail.IdIE,
-                    IdEstudiante = detail.IdEstudiante,
-                    Estudiante = detail.Estudiante,
-                    Documento = detail.Documento,
-                    Evaluacion = detail.Evaluacion,
-                    TipoCalificacion = CalificacionesDomainHelper.ToTipoCalificacionCode(detail.TipoCalificacion),
-                    ValorAnterior = detail.ValorAnterior,
-                    ValorNuevo = detail.ValorNuevo,
+                    var entity = auditSession.Detalles.First(d =>
+                        d.IdIE == detail.IdIE
+                        && d.IdEstudiante == detail.IdEstudiante
+                        && d.TipoCalificacion == detail.TipoCalificacion
+                        && d.ResultadoOperacion == detail.ResultadoOperacion
+                        && d.IdCalificacionAnterior == detail.IdCalificacionAnterior
+                        && d.IdCalificacionNueva == detail.IdCalificacionNueva);
+
+                    return new AuditoriaCalificacionDetalleDto
+                    {
+                        IdDetalleAuditoria = entity.IdDetalleAuditoria,
+                        IdIE = detail.IdIE,
+                        IdEstudiante = detail.IdEstudiante,
+                        Estudiante = detail.Estudiante,
+                        Documento = detail.Documento,
+                        Evaluacion = detail.Evaluacion,
+                        TipoCalificacion = CalificacionesDomainHelper.ToTipoCalificacionCode(detail.TipoCalificacion),
+                        ValorAnterior = detail.ValorAnterior,
+                        ValorNuevo = detail.ValorNuevo,
+                        ResultadoOperacion = detail.ResultadoOperacion.ToString(),
+                        AvisoBreve = BuildAvisoBreve(
+                            request.Origen,
+                            detail.ResultadoOperacion,
+                            detail.ValorFuenteOficialRaw,
+                            detail.ValorAnterior,
+                            detail.ValorNuevo),
+                    };
                 }).ToList(),
             };
 
             return new CalificacionesApplyResult(
-                pendingAuditDetails.Count,
+                cambiosAplicados,
                 instanciasAfectadas.OrderBy(id => id).ToList(),
                 auditoria);
+        }
+
+        private static void ValidateSlotOwnership(
+            Guid idIE,
+            Guid idEstudiante,
+            IReadOnlyDictionary<Guid, InstanciaReadModel> instanciasById,
+            IReadOnlyDictionary<Guid, GestionManualEstudianteDto> estudiantesById)
+        {
+            if (!instanciasById.ContainsKey(idIE))
+            {
+                throw new InvalidOperationException($"La instancia evaluativa '{idIE}' no pertenece al espacio curricular indicado.");
+            }
+
+            if (!estudiantesById.ContainsKey(idEstudiante))
+            {
+                throw new InvalidOperationException($"El estudiante '{idEstudiante}' no pertenece al curso del espacio curricular.");
+            }
+        }
+
+        private static string? BuildAvisoBreve(
+            OrigenCarga origen,
+            ResultadoOperacionCalificacion resultado,
+            string? valorFuenteOficialRaw,
+            int? valorAnterior,
+            int? valorNuevo)
+        {
+            if (origen != OrigenCarga.Importacion)
+            {
+                return null;
+            }
+
+            return resultado switch
+            {
+                ResultadoOperacionCalificacion.Reemplazo
+                    => $"El sistema tenía {valorAnterior}, CiDi informó {valorNuevo}",
+                ResultadoOperacionCalificacion.Baja
+                    => "CiDi no informaba nota.",
+                ResultadoOperacionCalificacion.ConservadaConflicto when string.IsNullOrWhiteSpace(valorFuenteOficialRaw)
+                    => $"CiDi no informaba nota, el sistema conservó {valorNuevo}",
+                ResultadoOperacionCalificacion.ConservadaConflicto
+                    => $"CiDi informaba {valorFuenteOficialRaw}, el sistema conservó {valorNuevo}",
+                _ => null,
+            };
         }
 
         private async Task<List<GestionManualEstudianteDto>> LoadEstudiantesAsync(Guid idCurso, CancellationToken ct)
@@ -236,7 +372,8 @@ namespace TesisGestorApi.Services
                             a.Titulo,
                             a.FechaEjecucion,
                             a.FechaCarga,
-                            a.NombreArchivo))
+                            a.NombreArchivo,
+                            a.Estado))
                         .ToList()))
                 .ToListAsync(ct);
         }
@@ -285,16 +422,20 @@ namespace TesisGestorApi.Services
             string Titulo,
             DateTime FechaEjecucion,
             DateTime FechaCarga,
-            string NombreArchivo);
+            string NombreArchivo,
+            EstadoInstanciaEvaluativa Estado);
 
         private sealed record PendingAuditDetail(
             Guid IdIE,
             Guid IdEstudiante,
             TipoCalificacion TipoCalificacion,
+            ResultadoOperacionCalificacion ResultadoOperacion,
             int? ValorAnterior,
             int? ValorNuevo,
+            string? ValorFuenteOficialRaw,
             Guid? IdCalificacionAnterior,
-            Guid IdCalificacionNueva,
+            Guid? IdCalificacionNueva,
+            Calificacion? CalificacionNueva,
             string Evaluacion,
             string Estudiante,
             string Documento);

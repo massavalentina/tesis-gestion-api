@@ -29,5 +29,7 @@ namespace TesisGestorApi.DTOs.Calificaciones
         public string TipoCalificacion { get; set; } = null!;
         public int? ValorAnterior { get; set; }
         public int? ValorNuevo { get; set; }
+        public string ResultadoOperacion { get; set; } = null!;
+        public string? AvisoBreve { get; set; }
     }
 }
