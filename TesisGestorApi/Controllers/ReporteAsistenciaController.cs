@@ -99,19 +99,30 @@ namespace TesisGestorApi.Controllers
                     .Where(a => a.EstudianteId == est.IdEstudiante)
                     .ToList();
 
-                // Presencias: días en que el alumno llegó (código de llegada != "A").
-                // Se usa TipoLlegadaManiana para no confundir el retiro con ausencia.
-                var presencias = asistenciasEst.Count(a =>
+                // Presencias: días distintos donde el código de llegada es P, LLT, LLTE o LLTC
+                var presencias = asistenciasEst
+                    .Where(a =>
+                    {
+                        var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                        var cod = llegada?.Codigo?.ToUpper();
+                        return cod is "P" or "LLT" or "LLTE" or "LLTC";
+                    })
+                    .Select(a => a.Fecha)
+                    .Distinct()
+                    .Count();
+
+                // Ausencias: A mañana = 1.0 (con o sin tarde), solo A tarde = 0.5
+                var ausenciasPuras = asistenciasEst.Sum(a =>
                 {
                     var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
-                    return llegada != null &&
-                           !string.Equals(llegada.Codigo, "A", StringComparison.OrdinalIgnoreCase);
+                    bool ausenteM = string.Equals(llegada?.Codigo, "A", StringComparison.OrdinalIgnoreCase);
+                    bool ausenteT = string.Equals(a.TipoTarde?.Codigo, "A", StringComparison.OrdinalIgnoreCase);
+                    if (ausenteM) return 1.0m;
+                    if (ausenteT) return 0.5m;
+                    return 0m;
                 });
 
-                // Inasistencias: sum of ValorTotalInasistencia in the period
-                var inasistencias = asistenciasEst.Sum(a => a.ValorTotalInasistencia);
-
-                // Llegadas tarde: LLT o LLTE según el código de llegada (puede haber retiro adicional)
+                // Conteo de llegadas tarde por tipo
                 var nLLT = asistenciasEst.Count(a =>
                 {
                     var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
@@ -122,31 +133,14 @@ namespace TesisGestorApi.Controllers
                     var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
                     return string.Equals(llegada?.Codigo, "LLTE", StringComparison.OrdinalIgnoreCase);
                 });
-                var llegadasTarde = nLLT + nLLTE;
+                var nLLTC = asistenciasEst.Count(a =>
+                {
+                    var llegada = a.TipoLlegadaManiana ?? a.TipoManiana;
+                    return string.Equals(llegada?.Codigo, "LLTC", StringComparison.OrdinalIgnoreCase);
+                });
 
-                // Ausente por LLT: inasistencias enteras acumuladas por llegadas tardes
-                // LLT = 0.25 falta, LLTE = 0.50 falta → cada 1.0 acumulada = 1 inasistencia completa
-                var ausentePorLLT = (int)Math.Floor(nLLT * 0.25 + nLLTE * 0.5);
-
-                // Retiros Anticipados (RA) — solo RA, no RAE, en cualquier turno
-                var retirosAnticipados = asistenciasEst.Count(a =>
-                    string.Equals(a.TipoManiana?.Codigo, "RA", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(a.TipoTarde?.Codigo,   "RA", StringComparison.OrdinalIgnoreCase));
-
-                // Retiros Express (RE) en cualquier turno
-                var retirosExpress = asistenciasEst.Count(a =>
-                    string.Equals(a.TipoManiana?.Codigo, "RE", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(a.TipoTarde?.Codigo,   "RE", StringComparison.OrdinalIgnoreCase));
-
-                // Retiros Anticipados Extendidos (RAE) en cualquier turno
-                var retirosAnticipadosExtendidos = asistenciasEst.Count(a =>
-                    string.Equals(a.TipoManiana?.Codigo, "RAE", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(a.TipoTarde?.Codigo,   "RAE", StringComparison.OrdinalIgnoreCase));
-
-                // Ausentes No Computables (ANC) en cualquier turno
-                var ausentesNoComputables = asistenciasEst.Count(a =>
-                    string.Equals(a.TipoManiana?.Codigo, "ANC", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(a.TipoTarde?.Codigo,   "ANC", StringComparison.OrdinalIgnoreCase));
+                // Ausencia por LLT: sumatoria sin floor
+                var ausentePorLLT = nLLT * 0.25m + nLLTE * 0.5m + nLLTC * 1.0m;
 
                 // Inasistencias por retiro anticipado:
                 // RA (cualquier turno) = 0,5 · RAE turno mañana = 1,0 · RAE turno tarde = 0,5
@@ -162,17 +156,8 @@ namespace TesisGestorApi.Controllers
                     return v;
                 });
 
-                // Ausencias puras (código A): suma de contribuciones por turno con código "A".
-                // Mañana: TipoLlegadaManiana ?? TipoManiana == "A" → 1.0
-                // Tarde:  TipoTarde == "A" → 0.5
-                var ausenciasPuras = asistenciasEst.Sum(a =>
-                {
-                    var tipoLlegadaM = a.TipoLlegadaManiana ?? a.TipoManiana;
-                    decimal v = 0m;
-                    if (string.Equals(tipoLlegadaM?.Codigo, "A", StringComparison.OrdinalIgnoreCase)) v += 1.0m;
-                    if (string.Equals(a.TipoTarde?.Codigo,  "A", StringComparison.OrdinalIgnoreCase)) v += 0.5m;
-                    return v;
-                });
+                // Inasistencias totales (mantenido para compatibilidad)
+                var inasistencias = asistenciasEst.Sum(a => a.ValorTotalInasistencia);
 
                 var porcentaje = totalDiasDictados > 0
                     ? Math.Round((decimal)presencias / totalDiasDictados * 100, 0)
@@ -186,14 +171,9 @@ namespace TesisGestorApi.Controllers
                     Documento = est.Documento,
                     Presencias = presencias,
                     Inasistencias = inasistencias,
-                    LlegadasTarde = llegadasTarde,
                     AusentePorLLT = ausentePorLLT,
-                    RetirosAnticipados = retirosAnticipados,
-                    RetirosExpress = retirosExpress,
-                    RetirosAnticipadosExtendidos = retirosAnticipadosExtendidos,
                     AusentePorRA = ausentePorRA,
                     AusenciasPuras = ausenciasPuras,
-                    AusentesNoComputables = ausentesNoComputables,
                     PorcentajeAsistencia = porcentaje,
                     TeaGeneral = est.TeaGeneral
                 };
