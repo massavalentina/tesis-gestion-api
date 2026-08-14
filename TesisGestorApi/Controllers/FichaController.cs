@@ -571,7 +571,7 @@ namespace TesisGestorApi.Controllers
 
             sb.Append("<div style=\"border-top:1px solid #b5b5b5;margin:16px 0 12px 0;\"></div>");
             sb.Append("<p style=\"margin:0;text-align:center;font-size:8pt;line-height:1.35;color:#6e6e6e;\">Secretaría de la institución Colegio Luis Manuel Robles, Padre Luis Monti 1859, X5004ENI Córdoba &ndash; 03514517213 &ndash; <u>colegiorobles.edu.ar</u></p>");
-            sb.Append($"<p style=\"margin:10px 0 0 0;text-align:center;font-size:8pt;line-height:1.3;color:#8a8a8a;\">Desde &copy; PaletApp {anio}</p>");
+            sb.Append($"<p style=\"margin:10px 0 0 0;text-align:center;font-size:8pt;line-height:1.3;color:#8a8a8a;\">Desde &copy; Robles 360 {anio}</p>");
 
             sb.Append("</td></tr></table>");
             sb.Append("</td></tr></table></body></html>");

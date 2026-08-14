@@ -19,6 +19,7 @@ public class GestionEvaluacionesDto
     public string NombreDocente { get; set; } = null!;
     public string NombreCurso { get; set; } = null!;
     public int AnioLectivo { get; set; }
+    public int TotalEstudiantesActivos { get; set; }
 
     public List<UnidadArbolDto> Unidades { get; set; } = new();
     public List<InstanciaEvaluativaSlotDto> Instancias { get; set; } = new();
@@ -30,6 +31,7 @@ public class InstanciaEvaluativaSlotDto
     public int Nro { get; set; }
     public bool Existe { get; set; }
     public string Estado { get; set; } = "SinCarga";
+    public string EstadoGeneralIe { get; set; } = "SinCarga";
 
     public ArchivoIETrazadoDto? NotaOriginal { get; set; }
     public ArchivoIETrazadoDto? Recuperatorio1 { get; set; }
@@ -44,11 +46,19 @@ public class ArchivoIETrazadoDto
     public string Titulo { get; set; } = null!;
     public string NombreArchivo { get; set; } = null!;
     public string? UrlArchivo { get; set; }
+    public string Estado { get; set; } = null!;
+    public bool EsVencida { get; set; }
     public DateTime FechaEjecucion { get; set; }
     public DateTime FechaCarga { get; set; }
     public bool TieneCalificaciones { get; set; }
+    public int CantidadCalificaciones { get; set; }
+    public bool TieneHistorialCalificaciones { get; set; }
     public bool PuedeEditar { get; set; }
     public bool PuedeEliminar { get; set; }
+    public bool PuedeCompletarVinculacion { get; set; }
+    public bool PuedeCambiarEstado { get; set; }
+    public bool PuedeCargarNotas { get; set; }
+    public string? MotivoBloqueoNotas { get; set; }
     public string? MotivoBloqueo { get; set; }
     public List<Guid> IdBloquesTema { get; set; } = new();
     public bool VisibleEnCalendario { get; set; }
@@ -80,4 +90,9 @@ public class CambiarEstadoIEFormDto
 {
     [Required]
     public string Estado { get; set; } = "Pendiente";
+}
+
+public class ActualizarTrazabilidadIEFormDto
+{
+    public List<Guid> IdBloquesTema { get; set; } = new();
 }

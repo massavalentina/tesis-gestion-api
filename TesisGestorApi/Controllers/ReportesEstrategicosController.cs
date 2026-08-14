@@ -717,68 +717,92 @@ namespace TesisGestorApi.Controllers
                     DistribucionEstados         = new DistribucionEstadosDto(),
                 });
 
-            // ── 6. Agrupar por (IE, Estudiante) → puntaje final y tipo ──────────
-            // "Final" = la calificación de mayor tipo presente (Rec2 > Rec1 > Original)
+            // ── 6. Agrupar por (IE, Estudiante) → nota de esa instancia ─────────
+            // Nota de instancia = el MÁXIMO puntaje entre original y recuperatorios
+            // rendidos (no el último rendido: un recuperatorio puede salir peor
+            // que un intento anterior, y lo que vale es el mejor resultado logrado).
             var porExamen = calificaciones
                 .GroupBy(c => (c.IdIE, c.IdEstudiante))
-                .Select(g =>
+                .Select(g => new
                 {
-                    var rec2 = g.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.Recuperatorio2);
-                    var rec1 = g.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.Recuperatorio1);
-                    var orig = g.FirstOrDefault(c => c.TipoCalificacion == TipoCalificacion.NotaOriginal);
-
-                    var final = rec2 ?? rec1 ?? orig;
-
-                    return new
-                    {
-                        g.Key.IdIE,
-                        g.Key.IdEstudiante,
-                        PuntajeFinal = final!.Puntaje!.Value,
-                        TieneRec1 = rec1 != null,
-                        TieneRec2 = rec2 != null,
-                        IdEC = ieEcMap.GetValueOrDefault(g.Key.IdIE),
-                    };
+                    g.Key.IdIE,
+                    g.Key.IdEstudiante,
+                    PuntajeFinal = g.Max(c => c.Puntaje!.Value),
+                    IdEC = ieEcMap.GetValueOrDefault(g.Key.IdIE),
                 })
                 .ToList();
 
-            // ── 7. KPIs ──────────────────────────────────────────────────────────
+            // ── 7. KPIs a nivel instancia evaluativa ─────────────────────────────
             var puntajes = porExamen.Select(e => (double)e.PuntajeFinal).ToList();
 
             decimal? promedioGeneral = porExamen.Count > 0
                 ? Math.Round((decimal)puntajes.Average(), 2)
                 : null;
 
-            // ── 8. Distribución de estados ───────────────────────────────────────
-            // Aprobado: puntaje >= 7
-            // Desaprobado por Tema: 4 ≤ puntaje < 7
-            // Desaprobado: puntaje < 4
-            int totalCalif    = porExamen.Count;
-            int aprobados     = porExamen.Count(e => e.PuntajeFinal >= 7);
-            int desapTema     = porExamen.Count(e => e.PuntajeFinal >= 4 && e.PuntajeFinal < 7);
-            int desaprobados  = porExamen.Count(e => e.PuntajeFinal < 4);
+            int totalCalif      = porExamen.Count;
+            int instAprobadas   = porExamen.Count(e => e.PuntajeFinal >= 7);
 
-            decimal pctAprobado    = totalCalif > 0 ? Math.Round((decimal)aprobados    / totalCalif * 100, 1) : 0m;
-            decimal pctDesapTema   = totalCalif > 0 ? Math.Round((decimal)desapTema    / totalCalif * 100, 1) : 0m;
-            decimal pctDesaprobado = totalCalif > 0 ? Math.Round((decimal)desaprobados / totalCalif * 100, 1) : 0m;
+            // Tasa de Aprobación General = % de instancias evaluativas (temas) aprobadas
+            decimal tasaAprobacionGeneral = totalCalif > 0
+                ? Math.Round((decimal)instAprobadas / totalCalif * 100, 1)
+                : 0m;
 
-            // Tasa de Aprobación General = % Aprobados sobre total
-            decimal tasaAprobacionGeneral = pctAprobado;
-
-            // Alumnos en riesgo: estudiantes cuyo promedio personal < 7 (en todos sus exámenes)
-            int alumnosEnRiesgo = porExamen
-                .GroupBy(e => e.IdEstudiante)
-                .Count(g => g.Average(e => (double)e.PuntajeFinal) < 7.0);
-
-            // ── 9. Top 5 EC Mayor Tasa de Desaprobación ──────────────────────────
-            // Tasa = (desaprobados + desap. por tema) / total × 100 (complemento de aprobación)
-            var top5EcDesap = porExamen
+            // ── 8. Condición de los alumnos: por alumno + materia (EC) ──────────
+            // Se promedian las notas de instancia (ya con el máximo aplicado) del
+            // alumno dentro de cada EC. Tres estados MUTUAMENTE EXCLUYENTES —
+            // solo "Aprobado" es aprobación real:
+            //   - Aprobado: promedio >= 7 y ninguna instancia individual < 7
+            //   - Desaprobado por Tema: promedio >= 7 PERO al menos una instancia
+            //     individual < 7 → el alumno NO está aprobado, aunque el promedio
+            //     dé bien (desaprobó un tema puntual)
+            //   - Desaprobado: promedio de la materia < 7
+            var porAlumnoEc = porExamen
                 .Where(e => e.IdEC != Guid.Empty)
-                .GroupBy(e => e.IdEC)
-                .Where(g => g.Count() >= 3)
-                .Select(g => new EcDesaprobacionDto
+                .GroupBy(e => (e.IdEstudiante, e.IdEC))
+                .Select(g => new
                 {
-                    Nombre = ecNombreMap.GetValueOrDefault(g.Key, g.Key.ToString()),
-                    TasaDesaprobacion = Math.Round((decimal)g.Count(e => e.PuntajeFinal < 7) / g.Count() * 100, 1),
+                    g.Key.IdEstudiante,
+                    g.Key.IdEC,
+                    Promedio = g.Average(e => (double)e.PuntajeFinal),
+                    TieneTemaDesaprobado = g.Any(e => e.PuntajeFinal < 7),
+                })
+                .ToList();
+
+            int totalAlumnoEc        = porAlumnoEc.Count;
+            int aprobado             = porAlumnoEc.Count(a => a.Promedio >= 7.0 && !a.TieneTemaDesaprobado);
+            int desaprobadoPorTema   = porAlumnoEc.Count(a => a.Promedio >= 7.0 && a.TieneTemaDesaprobado);
+            int desaprobadoAlumnoEc  = porAlumnoEc.Count(a => a.Promedio < 7.0);
+
+            decimal pctAprobado    = totalAlumnoEc > 0 ? Math.Round((decimal)aprobado           / totalAlumnoEc * 100, 1) : 0m;
+            decimal pctDesapTema   = totalAlumnoEc > 0 ? Math.Round((decimal)desaprobadoPorTema  / totalAlumnoEc * 100, 1) : 0m;
+            decimal pctDesaprobado = totalAlumnoEc > 0 ? Math.Round((decimal)desaprobadoAlumnoEc / totalAlumnoEc * 100, 1) : 0m;
+
+            // Alumnos en riesgo: alumnos con promedio < 7 en al menos una materia (EC)
+            int alumnosEnRiesgo = porAlumnoEc
+                .Where(a => a.Promedio < 7.0)
+                .Select(a => a.IdEstudiante)
+                .Distinct()
+                .Count();
+
+            // ── 9. Top 5 EC Mayor Tasa de Desaprobación (por alumno) ────────────
+            // % de alumnos con promedio < 7 en esa materia, sobre el total de
+            // alumnos evaluados en ella (mismo criterio que "Alumnos en Riesgo",
+            // no cuenta temas individuales sino el resultado final del alumno).
+            var tasaDesapPorEc = porAlumnoEc
+                .GroupBy(a => a.IdEC)
+                .Where(g => g.Count() >= 3)
+                .Select(g => new
+                {
+                    IdEC = g.Key,
+                    Tasa = Math.Round((decimal)g.Count(a => a.Promedio < 7.0) / g.Count() * 100, 1),
+                })
+                .ToList();
+
+            var top5EcDesap = tasaDesapPorEc
+                .Select(t => new EcDesaprobacionDto
+                {
+                    Nombre = ecNombreMap.GetValueOrDefault(t.IdEC, t.IdEC.ToString()),
+                    TasaDesaprobacion = t.Tasa,
                 })
                 .OrderByDescending(e => e.TasaDesaprobacion)
                 .Take(5)
@@ -799,18 +823,16 @@ namespace TesisGestorApi.Controllers
                 .ToList();
 
             // ── 11. Top 5 Cursos Mayor Tasa Desaprobación ─────────────────────────
-            var top5CursosTasa = porExamen
-                .Where(e => e.IdEC != Guid.Empty)
-                .GroupBy(e => ecCursoMap.GetValueOrDefault(e.IdEC, ""))
-                .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() >= 3)
-                .Select(g =>
+            // Tasa del curso = promedio simple de las tasas (por alumno, ver punto 9)
+            // de las materias que dicta ese curso. Cada materia pesa igual sin
+            // importar cuántos alumnos tenga.
+            var top5CursosTasa = tasaDesapPorEc
+                .GroupBy(t => ecCursoMap.GetValueOrDefault(t.IdEC, ""))
+                .Where(g => !string.IsNullOrEmpty(g.Key))
+                .Select(g => new CursoTasaDesaprobacionDto
                 {
-                    int desap = g.Count(e => e.PuntajeFinal < 7);
-                    return new CursoTasaDesaprobacionDto
-                    {
-                        Curso = g.Key,
-                        TasaDesaprobacion = Math.Round((decimal)desap / g.Count() * 100, 1),
-                    };
+                    Curso = g.Key,
+                    TasaDesaprobacion = Math.Round(g.Average(t => t.Tasa), 1),
                 })
                 .OrderByDescending(c => c.TasaDesaprobacion)
                 .Take(5)

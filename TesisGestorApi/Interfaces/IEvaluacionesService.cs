@@ -19,7 +19,16 @@ public interface IEvaluacionesService
         Guid idEC,
         Guid idDocente,
         int nro,
+        string tipoCalificacion,
         CambiarEstadoIEFormDto dto,
+        CancellationToken ct);
+
+    Task<InstanciaEvaluativaSlotDto> ActualizarTrazabilidadAsync(
+        Guid idEC,
+        Guid idDocente,
+        int nro,
+        string tipoCalificacion,
+        ActualizarTrazabilidadIEFormDto dto,
         CancellationToken ct);
 
     Task EliminarArchivoAsync(Guid idEC, Guid idDocente, int nro, string tipoCalificacion, CancellationToken ct);

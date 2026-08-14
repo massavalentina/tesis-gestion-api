@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TesisGestorApi.Data;
@@ -11,9 +12,11 @@ using TesisGestorApi.Data;
 namespace TesisGestorApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260808045034_AddEstadoArchivoIE")]
+    partial class AddEstadoArchivoIE
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -368,7 +371,7 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid?>("IdCalificacionAnterior")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("IdCalificacionNueva")
+                    b.Property<Guid>("IdCalificacionNueva")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("IdEstudiante")
@@ -380,17 +383,11 @@ namespace TesisGestorApi.Migrations
                     b.Property<Guid>("IdSesionAuditoria")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("ResultadoOperacion")
-                        .HasColumnType("integer");
-
                     b.Property<int>("TipoCalificacion")
                         .HasColumnType("integer");
 
                     b.Property<int?>("ValorAnterior")
                         .HasColumnType("integer");
-
-                    b.Property<string>("ValorFuenteOficialRaw")
-                        .HasColumnType("text");
 
                     b.Property<int?>("ValorNuevo")
                         .HasColumnType("integer");
@@ -1885,7 +1882,8 @@ namespace TesisGestorApi.Migrations
                     b.HasOne("TesisGestorApi.Entities.Calificacion", "CalificacionNueva")
                         .WithMany()
                         .HasForeignKey("IdCalificacionNueva")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("TesisGestorApi.Entities.Estudiante", "Estudiante")
                         .WithMany()
